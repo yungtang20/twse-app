@@ -1,0 +1,58 @@
+[
+  {
+    "id": "smart_money",
+    "name": "聰明錢掃描",
+    "description": "SMI/SVI/NVI/VSA 信號 ≥ 3 分",
+    "code": "def scan(data, params):\n    results = []\n    min_vol = params.get('min_vol', 500000)\n    limit = params.get('limit', 20)\n    \n    for code, ind in data.items():\n        vol = safe_int(ind.get('volume', 0))\n        if vol < min_vol:\n            continue\n        \n        score = safe_int(ind.get('smart_score', 0))\n        if score >= 3:\n            results.append((code, score, ind))\n    \n    results.sort(key=lambda x: x[1], reverse=True)\n    return results[:limit]",
+    "builtin": true,
+    "enabled": true
+  },
+  {
+    "id": "triple_filter",
+    "name": "三重篩選",
+    "description": "WMA↑ + MFI↑ + VWAP↑ 同時上升",
+    "code": "def scan(data, params):\n    results = []\n    min_vol = params.get('min_vol', 500000)\n    limit = params.get('limit', 20)\n    \n    for code, ind in data.items():\n        vol = safe_int(ind.get('volume', 0))\n        if vol < min_vol:\n            continue\n        \n        wma20 = safe_float(ind.get('wma20'))\n        wma20_prev = safe_float(ind.get('wma20_prev'))\n        mfi = safe_float(ind.get('mfi14'))\n        mfi_prev = safe_float(ind.get('mfi14_prev'))\n        vwap = safe_float(ind.get('vwap20'))\n        vwap_prev = safe_float(ind.get('vwap20_prev'))\n        \n        if wma20 > wma20_prev and mfi > mfi_prev and vwap > vwap_prev:\n            score = mfi\n            results.append((code, score, ind))\n    \n    results.sort(key=lambda x: x[1], reverse=True)\n    return results[:limit]",
+    "builtin": true,
+    "enabled": true
+  },
+  {
+    "id": "ma_alignment",
+    "name": "均線多頭排列",
+    "description": "MA3 > MA20 > MA60 > MA120 > MA200",
+    "code": "def scan(data, params):\n    results = []\n    min_vol = params.get('min_vol', 500000)\n    limit = params.get('limit', 20)\n    \n    for code, ind in data.items():\n        vol = safe_int(ind.get('volume', 0))\n        if vol < min_vol:\n            continue\n        \n        ma3 = safe_float(ind.get('ma3'))\n        ma20 = safe_float(ind.get('ma20'))\n        ma60 = safe_float(ind.get('ma60'))\n        ma120 = safe_float(ind.get('ma120'))\n        ma200 = safe_float(ind.get('ma200'))\n        \n        if ma3 > ma20 > ma60 > ma120 > ma200 and ma200 > 0:\n            score = (ma3 / ma200 - 1) * 100\n            results.append((code, score, ind))\n    \n    results.sort(key=lambda x: x[1], reverse=True)\n    return results[:limit]",
+    "builtin": true,
+    "enabled": true
+  },
+  {
+    "id": "vp_breakout",
+    "name": "VP 上緣突破",
+    "description": "收盤價突破籌碼上緣",
+    "code": "def scan(data, params):\n    results = []\n    min_vol = params.get('min_vol', 500000)\n    limit = params.get('limit', 20)\n    \n    for code, ind in data.items():\n        vol = safe_int(ind.get('volume', 0))\n        if vol < min_vol:\n            continue\n        \n        close = safe_float(ind.get('close'))\n        vp_upper = safe_float(ind.get('vp_upper'))\n        \n        if close > 0 and vp_upper > 0 and close > vp_upper:\n            distance = (close / vp_upper - 1) * 100\n            results.append((code, distance, ind))\n    \n    results.sort(key=lambda x: x[1], reverse=False)\n    return results[:limit]",
+    "builtin": true,
+    "enabled": true
+  },
+  {
+    "id": "mfi_high",
+    "name": "MFI 資金流入",
+    "description": "MFI > 70 資金強力流入",
+    "code": "def scan(data, params):\n    results = []\n    min_vol = params.get('min_vol', 500000)\n    limit = params.get('limit', 20)\n    \n    for code, ind in data.items():\n        vol = safe_int(ind.get('volume', 0))\n        if vol < min_vol:\n            continue\n        \n        mfi = safe_float(ind.get('mfi14'))\n        if mfi > 70:\n            results.append((code, mfi, ind))\n    \n    results.sort(key=lambda x: x[1], reverse=True)\n    return results[:limit]",
+    "builtin": true,
+    "enabled": true
+  },
+  {
+    "id": "kd_golden_cross",
+    "name": "月KD 黃金交叉",
+    "description": "K > D 且兩者同時上升",
+    "code": "def scan(data, params):\n    results = []\n    min_vol = params.get('min_vol', 500000)\n    limit = params.get('limit', 20)\n    \n    for code, ind in data.items():\n        vol = safe_int(ind.get('volume', 0))\n        if vol < min_vol:\n            continue\n        \n        k = safe_float(ind.get('month_k'))\n        d = safe_float(ind.get('month_d'))\n        k_prev = safe_float(ind.get('month_k_prev'))\n        d_prev = safe_float(ind.get('month_d_prev'))\n        \n        if k > d and k > k_prev and d > d_prev:\n            score = k - d\n            results.append((code, score, ind))\n    \n    results.sort(key=lambda x: x[1], reverse=True)\n    return results[:limit]",
+    "builtin": true,
+    "enabled": true
+  },
+  {
+    "id": "ma_distance",
+    "name": "均線乖離",
+    "description": "收盤價接近 MA200 (-5% ~ 0%)",
+    "code": "def scan(data, params):\n    results = []\n    min_vol = params.get('min_vol', 500000)\n    limit = params.get('limit', 20)\n    \n    for code, ind in data.items():\n        vol = safe_int(ind.get('volume', 0))\n        if vol < min_vol:\n            continue\n        \n        close = safe_float(ind.get('close'))\n        ma200 = safe_float(ind.get('ma200'))\n        \n        if close > 0 and ma200 > 0:\n            distance = (close / ma200 - 1) * 100\n            if -5 <= distance <= 0:\n                results.append((code, abs(distance), ind))\n    \n    results.sort(key=lambda x: x[1], reverse=False)\n    return results[:limit]",
+    "builtin": true,
+    "enabled": true
+  }
+]

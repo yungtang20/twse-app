@@ -1,0 +1,7 @@
+.buildozer/
+bin/
+*.pyc
+__pycache__/
+*.apk
+device_config.json
+.DS_Store

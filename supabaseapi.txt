@@ -1,0 +1,5 @@
+supabase Project URL:https://gqiyvefcldxslrqpqlri.supabase.co
+Publishable key:sb_publishable_yXSGYxyxPMaoVu4MbGK5Vw_IuZsl5yu
+Secret keys:sb_secret_XSeaHx_76CRxA6j8nZ3qDg_nzgFgTAN
+Legacy JWT secret:U+0ofAJpX6dQvjLnSyxze72qwlVaNpH07Z5DbubJZk7XTqjIRO3BK10kIpJrprKeqhqfdebIHxB0LzB9098xag==
+Access token expiry time:3600

@@ -1,0 +1,168 @@
+<!DOCTYPE html>
+<html class="dark" lang="zh-Hant"><head>
+<meta charset="utf-8"/>
+<meta content="width=device-width, initial-scale=1.0" name="viewport"/>
+<title>設定</title>
+<script src="https://cdn.tailwindcss.com?plugins=forms,container-queries"></script>
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;700&amp;display=swap" rel="stylesheet"/>
+<link href="https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined:opsz,wght,FILL,GRAD@20..48,100..700,0..1,-50..200" rel="stylesheet"/>
+<style>
+      .material-symbols-outlined {
+        font-variation-settings:
+        'FILL' 0,
+        'wght' 400,
+        'GRAD' 0,
+        'opsz' 24
+      }
+    </style>
+<script id="tailwind-config">
+      tailwind.config = {
+        darkMode: "class",
+        theme: {
+          extend: {
+            colors: {
+              "primary": "#13ec5b",
+              "background-light": "#f6f8f6",
+              "background-dark": "#102216",
+              "success": "#28A745",
+              "warning": "#FFC107",
+              "danger": "#DC3545",
+            },
+            fontFamily: {
+              "display": ["Inter", "sans-serif"]
+            },
+            borderRadius: {"DEFAULT": "0.25rem", "lg": "0.5rem", "xl": "0.75rem", "full": "9999px"},
+          },
+        },
+      }
+    </script>
+<style>
+    body {
+      min-height: max(884px, 100dvh);
+    }
+  </style>
+<style>
+    body {
+      min-height: max(884px, 100dvh);
+    }
+  </style>
+  </head>
+<body class="bg-background-dark font-display text-white">
+<div class="relative flex h-auto min-h-screen w-full flex-col bg-background-dark overflow-x-hidden">
+<div class="flex items-center bg-background-dark p-4 pb-2 justify-between sticky top-0 z-10">
+<div class="flex size-12 shrink-0 items-center text-white">
+</div>
+<h1 class="text-lg font-bold leading-tight tracking-[-0.015em] text-white flex-1 text-center">設定</h1>
+<div class="flex shrink-0 items-center justify-end">
+<div class="flex items-center gap-2">
+<span class="material-symbols-outlined text-zinc-400">cloud</span>
+<span class="text-sm font-medium text-zinc-400">雲端讀取</span>
+<div class="relative inline-flex h-6 w-11 cursor-pointer items-center rounded-full">
+<input class="peer sr-only" id="cloud-sync" type="checkbox"/>
+<div class="h-6 w-11 rounded-full bg-zinc-700 after:absolute after:start-[2px] after:top-[2px] after:h-5 after:w-5 after:rounded-full after:border after:border-zinc-600 after:bg-white after:transition-all after:content-[''] peer-checked:bg-primary peer-checked:after:translate-x-full peer-checked:after:border-white peer-focus:outline-none dark:border-zinc-600 dark:bg-zinc-700"></div>
+</div>
+</div>
+</div>
+</div>
+<div class="flex flex-col gap-6 p-4 pb-24">
+<div class="flex flex-col gap-4 rounded-xl bg-zinc-900/50 p-4">
+<div class="grid grid-cols-1 gap-4 md:grid-cols-2">
+<div class="flex flex-col gap-2">
+<h3 class="text-base font-bold leading-tight tracking-[-0.015em] text-white">系統狀態</h3>
+<div class="space-y-1 text-sm text-zinc-400">
+<p>資料庫：/sdcard/Download/stock_app/taiwan_stock.db</p>
+<p>最新更新：2025-11-21</p>
+<p>股票總數：1897 檔 (A規則：18093 檔)</p>
+<p>資料範圍：2024-11-11 ~ 2025-11-21</p>
+<p>技術指標：已計算</p>
+</div>
+</div>
+<div class="flex flex-col gap-2">
+<h3 class="text-base font-bold leading-tight tracking-[-0.015em] text-white">API 狀態</h3>
+<div class="space-y-1 text-sm">
+<div class="flex items-center gap-2">
+<div class="h-2 w-2 rounded-full bg-green-500"></div>
+<span class="text-zinc-400">FinMind API: <span class="text-white">可用</span></span>
+</div>
+<div class="flex items-center gap-2">
+<div class="h-2 w-2 rounded-full bg-green-500"></div>
+<span class="text-zinc-400">官方 API: <span class="text-white">可用 (上市✔️, 上櫃✔️)</span></span>
+</div>
+<div class="flex items-center gap-2">
+<div class="h-2 w-2 rounded-full bg-green-500"></div>
+<span class="text-zinc-400">Supabase: <span class="text-white">連線正常</span></span>
+</div>
+</div>
+</div>
+</div>
+</div>
+<div class="flex flex-col gap-4 rounded-xl bg-zinc-900/50 p-4">
+<label class="text-sm font-medium text-zinc-400" for="finmind-token">FinMind Token</label>
+<div class="flex items-center gap-2">
+<input class="flex-grow rounded-lg border-zinc-700 bg-zinc-800 p-3 text-white placeholder:text-zinc-500 focus:border-primary focus:ring-primary" id="finmind-token" placeholder="請輸入您的 API Token" type="password" value="••••••••••••••••••••"/>
+<button class="flex-shrink-0 rounded-lg bg-zinc-700 px-4 py-3 text-base font-bold text-white transition-opacity hover:opacity-90 active:opacity-80">
+                            確定
+                        </button>
+</div>
+</div>
+<div class="flex flex-col gap-4">
+<h2 class="text-lg font-bold leading-tight tracking-[-0.015em] text-white">Supabase 雲端</h2>
+<div class="flex flex-col gap-4 rounded-xl bg-zinc-900/50 p-4">
+<div class="grid grid-cols-3 gap-2">
+<button class="rounded-lg bg-zinc-700 py-2.5 text-sm font-medium text-white transition-opacity hover:opacity-90 active:opacity-80">更新個股清單</button>
+<button class="rounded-lg bg-zinc-700 py-2.5 text-sm font-medium text-white transition-opacity hover:opacity-90 active:opacity-80">更新每日行情</button>
+<button class="rounded-lg bg-zinc-700 py-2.5 text-sm font-medium text-white transition-opacity hover:opacity-90 active:opacity-80">下載到本地</button>
+</div>
+<div class="flex items-center gap-4">
+<span class="flex-shrink-0 text-sm font-medium text-white">正在下載... 45%</span>
+<div class="h-2 w-full flex-grow rounded-full bg-zinc-700">
+<div class="h-2 rounded-full bg-primary" style="width: 45%;"></div>
+</div>
+</div>
+</div>
+</div>
+<div class="flex flex-col gap-4">
+<h2 class="text-lg font-bold leading-tight tracking-[-0.015em] text-white">本地</h2>
+<div class="flex flex-col gap-4 rounded-xl bg-zinc-900/50 p-4">
+<div class="grid grid-cols-3 gap-2">
+<button class="rounded-lg bg-zinc-700 py-2.5 text-sm font-medium text-white transition-opacity hover:opacity-90 active:opacity-80">更新個股清單</button>
+<button class="rounded-lg bg-zinc-700 py-2.5 text-sm font-medium text-white transition-opacity hover:opacity-90 active:opacity-80">更新每日行情</button>
+<button class="rounded-lg bg-zinc-700 py-2.5 text-sm font-medium text-white transition-opacity hover:opacity-90 active:opacity-80">上傳到雲端</button>
+</div>
+<div class="flex items-center">
+<span class="text-sm font-medium text-zinc-400">等待中...</span>
+</div>
+</div>
+</div>
+<div class="flex flex-col gap-4">
+<h2 class="text-lg font-bold leading-tight tracking-[-0.015em] text-white">資料檢查</h2>
+<div class="flex flex-col gap-4 rounded-xl bg-zinc-900/50 p-4">
+<div class="grid grid-cols-3 gap-2">
+<button class="col-span-1 rounded-lg bg-zinc-700 py-2.5 text-sm font-medium text-white transition-opacity hover:opacity-90 active:opacity-80">檢查缺失資料</button>
+<button class="col-span-1 rounded-lg bg-zinc-700 py-2.5 text-sm font-medium text-white transition-opacity hover:opacity-90 active:opacity-80">下載缺失資料</button>
+<div class="col-span-1 flex items-center justify-start">
+<span class="text-sm font-medium text-zinc-400">檢查完成</span>
+</div>
+</div>
+</div>
+</div>
+</div>
+<div class="fixed bottom-0 left-0 z-50 w-full border-t border-zinc-800 bg-background-dark/80 backdrop-blur-md">
+<div class="mx-auto grid h-16 max-w-lg grid-cols-3 font-medium">
+<button class="group inline-flex flex-col items-center justify-center px-5 text-zinc-400 hover:bg-zinc-800" type="button">
+<span class="material-symbols-outlined text-zinc-400 group-hover:text-primary">query_stats</span>
+<span class="text-xs text-zinc-400 group-hover:text-primary">個股查詢</span>
+</button>
+<button class="group inline-flex flex-col items-center justify-center px-5 text-zinc-400 hover:bg-zinc-800" type="button">
+<span class="material-symbols-outlined text-zinc-400 group-hover:text-primary">monitoring</span>
+<span class="text-xs text-zinc-400 group-hover:text-primary">市場掃描</span>
+</button>
+<button class="group inline-flex flex-col items-center justify-center px-5 text-primary hover:bg-zinc-800" type="button">
+<span class="material-symbols-outlined text-primary">settings</span>
+<span class="text-xs text-primary">設定</span>
+</button>
+</div>
+</div>
+</div>
+
+</body></html>

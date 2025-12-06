@@ -1,0 +1,22 @@
+{
+    "feature_name": "my-web-app",
+    "phase": "tasks-generated",
+    "language": "typescript",
+    "created_at": "2025-12-02T23:00:00Z",
+    "updated_at": "2025-12-02T23:20:00Z",
+    "ready_for_implementation": true,
+    "approvals": {
+        "requirements": {
+            "generated": true,
+            "approved": true
+        },
+        "design": {
+            "generated": true,
+            "approved": true
+        },
+        "tasks": {
+            "generated": true,
+            "approved": false
+        }
+    }
+}
