@@ -6,10 +6,10 @@ package.domain = tw.stock
 source.dir = .
 source.include_exts = py,png,jpg,kv,atlas,json,ttf,otf
 
-version = 1.0.5
+version = 1.0.6
 
-# 最小化依賴
-requirements = python3,kivy==2.3.0
+# 依賴套件
+requirements = python3,kivy==2.3.0,requests
 
 # Android 設定
 android.permissions = INTERNET

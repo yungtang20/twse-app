@@ -1,8 +1,7 @@
 """
-台股分析 App - v1.0.5
-- 黑色背景
-- 純文字圖示 (無 emoji)
-- 更大字體
+台股分析 App - v1.0.6
+- 加入 Supabase 雲端連線
+- 查詢/掃描功能可取得真實資料
 """
 import os
 from kivy.app import App
@@ -26,16 +25,26 @@ if os.path.exists(FONT_PATH):
 else:
     DEFAULT_FONT = 'Roboto'
 
+# Supabase Client
+try:
+    from src.supabase_client import SupabaseClient
+    supabase = SupabaseClient()
+except ImportError:
+    supabase = None
+
 # 顏色設定 - 黑色主題
 COLORS = {
-    'bg': (0.05, 0.05, 0.05, 1),           # 接近黑色
-    'header': (0.1, 0.1, 0.1, 1),          # 深灰
-    'nav': (0.08, 0.08, 0.08, 1),          # 導航欄
-    'primary': (0.075, 0.925, 0.357, 1),   # #13ec5b 綠色
-    'text': (0.9, 0.9, 0.9, 1),            # 白色文字
-    'text_dim': (0.5, 0.5, 0.5, 1),        # 灰色文字
-    'button': (0.15, 0.15, 0.15, 1),       # 按鈕背景
-    'input': (0.12, 0.12, 0.12, 1),        # 輸入框背景
+    'bg': (0.05, 0.05, 0.05, 1),
+    'header': (0.1, 0.1, 0.1, 1),
+    'nav': (0.08, 0.08, 0.08, 1),
+    'primary': (0.075, 0.925, 0.357, 1),
+    'text': (0.9, 0.9, 0.9, 1),
+    'text_dim': (0.5, 0.5, 0.5, 1),
+    'button': (0.15, 0.15, 0.15, 1),
+    'input': (0.12, 0.12, 0.12, 1),
+    'success': (0.2, 0.8, 0.4, 1),
+    'warning': (1, 0.8, 0.3, 1),
+    'error': (1, 0.4, 0.4, 1),
 }
 
 
@@ -50,18 +59,16 @@ class QueryScreen(Screen):
             self.bg = Rectangle(pos=layout.pos, size=layout.size)
         layout.bind(pos=self._update_bg, size=self._update_bg)
         
-        # 頁面標題
         layout.add_widget(Label(
             text='個股查詢',
             font_name=DEFAULT_FONT,
             font_size=sp(28),
-            size_hint_y=0.1,
+            size_hint_y=0.08,
             color=COLORS['primary'],
             bold=True
         ))
         
-        # 輸入框區域
-        input_box = BoxLayout(size_hint_y=0.12, spacing=dp(10))
+        input_box = BoxLayout(size_hint_y=0.1, spacing=dp(10))
         self.code_input = TextInput(
             hint_text='輸入股票代碼 (如: 2330)',
             font_name=DEFAULT_FONT,
@@ -88,18 +95,21 @@ class QueryScreen(Screen):
         input_box.add_widget(search_btn)
         layout.add_widget(input_box)
         
-        # 結果區
+        # 結果區 - 使用 ScrollView
+        scroll = ScrollView(size_hint_y=0.82)
         self.result_label = Label(
-            text='請輸入股票代碼進行查詢\n\n支援台股上市櫃股票',
+            text='請輸入股票代碼進行查詢',
             font_name=DEFAULT_FONT,
-            font_size=sp(18),
-            size_hint_y=0.78,
+            font_size=sp(16),
             color=COLORS['text_dim'],
-            halign='center',
-            valign='middle'
+            halign='left',
+            valign='top',
+            size_hint_y=None,
+            text_size=(None, None)
         )
-        self.result_label.bind(size=self.result_label.setter('text_size'))
-        layout.add_widget(self.result_label)
+        self.result_label.bind(texture_size=self._update_label_size)
+        scroll.add_widget(self.result_label)
+        layout.add_widget(scroll)
         
         self.add_widget(layout)
     
@@ -107,12 +117,39 @@ class QueryScreen(Screen):
         self.bg.pos = instance.pos
         self.bg.size = instance.size
     
+    def _update_label_size(self, instance, value):
+        instance.height = value[1]
+        instance.text_size = (instance.width, None)
+    
     def on_search(self, instance):
         code = self.code_input.text.strip()
-        if code:
-            self.result_label.text = f'查詢 {code} 中...\n\n(需要連接雲端才能取得資料)'
-        else:
+        if not code:
             self.result_label.text = '請輸入股票代碼'
+            return
+        
+        self.result_label.text = f'查詢 {code} 中...'
+        
+        if supabase:
+            Clock.schedule_once(lambda dt: self._fetch_data(code), 0.1)
+        else:
+            self.result_label.text = '無法連接雲端服務'
+    
+    def _fetch_data(self, code):
+        try:
+            data = supabase.get_stock_data(code, limit=10)
+            if data:
+                lines = [f'股票代碼: {code}\n']
+                for row in data[:5]:
+                    date = row.get('date', '')
+                    close = row.get('close', 0)
+                    volume = row.get('volume', 0)
+                    change = row.get('change_pct', 0)
+                    lines.append(f'{date}: ${close:.2f} ({change:+.2f}%) 量:{volume//1000}張')
+                self.result_label.text = '\n'.join(lines)
+            else:
+                self.result_label.text = f'找不到 {code} 的資料'
+        except Exception as e:
+            self.result_label.text = f'查詢錯誤: {str(e)}'
 
 
 # ==================== 掃描頁面 ====================
@@ -130,39 +167,48 @@ class ScanScreen(Screen):
             text='策略掃描',
             font_name=DEFAULT_FONT,
             font_size=sp(28),
-            size_hint_y=0.1,
+            size_hint_y=0.08,
             color=COLORS['primary'],
             bold=True
         ))
         
-        # 策略按鈕
-        btn_layout = GridLayout(cols=2, spacing=dp(15), size_hint_y=0.5, padding=dp(5))
+        btn_layout = GridLayout(cols=2, spacing=dp(15), size_hint_y=0.35, padding=dp(5))
         
-        strategies = ['聰明錢掃描', 'KD 黃金交叉', '均線多頭', 'VP 突破']
+        strategies = [
+            ('聰明錢掃描', self.scan_smart_money),
+            ('KD 黃金交叉', self.scan_kd_golden),
+            ('均線多頭', self.scan_ma_rising),
+            ('VP 突破', self.scan_vp_breakout)
+        ]
         
-        for name in strategies:
+        for name, callback in strategies:
             btn = Button(
                 text=name,
                 font_name=DEFAULT_FONT,
-                font_size=sp(20),
+                font_size=sp(18),
                 background_color=COLORS['button'],
                 color=COLORS['text'],
                 bold=True
             )
-            btn.bind(on_press=lambda x, n=name: self.on_scan(n))
+            btn.bind(on_press=callback)
             btn_layout.add_widget(btn)
         
         layout.add_widget(btn_layout)
         
+        # 結果區
+        scroll = ScrollView(size_hint_y=0.57)
         self.result_label = Label(
             text='選擇策略開始掃描',
             font_name=DEFAULT_FONT,
-            font_size=sp(18),
-            size_hint_y=0.4,
+            font_size=sp(16),
             color=COLORS['text_dim'],
-            halign='center'
+            halign='left',
+            valign='top',
+            size_hint_y=None
         )
-        layout.add_widget(self.result_label)
+        self.result_label.bind(texture_size=self._update_label_size)
+        scroll.add_widget(self.result_label)
+        layout.add_widget(scroll)
         
         self.add_widget(layout)
     
@@ -170,8 +216,62 @@ class ScanScreen(Screen):
         self.bg.pos = instance.pos
         self.bg.size = instance.size
     
-    def on_scan(self, strategy_name):
-        self.result_label.text = f'執行 {strategy_name}...\n\n(需要連接雲端才能掃描)'
+    def _update_label_size(self, instance, value):
+        instance.height = value[1]
+        instance.text_size = (instance.width, None)
+    
+    def scan_smart_money(self, instance):
+        self.result_label.text = '掃描聰明錢訊號中...'
+        if supabase:
+            Clock.schedule_once(lambda dt: self._run_smart_money_scan(), 0.1)
+        else:
+            self.result_label.text = '無法連接雲端'
+    
+    def _run_smart_money_scan(self):
+        try:
+            data = supabase.scan_smart_money(min_volume=500, limit=10)
+            if data:
+                lines = ['聰明錢掃描結果:\n']
+                for i, row in enumerate(data, 1):
+                    code = row.get('code', '')
+                    score = row.get('smart_score', 0)
+                    close = row.get('close', 0)
+                    vol = row.get('volume', 0)
+                    lines.append(f'{i}. {code} - ${close:.0f} 評分:{score} 量:{vol//1000}張')
+                self.result_label.text = '\n'.join(lines)
+            else:
+                self.result_label.text = '沒有符合條件的股票'
+        except Exception as e:
+            self.result_label.text = f'掃描錯誤: {str(e)}'
+    
+    def scan_kd_golden(self, instance):
+        self.result_label.text = '掃描 KD 黃金交叉中...'
+        if supabase:
+            Clock.schedule_once(lambda dt: self._run_kd_scan(), 0.1)
+        else:
+            self.result_label.text = '無法連接雲端'
+    
+    def _run_kd_scan(self):
+        try:
+            data = supabase.scan_kd_golden(limit=10)
+            if data:
+                lines = ['KD 黃金交叉結果:\n']
+                for i, row in enumerate(data, 1):
+                    code = row.get('code', '')
+                    k = row.get('k9', 0)
+                    d = row.get('d9', 0)
+                    lines.append(f'{i}. {code} - K:{k:.1f} D:{d:.1f}')
+                self.result_label.text = '\n'.join(lines)
+            else:
+                self.result_label.text = '沒有符合條件的股票'
+        except Exception as e:
+            self.result_label.text = f'掃描錯誤: {str(e)}'
+    
+    def scan_ma_rising(self, instance):
+        self.result_label.text = '均線多頭掃描\n\n(功能開發中)'
+    
+    def scan_vp_breakout(self, instance):
+        self.result_label.text = 'VP 突破掃描\n\n(功能開發中)'
 
 
 # ==================== 自選頁面 ====================
@@ -195,7 +295,7 @@ class WatchlistScreen(Screen):
         ))
         
         layout.add_widget(Label(
-            text='自選股清單\n\n(需要連接雲端才能同步)',
+            text='自選股清單\n\n(功能開發中)',
             font_name=DEFAULT_FONT,
             font_size=sp(18),
             size_hint_y=0.9,
@@ -261,41 +361,80 @@ class SettingsScreen(Screen):
             text='設定',
             font_name=DEFAULT_FONT,
             font_size=sp(28),
-            size_hint_y=0.1,
+            size_hint_y=0.08,
             color=COLORS['primary'],
             bold=True
         ))
         
-        settings_layout = BoxLayout(orientation='vertical', size_hint_y=0.9, spacing=dp(20))
+        settings_layout = BoxLayout(orientation='vertical', size_hint_y=0.92, spacing=dp(15))
         
         settings_layout.add_widget(Label(
-            text='版本: 1.0.5',
+            text='版本: 1.0.6',
             font_name=DEFAULT_FONT,
-            font_size=sp(20),
+            font_size=sp(18),
             color=COLORS['text']
         ))
         
-        settings_layout.add_widget(Label(
-            text='狀態: 離線模式',
-            font_name=DEFAULT_FONT,
-            font_size=sp(20),
-            color=(1, 0.8, 0.3, 1)
-        ))
-        
-        settings_layout.add_widget(Label(
-            text='\n下一步:\n- 連接 Supabase 雲端\n- 啟用股票資料同步\n- 設定 AI API 金鑰',
+        # 連線狀態
+        self.status_label = Label(
+            text='雲端狀態: 檢查中...',
             font_name=DEFAULT_FONT,
             font_size=sp(18),
+            color=COLORS['warning']
+        )
+        settings_layout.add_widget(self.status_label)
+        
+        # 測試按鈕
+        test_btn = Button(
+            text='測試雲端連線',
+            font_name=DEFAULT_FONT,
+            font_size=sp(18),
+            size_hint_y=0.15,
+            background_color=COLORS['button'],
+            color=COLORS['text']
+        )
+        test_btn.bind(on_press=self.test_connection)
+        settings_layout.add_widget(test_btn)
+        
+        settings_layout.add_widget(Label(
+            text='\n功能:\n- 連接 Supabase 雲端\n- 取得即時股票資料\n- 執行策略掃描',
+            font_name=DEFAULT_FONT,
+            font_size=sp(16),
             color=COLORS['text_dim'],
             halign='center'
         ))
         
         layout.add_widget(settings_layout)
         self.add_widget(layout)
+        
+        # 啟動時檢查連線
+        Clock.schedule_once(lambda dt: self.test_connection(None), 1)
     
     def _update_bg(self, instance, value):
         self.bg.pos = instance.pos
         self.bg.size = instance.size
+    
+    def test_connection(self, instance):
+        self.status_label.text = '雲端狀態: 測試中...'
+        self.status_label.color = COLORS['warning']
+        
+        if supabase:
+            Clock.schedule_once(lambda dt: self._do_test(), 0.1)
+        else:
+            self.status_label.text = '雲端狀態: 模組未載入'
+            self.status_label.color = COLORS['error']
+    
+    def _do_test(self):
+        try:
+            if supabase.test_connection():
+                self.status_label.text = '雲端狀態: 已連線'
+                self.status_label.color = COLORS['success']
+            else:
+                self.status_label.text = '雲端狀態: 連線失敗'
+                self.status_label.color = COLORS['error']
+        except Exception as e:
+            self.status_label.text = f'雲端狀態: {str(e)[:20]}'
+            self.status_label.color = COLORS['error']
 
 
 # ==================== 導航按鈕 ====================
@@ -333,7 +472,6 @@ class TWSEApp(App):
             self.bg_rect = Rectangle(pos=root.pos, size=root.size)
         root.bind(pos=self._update_bg, size=self._update_bg)
         
-        # 頂部標題
         header = BoxLayout(size_hint_y=0.07, padding=[dp(15), dp(10)])
         with header.canvas.before:
             Color(*COLORS['header'])
@@ -352,7 +490,6 @@ class TWSEApp(App):
         ))
         root.add_widget(header)
         
-        # Screen Manager
         self.sm = ScreenManager(transition=SlideTransition())
         self.sm.add_widget(QueryScreen(name='query'))
         self.sm.add_widget(ScanScreen(name='scan'))
@@ -361,7 +498,6 @@ class TWSEApp(App):
         self.sm.add_widget(SettingsScreen(name='settings'))
         root.add_widget(self.sm)
         
-        # 底部導航 - 純文字
         nav = BoxLayout(size_hint_y=0.08, spacing=dp(1))
         with nav.canvas.before:
             Color(*COLORS['nav'])
