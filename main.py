@@ -1,5 +1,5 @@
 """
-台股分析 App - v1.0.9
+台股分析 App - v1.0.10
 - 專業商業風格 UI
 - 深藍灰色主題
 - 卡片式佈局
@@ -333,15 +333,24 @@ class ScanScreen(Screen):
         try:
             data = supabase.scan_smart_money(min_volume=500, limit=10)
             if data:
-                lines = ['聰明錢掃描結果', '─' * 25, '']
+                # 取得股票名稱
+                codes = [row.get('code', '') for row in data]
+                names = supabase.get_stock_names(codes)
+                
+                lines = ['【聰明錢掃描結果】', '═' * 28, '']
                 for i, row in enumerate(data, 1):
                     code = row.get('code', '')
+                    name = names.get(code, '')
+                    date = row.get('date', '')[:10] if row.get('date') else ''
+                    close = row.get('close', 0) or 0
+                    vol = row.get('volume', 0) or 0
                     score = row.get('smart_score', 0)
-                    close = row.get('close', 0)
-                    vol = row.get('volume', 0)
-                    lines.append(f'{i}. {code}')
-                    lines.append(f'   價格 ${close:,.0f}  評分 {score}/5  量 {vol//1000:,}張')
-                    lines.append('')
+                    
+                    lines.append(f'{i}. {name}({code})')
+                    lines.append(f'   {date} 收盤:${close:,.2f}')
+                    lines.append(f'   量:{vol//1000:,}張 Score:{score}/5')
+                    lines.append('─' * 28)
+                
                 self.result_label.text = '\n'.join(lines)
                 self.result_label.color = COLORS['text']
             else:
@@ -363,14 +372,23 @@ class ScanScreen(Screen):
         try:
             data = supabase.scan_kd_golden(limit=10)
             if data:
-                lines = ['KD 黃金交叉結果 (K>D, K<30)', '─' * 25, '']
+                codes = [row.get('code', '') for row in data]
+                names = supabase.get_stock_names(codes)
+                
+                lines = ['【KD黃金交叉結果】', '═' * 28, '']
                 for i, row in enumerate(data, 1):
                     code = row.get('code', '')
+                    name = names.get(code, '')
+                    date = row.get('date', '')[:10] if row.get('date') else ''
+                    close = row.get('close', 0) or 0
                     k = row.get('k9', 0)
                     d = row.get('d9', 0)
-                    lines.append(f'{i}. {code}')
-                    lines.append(f'   K: {k:.1f}  D: {d:.1f}')
-                    lines.append('')
+                    
+                    lines.append(f'{i}. {name}({code})')
+                    lines.append(f'   {date} 收盤:${close:,.2f}')
+                    lines.append(f'   K:{k:.1f} D:{d:.1f}')
+                    lines.append('─' * 28)
+                
                 self.result_label.text = '\n'.join(lines)
                 self.result_label.color = COLORS['text']
             else:
@@ -392,15 +410,23 @@ class ScanScreen(Screen):
         try:
             data = supabase.scan_ma_rising(limit=10)
             if data:
-                lines = ['均線多頭結果 (MA5>MA20>MA60)', '─' * 25, '']
+                codes = [row.get('code', '') for row in data]
+                names = supabase.get_stock_names(codes)
+                
+                lines = ['【均線多頭結果】', '═' * 28, '']
                 for i, row in enumerate(data, 1):
                     code = row.get('code', '')
-                    close = row.get('close', 0)
-                    ma5 = row.get('ma5', 0)
-                    ma20 = row.get('ma20', 0)
-                    lines.append(f'{i}. {code}  ${close:,.0f}')
-                    lines.append(f'   MA5: {ma5:.0f}  MA20: {ma20:.0f}')
-                    lines.append('')
+                    name = names.get(code, '')
+                    date = row.get('date', '')[:10] if row.get('date') else ''
+                    close = row.get('close', 0) or 0
+                    ma5 = row.get('ma5', 0) or 0
+                    ma20 = row.get('ma20', 0) or 0
+                    
+                    lines.append(f'{i}. {name}({code})')
+                    lines.append(f'   {date} 收盤:${close:,.2f}')
+                    lines.append(f'   MA5:{ma5:.0f} MA20:{ma20:.0f}')
+                    lines.append('─' * 28)
+                
                 self.result_label.text = '\n'.join(lines)
                 self.result_label.color = COLORS['text']
             else:
@@ -422,14 +448,23 @@ class ScanScreen(Screen):
         try:
             data = supabase.scan_vp_breakout(limit=10)
             if data:
-                lines = ['VP 突破結果 (價格接近VP上界)', '─' * 25, '']
+                codes = [row.get('code', '') for row in data]
+                names = supabase.get_stock_names(codes)
+                
+                lines = ['【VP突破結果】', '═' * 28, '']
                 for i, row in enumerate(data, 1):
                     code = row.get('code', '')
-                    close = row.get('close', 0)
-                    vp_high = row.get('vp_high', 0)
-                    lines.append(f'{i}. {code}  ${close:,.0f}')
-                    lines.append(f'   VP上界: ${vp_high:,.0f}')
-                    lines.append('')
+                    name = names.get(code, '')
+                    date = row.get('date', '')[:10] if row.get('date') else ''
+                    close = row.get('close', 0) or 0
+                    vp_high = row.get('vp_high', 0) or 0
+                    vol = row.get('volume', 0) or 0
+                    
+                    lines.append(f'{i}. {name}({code})')
+                    lines.append(f'   {date} 收盤:${close:,.2f}')
+                    lines.append(f'   VP上界:{vp_high:.0f} 量:{vol//1000:,}張')
+                    lines.append('─' * 28)
+                
                 self.result_label.text = '\n'.join(lines)
                 self.result_label.color = COLORS['text']
             else:
@@ -577,7 +612,7 @@ class SettingsScreen(Screen):
         ))
         
         status_card.add_widget(Label(
-            text='版本: 1.0.9',
+            text='版本: 1.0.10',
             font_name=DEFAULT_FONT,
             font_size=sp(14),
             color=COLORS['text_secondary'],

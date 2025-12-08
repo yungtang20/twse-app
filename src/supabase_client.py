@@ -66,6 +66,29 @@ class SupabaseClient:
         )
         return result or []
     
+    def get_stock_names(self, codes):
+        """批量取得股票名稱"""
+        if not codes:
+            return {}
+        
+        # 嘗試從 stock_list 取得
+        code_list = ','.join([f'"{c}"' for c in codes])
+        result = self._request(
+            "GET",
+            "stock_list",
+            params={
+                "select": "code,name",
+                "code": f"in.({','.join(codes)})"
+            }
+        )
+        
+        name_map = {}
+        if result:
+            for row in result:
+                name_map[row.get('code', '')] = row.get('name', '')
+        
+        return name_map
+    
     def get_latest_data(self, limit=100):
         """取得最新一天的所有股票資料"""
         # 先取得最新日期
