@@ -1,6 +1,7 @@
 """
-台股分析 App - 5 頁面導航版本
+台股分析 App - 5 頁面導航版本 (支援中文)
 """
+import os
 from kivy.app import App
 from kivy.uix.screenmanager import ScreenManager, Screen, SlideTransition
 from kivy.uix.boxlayout import BoxLayout
@@ -11,6 +12,15 @@ from kivy.uix.textinput import TextInput
 from kivy.uix.scrollview import ScrollView
 from kivy.graphics import Color, Rectangle
 from kivy.clock import Clock
+from kivy.core.text import LabelBase
+
+# 註冊中文字體
+FONT_PATH = os.path.join(os.path.dirname(__file__), 'fonts', 'NotoSansTC.ttf')
+if os.path.exists(FONT_PATH):
+    LabelBase.register(name='NotoSansTC', fn_regular=FONT_PATH)
+    DEFAULT_FONT = 'NotoSansTC'
+else:
+    DEFAULT_FONT = 'Roboto'
 
 
 # ==================== 查詢頁面 ====================
@@ -25,22 +35,23 @@ class QueryScreen(Screen):
         layout.bind(pos=self._update_bg, size=self._update_bg)
         
         layout.add_widget(Label(
-            text='📊 個股查詢',
-            font_size=24,
-            size_hint_y=0.1,
-            color=(0.075, 0.925, 0.357, 1)
+            text='[size=24][color=13ec5b]個股查詢[/color][/size]',
+            markup=True,
+            font_name=DEFAULT_FONT,
+            size_hint_y=0.1
         ))
         
         # 輸入框
         input_box = BoxLayout(size_hint_y=0.1, spacing=10)
         self.code_input = TextInput(
             hint_text='輸入股票代碼 (如: 2330)',
+            font_name=DEFAULT_FONT,
             multiline=False,
             size_hint_x=0.7
         )
         input_box.add_widget(self.code_input)
         
-        search_btn = Button(text='查詢', size_hint_x=0.3)
+        search_btn = Button(text='查詢', font_name=DEFAULT_FONT, size_hint_x=0.3)
         search_btn.bind(on_press=self.on_search)
         input_box.add_widget(search_btn)
         layout.add_widget(input_box)
@@ -48,6 +59,7 @@ class QueryScreen(Screen):
         # 結果區
         self.result_label = Label(
             text='請輸入股票代碼進行查詢',
+            font_name=DEFAULT_FONT,
             font_size=14,
             size_hint_y=0.8,
             color=(0.7, 0.7, 0.7, 1)
@@ -80,10 +92,10 @@ class ScanScreen(Screen):
         layout.bind(pos=self._update_bg, size=self._update_bg)
         
         layout.add_widget(Label(
-            text='📈 策略掃描',
-            font_size=24,
-            size_hint_y=0.1,
-            color=(0.075, 0.925, 0.357, 1)
+            text='[size=24][color=13ec5b]策略掃描[/color][/size]',
+            markup=True,
+            font_name=DEFAULT_FONT,
+            size_hint_y=0.1
         ))
         
         # 策略按鈕
@@ -97,7 +109,11 @@ class ScanScreen(Screen):
         ]
         
         for name, key in strategies:
-            btn = Button(text=name, background_color=(0.1, 0.3, 0.2, 1))
+            btn = Button(
+                text=name, 
+                font_name=DEFAULT_FONT,
+                background_color=(0.1, 0.3, 0.2, 1)
+            )
             btn.bind(on_press=lambda x, n=name: self.on_scan(n))
             btn_layout.add_widget(btn)
         
@@ -105,6 +121,7 @@ class ScanScreen(Screen):
         
         self.result_label = Label(
             text='選擇策略開始掃描',
+            font_name=DEFAULT_FONT,
             font_size=14,
             size_hint_y=0.5,
             color=(0.7, 0.7, 0.7, 1)
@@ -133,14 +150,15 @@ class WatchlistScreen(Screen):
         layout.bind(pos=self._update_bg, size=self._update_bg)
         
         layout.add_widget(Label(
-            text='⭐ 自選股',
-            font_size=24,
-            size_hint_y=0.1,
-            color=(0.075, 0.925, 0.357, 1)
+            text='[size=24][color=13ec5b]自選股[/color][/size]',
+            markup=True,
+            font_name=DEFAULT_FONT,
+            size_hint_y=0.1
         ))
         
         layout.add_widget(Label(
             text='自選股清單\n\n(需要連接 Supabase 才能同步)',
+            font_name=DEFAULT_FONT,
             font_size=14,
             size_hint_y=0.9,
             color=(0.7, 0.7, 0.7, 1)
@@ -165,14 +183,15 @@ class AIChatScreen(Screen):
         layout.bind(pos=self._update_bg, size=self._update_bg)
         
         layout.add_widget(Label(
-            text='🤖 AI 助手',
-            font_size=24,
-            size_hint_y=0.1,
-            color=(0.075, 0.925, 0.357, 1)
+            text='[size=24][color=13ec5b]AI 助手[/color][/size]',
+            markup=True,
+            font_name=DEFAULT_FONT,
+            size_hint_y=0.1
         ))
         
         layout.add_widget(Label(
             text='AI 股票分析助手\n\n(需要 Gemini API 金鑰)',
+            font_name=DEFAULT_FONT,
             font_size=14,
             size_hint_y=0.9,
             color=(0.7, 0.7, 0.7, 1)
@@ -197,29 +216,32 @@ class SettingsScreen(Screen):
         layout.bind(pos=self._update_bg, size=self._update_bg)
         
         layout.add_widget(Label(
-            text='⚙️ 設定',
-            font_size=24,
-            size_hint_y=0.1,
-            color=(0.075, 0.925, 0.357, 1)
+            text='[size=24][color=13ec5b]設定[/color][/size]',
+            markup=True,
+            font_name=DEFAULT_FONT,
+            size_hint_y=0.1
         ))
         
         # 設定選項
         settings_layout = BoxLayout(orientation='vertical', size_hint_y=0.9, spacing=10)
         
         settings_layout.add_widget(Label(
-            text='版本: 1.0.2',
+            text='版本: 1.0.3',
+            font_name=DEFAULT_FONT,
             font_size=16,
             color=(0.9, 0.9, 0.9, 1)
         ))
         
         settings_layout.add_widget(Label(
             text='狀態: 離線模式',
+            font_name=DEFAULT_FONT,
             font_size=16,
             color=(0.9, 0.9, 0.9, 1)
         ))
         
         settings_layout.add_widget(Label(
             text='\n下一步:\n- 連接 Supabase\n- 啟用雲端資料',
+            font_name=DEFAULT_FONT,
             font_size=14,
             color=(0.7, 0.7, 0.7, 1)
         ))
@@ -238,6 +260,7 @@ class NavButton(Button):
         super().__init__(**kwargs)
         self.screen_name = screen_name
         self.text = f'{icon}\n{label}'
+        self.font_name = DEFAULT_FONT
         self.font_size = 12
         self.halign = 'center'
         self.valign = 'middle'
@@ -276,9 +299,9 @@ class TWSEApp(App):
         )
         
         header.add_widget(Label(
-            text='📊 台股分析',
-            font_size=18,
-            color=(0.075, 0.925, 0.357, 1)
+            text='[size=18][color=13ec5b]台股分析[/color][/size]',
+            markup=True,
+            font_name=DEFAULT_FONT
         ))
         root.add_widget(header)
         
@@ -302,11 +325,11 @@ class TWSEApp(App):
         )
         
         nav_items = [
-            ('📊', '查詢', 'query'),
-            ('📈', '掃描', 'scan'),
-            ('⭐', '自選', 'watchlist'),
-            ('🤖', 'AI', 'ai_chat'),
-            ('⚙️', '設定', 'settings'),
+            ('Q', '查詢', 'query'),
+            ('S', '掃描', 'scan'),
+            ('W', '自選', 'watchlist'),
+            ('AI', 'AI', 'ai_chat'),
+            ('C', '設定', 'settings'),
         ]
         
         self.nav_buttons = {}
