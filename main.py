@@ -1,5 +1,5 @@
 """
-台股分析 App - v1.0.6
+台股分析 App - v1.0.7
 - 加入 Supabase 雲端連線
 - 查詢/掃描功能可取得真實資料
 """
@@ -268,10 +268,53 @@ class ScanScreen(Screen):
             self.result_label.text = f'掃描錯誤: {str(e)}'
     
     def scan_ma_rising(self, instance):
-        self.result_label.text = '均線多頭掃描\n\n(功能開發中)'
+        self.result_label.text = '掃描均線多頭中...'
+        if supabase:
+            Clock.schedule_once(lambda dt: self._run_ma_scan(), 0.1)
+        else:
+            self.result_label.text = '無法連接雲端'
+    
+    def _run_ma_scan(self):
+        try:
+            data = supabase.scan_ma_rising(limit=10)
+            if data:
+                lines = ['均線多頭結果 (MA5>MA20>MA60):\n']
+                for i, row in enumerate(data, 1):
+                    code = row.get('code', '')
+                    close = row.get('close', 0)
+                    ma5 = row.get('ma5', 0)
+                    ma20 = row.get('ma20', 0)
+                    lines.append(f'{i}. {code} - ${close:.0f}')
+                    lines.append(f'   MA5:{ma5:.0f} MA20:{ma20:.0f}')
+                self.result_label.text = '\n'.join(lines)
+            else:
+                self.result_label.text = '沒有符合條件的股票'
+        except Exception as e:
+            self.result_label.text = f'掃描錯誤: {str(e)}'
     
     def scan_vp_breakout(self, instance):
-        self.result_label.text = 'VP 突破掃描\n\n(功能開發中)'
+        self.result_label.text = '掃描 VP 突破中...'
+        if supabase:
+            Clock.schedule_once(lambda dt: self._run_vp_scan(), 0.1)
+        else:
+            self.result_label.text = '無法連接雲端'
+    
+    def _run_vp_scan(self):
+        try:
+            data = supabase.scan_vp_breakout(limit=10)
+            if data:
+                lines = ['VP 突破結果 (價格接近VP上界):\n']
+                for i, row in enumerate(data, 1):
+                    code = row.get('code', '')
+                    close = row.get('close', 0)
+                    vp_high = row.get('vp_high', 0)
+                    lines.append(f'{i}. {code} - ${close:.0f}')
+                    lines.append(f'   VP上界:{vp_high:.0f}')
+                self.result_label.text = '\n'.join(lines)
+            else:
+                self.result_label.text = '沒有符合條件的股票'
+        except Exception as e:
+            self.result_label.text = f'掃描錯誤: {str(e)}'
 
 
 # ==================== 自選頁面 ====================
@@ -369,7 +412,7 @@ class SettingsScreen(Screen):
         settings_layout = BoxLayout(orientation='vertical', size_hint_y=0.92, spacing=dp(15))
         
         settings_layout.add_widget(Label(
-            text='版本: 1.0.6',
+            text='版本: 1.0.7',
             font_name=DEFAULT_FONT,
             font_size=sp(18),
             color=COLORS['text']

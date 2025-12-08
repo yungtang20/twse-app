@@ -178,3 +178,70 @@ class SupabaseClient:
             return result is not None
         except:
             return False
+    
+    def scan_ma_rising(self, limit=20):
+        """均線多頭掃描 - MA5 > MA20 > MA60"""
+        result = self._request(
+            "GET",
+            "stock_data",
+            params={
+                "select": "code,date,close,volume,ma5,ma20,ma60",
+                "order": "date.desc,volume.desc",
+                "limit": str(limit * 5)
+            }
+        )
+        
+        if not result:
+            return []
+        
+        filtered = []
+        for row in result:
+            ma5 = row.get('ma5') or 0
+            ma20 = row.get('ma20') or 0
+            ma60 = row.get('ma60') or 0
+            if ma5 > ma20 > ma60 > 0:
+                filtered.append(row)
+                if len(filtered) >= limit:
+                    break
+        
+        return filtered
+    
+    def scan_vp_breakout(self, limit=20):
+        """VP 突破掃描 - 價格接近 VP 上界"""
+        result = self._request(
+            "GET",
+            "stock_data",
+            params={
+                "select": "code,date,close,volume,vp_high,vp_low,vp_poc",
+                "order": "date.desc,volume.desc",
+                "limit": str(limit * 5)
+            }
+        )
+        
+        if not result:
+            return []
+        
+        filtered = []
+        for row in result:
+            close = row.get('close') or 0
+            vp_high = row.get('vp_high') or 0
+            if vp_high > 0 and close >= vp_high * 0.98:
+                filtered.append(row)
+                if len(filtered) >= limit:
+                    break
+        
+        return filtered
+    
+    def get_stock_info(self, code):
+        """取得股票基本資訊 (名稱、產業)"""
+        result = self._request(
+            "GET",
+            "stock_list",
+            params={
+                "select": "code,name,industry",
+                "code": f"eq.{code}"
+            }
+        )
+        if result:
+            return result[0]
+        return None
