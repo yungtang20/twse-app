@@ -1,0 +1,60 @@
+{
+  "version": "1.0",
+  "plugins": [
+    {
+      "id": "smart_money",
+      "name": "聰明錢掃描",
+      "description": "SMI/SVI/NVI/VSA 信號 ≥ 3 分",
+      "version": "1.0.0",
+      "author": "system",
+      "builtin": true,
+      "enabled": true,
+      "params": {
+        "min_volume": {"type": "int", "default": 100000, "label": "最小成交量(股)"},
+        "min_score": {"type": "int", "default": 3, "label": "最低分數"}
+      },
+      "code": "def scan(data, params):\n    results = []\n    min_vol = params.get('min_volume', 100000)\n    min_score = params.get('min_score', 3)\n    \n    for code, ind in data.items():\n        vol = ind.get('volume', 0) or 0\n        if vol < min_vol:\n            continue\n        \n        score = ind.get('smart_score') or ind.get('Smart_Score') or 0\n        if score >= min_score:\n            results.append((code, score, ind))\n    \n    results.sort(key=lambda x: x[1], reverse=True)\n    return results"
+    },
+    {
+      "id": "mfi_oversold",
+      "name": "MFI 超賣掃描",
+      "description": "MFI < 30 超賣區域",
+      "version": "1.0.0",
+      "author": "system",
+      "builtin": true,
+      "enabled": true,
+      "params": {
+        "min_volume": {"type": "int", "default": 100000, "label": "最小成交量(股)"},
+        "mfi_threshold": {"type": "float", "default": 30, "label": "MFI 門檻"}
+      },
+      "code": "def scan(data, params):\n    results = []\n    min_vol = params.get('min_volume', 100000)\n    threshold = params.get('mfi_threshold', 30)\n    \n    for code, ind in data.items():\n        vol = ind.get('volume', 0) or 0\n        if vol < min_vol:\n            continue\n        \n        mfi = ind.get('mfi14') or ind.get('MFI') or 50\n        if mfi < threshold:\n            results.append((code, mfi, ind))\n    \n    results.sort(key=lambda x: x[1])\n    return results"
+    },
+    {
+      "id": "ma_bullish",
+      "name": "均線多頭排列",
+      "description": "MA5 > MA20 > MA60 多頭排列",
+      "version": "1.0.0",
+      "author": "system",
+      "builtin": true,
+      "enabled": true,
+      "params": {
+        "min_volume": {"type": "int", "default": 100000, "label": "最小成交量(股)"}
+      },
+      "code": "def scan(data, params):\n    results = []\n    min_vol = params.get('min_volume', 100000)\n    \n    for code, ind in data.items():\n        vol = ind.get('volume', 0) or 0\n        if vol < min_vol:\n            continue\n        \n        ma5 = ind.get('ma5') or 0\n        ma20 = ind.get('ma20') or 0\n        ma60 = ind.get('ma60') or 0\n        \n        if ma5 > ma20 > ma60 > 0:\n            score = (ma5 - ma60) / ma60 * 100\n            results.append((code, score, ind))\n    \n    results.sort(key=lambda x: x[1], reverse=True)\n    return results"
+    },
+    {
+      "id": "volume_surge",
+      "name": "爆量掃描",
+      "description": "今量 > 昨量 * 2 (倍量)",
+      "version": "1.0.0",
+      "author": "system",
+      "builtin": true,
+      "enabled": true,
+      "params": {
+        "min_volume": {"type": "int", "default": 100000, "label": "最小成交量(股)"},
+        "volume_ratio": {"type": "float", "default": 2.0, "label": "量比門檻"}
+      },
+      "code": "def scan(data, params):\n    results = []\n    min_vol = params.get('min_volume', 100000)\n    ratio_threshold = params.get('volume_ratio', 2.0)\n    \n    for code, ind in data.items():\n        vol = ind.get('volume', 0) or 0\n        vol_prev = ind.get('vol_prev', 0) or 0\n        \n        if vol < min_vol or vol_prev <= 0:\n            continue\n        \n        ratio = vol / vol_prev\n        if ratio >= ratio_threshold:\n            results.append((code, ratio, ind))\n    \n    results.sort(key=lambda x: x[1], reverse=True)\n    return results"
+    }
+  ]
+}
