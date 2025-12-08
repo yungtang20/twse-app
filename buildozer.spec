@@ -6,7 +6,7 @@ package.domain = tw.stock
 source.dir = .
 source.include_exts = py,png,jpg,kv,atlas,json,ttf,otf
 
-version = 1.0.3
+version = 1.0.4
 
 # 最小化依賴
 requirements = python3,kivy==2.3.0
