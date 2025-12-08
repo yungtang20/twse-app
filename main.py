@@ -1,5 +1,5 @@
 """
-台股分析 App - v1.0.8
+台股分析 App - v1.0.9
 - 專業商業風格 UI
 - 深藍灰色主題
 - 卡片式佈局
@@ -196,17 +196,25 @@ class QueryScreen(Screen):
                 lines.append('近期走勢:')
                 lines.append('─' * 20)
                 
-                for row in data[:5]:
+                # 計算漲跌幅 (用前一天的收盤價)
+                for i, row in enumerate(data[:5]):
                     date = row.get('date', '')[:10]
-                    close = row.get('close', 0)
-                    volume = row.get('volume', 0)
-                    change = row.get('change_pct', 0)
+                    close = row.get('close', 0) or 0
+                    volume = row.get('volume', 0) or 0
+                    
+                    # 嘗試計算漲跌幅
+                    change = 0
+                    if i + 1 < len(data):
+                        prev_close = data[i + 1].get('close', 0) or 0
+                        if prev_close > 0:
+                            change = ((close - prev_close) / prev_close) * 100
                     
                     arrow = '▲' if change >= 0 else '▼'
                     color_sign = '+' if change >= 0 else ''
                     lines.append(f'{date}')
                     lines.append(f'  收盤 ${close:,.2f}  {arrow} {color_sign}{change:.2f}%')
-                    lines.append(f'  成交量 {volume//1000:,} 張')
+                    if volume > 0:
+                        lines.append(f'  成交量 {volume//1000:,} 張')
                     lines.append('')
                 
                 self.result_label.text = '\n'.join(lines)
@@ -569,7 +577,7 @@ class SettingsScreen(Screen):
         ))
         
         status_card.add_widget(Label(
-            text='版本: 1.0.8',
+            text='版本: 1.0.9',
             font_name=DEFAULT_FONT,
             font_size=sp(14),
             color=COLORS['text_secondary'],
