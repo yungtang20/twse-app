@@ -1,5 +1,5 @@
 """
-台股分析 App - v1.1.4
+台股分析 App - v1.2.0 (新增 K 線圖)
 - 專業商業風格 UI
 - 深藍灰色主題
 - 卡片式佈局
@@ -776,6 +776,258 @@ class ScanScreen(Screen):
             self.result_label.color = COLORS['error']
 
 
+# ==================== K 線圖頁面 ====================
+class ChartScreen(Screen):
+    """K 線圖畫面 - OHLC 蠟燭圖 + MA 均線 + 成交量副圖"""
+    
+    def __init__(self, **kwargs):
+        super().__init__(**kwargs)
+        self.stock_code = ''
+        self.stock_name = ''
+        self.period = 'day'  # day, week, month
+        self.data = []
+        self.ma_enabled = {'ma3': True, 'ma20': True, 'ma60': False, 'ma120': False, 'ma200': False}
+        
+        layout = BoxLayout(orientation='vertical', padding=dp(8), spacing=dp(8))
+        
+        with layout.canvas.before:
+            Color(*COLORS['bg'])
+            self.bg = Rectangle(pos=layout.pos, size=layout.size)
+        layout.bind(pos=self._update_bg, size=self._update_bg)
+        
+        # 標題列 + 股票代碼輸入
+        header = BoxLayout(size_hint_y=0.08, spacing=dp(8))
+        self.code_input = TextInput(
+            text='2330',
+            hint_text='股票代碼',
+            font_name=DEFAULT_FONT,
+            font_size=sp(14),
+            size_hint_x=0.25,
+            multiline=False,
+            background_color=COLORS['card'],
+            foreground_color=COLORS['text']
+        )
+        header.add_widget(self.code_input)
+        
+        self.title_label = Label(
+            text='請輸入股票代碼',
+            font_name=DEFAULT_FONT,
+            font_size=sp(18),
+            color=COLORS['text'],
+            bold=True,
+            size_hint_x=0.45
+        )
+        header.add_widget(self.title_label)
+        
+        # 週期切換
+        for period, label in [('day', '日'), ('week', '週'), ('month', '月')]:
+            btn = Button(
+                text=label,
+                font_name=DEFAULT_FONT,
+                font_size=sp(12),
+                size_hint_x=0.1,
+                background_color=COLORS['button'] if period == self.period else COLORS['card'],
+                color=COLORS['text']
+            )
+            btn.period = period
+            btn.bind(on_press=self.on_period_change)
+            header.add_widget(btn)
+        layout.add_widget(header)
+        
+        # K 線圖區域 (使用 Widget 繪製)
+        chart_card = BoxLayout(orientation='vertical', size_hint_y=0.7)
+        with chart_card.canvas.before:
+            Color(*COLORS['card'])
+            chart_card.rect = RoundedRectangle(pos=chart_card.pos, size=chart_card.size, radius=[dp(12)])
+        chart_card.bind(
+            pos=lambda i, v: setattr(chart_card.rect, 'pos', v),
+            size=lambda i, v: setattr(chart_card.rect, 'size', v)
+        )
+        
+        self.chart_widget = Widget(size_hint_y=0.75)
+        self.chart_widget.bind(size=self.draw_chart, pos=self.draw_chart)
+        chart_card.add_widget(self.chart_widget)
+        
+        # 成交量區域
+        self.volume_widget = Widget(size_hint_y=0.25)
+        self.volume_widget.bind(size=self.draw_volume, pos=self.draw_volume)
+        chart_card.add_widget(self.volume_widget)
+        layout.add_widget(chart_card)
+        
+        # MA 均線開關
+        ma_row = BoxLayout(size_hint_y=0.06, spacing=dp(4))
+        ma_colors = {'ma3': (0.3, 0.6, 1, 1), 'ma20': (1, 0.8, 0, 1), 'ma60': (0.8, 0.3, 0.8, 1), 
+                     'ma120': (1, 0.5, 0, 1), 'ma200': (0.5, 0.5, 0.5, 1)}
+        for ma, color in ma_colors.items():
+            btn = Button(
+                text=ma.upper(),
+                font_name=DEFAULT_FONT,
+                font_size=sp(10),
+                background_color=color if self.ma_enabled[ma] else COLORS['card'],
+                color=COLORS['text']
+            )
+            btn.ma_name = ma
+            btn.ma_color = color
+            btn.bind(on_press=self.toggle_ma)
+            ma_row.add_widget(btn)
+        layout.add_widget(ma_row)
+        
+        # 查詢按鈕
+        query_btn = Button(
+            text='查詢 K 線圖',
+            font_name=DEFAULT_FONT,
+            font_size=sp(16),
+            size_hint_y=0.08,
+            background_color=COLORS['button'],
+            color=COLORS['text']
+        )
+        query_btn.bind(on_press=self.load_chart)
+        layout.add_widget(query_btn)
+        
+        self.add_widget(layout)
+    
+    def _update_bg(self, instance, value):
+        self.bg.pos = instance.pos
+        self.bg.size = instance.size
+    
+    def on_period_change(self, instance):
+        self.period = instance.period
+        self.load_chart(None)
+    
+    def toggle_ma(self, instance):
+        ma = instance.ma_name
+        self.ma_enabled[ma] = not self.ma_enabled[ma]
+        instance.background_color = instance.ma_color if self.ma_enabled[ma] else COLORS['card']
+        self.draw_chart(None, None)
+    
+    def load_chart(self, instance):
+        code = self.code_input.text.strip()
+        if not code or not supabase:
+            return
+        
+        self.stock_code = code
+        info = supabase.get_stock_info(code)
+        self.stock_name = info.get('name', code) if info else code
+        self.title_label.text = f'{self.stock_name} ({code})'
+        
+        # 取得資料
+        limit = {'day': 60, 'week': 52, 'month': 24}.get(self.period, 60)
+        self.data = supabase.get_stock_data(code, limit=limit) or []
+        self.data = list(reversed(self.data))  # 時間順序
+        
+        self.draw_chart(None, None)
+        self.draw_volume(None, None)
+    
+    def draw_chart(self, instance, value):
+        """繪製 K 線蠟燭圖"""
+        self.chart_widget.canvas.clear()
+        if not self.data:
+            return
+        
+        widget = self.chart_widget
+        x, y = widget.pos
+        w, h = widget.size
+        
+        if w <= 0 or h <= 0:
+            return
+        
+        # 計算價格範圍
+        highs = [d.get('high', 0) or d.get('close', 0) for d in self.data]
+        lows = [d.get('low', 0) or d.get('close', 0) for d in self.data]
+        max_price = max(highs) if highs else 1
+        min_price = min(lows) if lows else 0
+        price_range = max_price - min_price or 1
+        
+        # 繪製設定
+        n = len(self.data)
+        candle_width = max(w / n * 0.8, 2)
+        spacing = w / n
+        
+        with widget.canvas:
+            # 繪製蠟燭
+            for i, d in enumerate(self.data):
+                open_p = d.get('open', 0) or d.get('close', 0)
+                close_p = d.get('close', 0) or 0
+                high_p = d.get('high', 0) or close_p
+                low_p = d.get('low', 0) or close_p
+                
+                cx = x + i * spacing + spacing / 2
+                is_up = close_p >= open_p
+                
+                # 顏色
+                if is_up:
+                    Color(*COLORS['up'])
+                else:
+                    Color(*COLORS['down'])
+                
+                # 上下影線
+                y_high = y + (high_p - min_price) / price_range * h
+                y_low = y + (low_p - min_price) / price_range * h
+                Line(points=[cx, y_low, cx, y_high], width=1)
+                
+                # 實體
+                y_open = y + (open_p - min_price) / price_range * h
+                y_close = y + (close_p - min_price) / price_range * h
+                body_top = max(y_open, y_close)
+                body_bottom = min(y_open, y_close)
+                body_height = max(body_top - body_bottom, 1)
+                Rectangle(pos=(cx - candle_width/2, body_bottom), size=(candle_width, body_height))
+            
+            # 繪製 MA 均線
+            ma_colors = {'ma3': (0.3, 0.6, 1, 1), 'ma20': (1, 0.8, 0, 1), 'ma60': (0.8, 0.3, 0.8, 1),
+                         'ma120': (1, 0.5, 0, 1), 'ma200': (0.5, 0.5, 0.5, 1)}
+            for ma_name, color in ma_colors.items():
+                if not self.ma_enabled.get(ma_name):
+                    continue
+                period = int(ma_name.replace('ma', ''))
+                if len(self.data) < period:
+                    continue
+                
+                Color(*color)
+                points = []
+                for i in range(period - 1, len(self.data)):
+                    vals = [self.data[j].get('close', 0) or 0 for j in range(i - period + 1, i + 1)]
+                    ma_val = sum(vals) / period
+                    px = x + i * spacing + spacing / 2
+                    py = y + (ma_val - min_price) / price_range * h
+                    points.extend([px, py])
+                if len(points) >= 4:
+                    Line(points=points, width=1.2)
+    
+    def draw_volume(self, instance, value):
+        """繪製成交量副圖"""
+        self.volume_widget.canvas.clear()
+        if not self.data:
+            return
+        
+        widget = self.volume_widget
+        x, y = widget.pos
+        w, h = widget.size
+        
+        if w <= 0 or h <= 0:
+            return
+        
+        vols = [d.get('volume', 0) or 0 for d in self.data]
+        max_vol = max(vols) if vols else 1
+        
+        n = len(self.data)
+        bar_width = max(w / n * 0.8, 2)
+        spacing = w / n
+        
+        with widget.canvas:
+            for i, d in enumerate(self.data):
+                vol = d.get('volume', 0) or 0
+                open_p = d.get('open', 0) or d.get('close', 0)
+                close_p = d.get('close', 0) or 0
+                is_up = close_p >= open_p
+                
+                Color(*COLORS['up'] if is_up else COLORS['down'])
+                
+                cx = x + i * spacing + spacing / 2
+                bar_h = vol / max_vol * h * 0.9
+                Rectangle(pos=(cx - bar_width/2, y), size=(bar_width, bar_h))
+
+
 # ==================== 自選頁面 ====================
 class WatchlistScreen(Screen):
     def __init__(self, **kwargs):
@@ -1053,6 +1305,7 @@ class TWSEApp(App):
         self.sm = ScreenManager(transition=SlideTransition())
         self.sm.add_widget(QueryScreen(name='query'))
         self.sm.add_widget(ScanScreen(name='scan'))
+        self.sm.add_widget(ChartScreen(name='chart'))
         self.sm.add_widget(WatchlistScreen(name='watchlist'))
         self.sm.add_widget(AIChatScreen(name='ai_chat'))
         self.sm.add_widget(SettingsScreen(name='settings'))
@@ -1071,9 +1324,9 @@ class TWSEApp(App):
         nav_items = [
             ('查詢', 'query'),
             ('掃描', 'scan'),
+            ('K線', 'chart'),
             ('自選', 'watchlist'),
             ('AI', 'ai_chat'),
-            ('設定', 'settings'),
         ]
         
         self.nav_buttons = {}
