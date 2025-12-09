@@ -647,7 +647,6 @@ class ScanScreen(Screen):
                 self.result_label.text = '沒有符合條件的股票'
                 self.result_label.color = COLORS['warning']
         except Exception as e:
-        except Exception as e:
             self.result_label.text = f'掃描錯誤: {str(e)}'
             self.result_label.color = COLORS['error']
     
