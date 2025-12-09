@@ -1,5 +1,5 @@
 """
-台股分析 App - v1.1.2
+台股分析 App - v1.1.3
 - 專業商業風格 UI
 - 深藍灰色主題
 - 卡片式佈局
@@ -191,7 +191,7 @@ class QueryScreen(Screen):
             data = supabase.get_stock_data(code, limit=10)
             
             if data:
-                name = info.get('name', '') if info else ''
+                name = info.get('name', code) if info else code
                 
                 lines = []
                 # 最新一筆資料 (模擬即時股價)
@@ -208,18 +208,29 @@ class QueryScreen(Screen):
                 lines.append(f'目前股價: {close:,.2f}')
                 lines.append(f'開盤: {open_p:,.2f}  最高: {high:,.2f}  最低: {low:,.2f}')
                 lines.append(f'成交量: {volume//1000:,} 張')
-                lines.append('=' * 30)
+                lines.append('=' * 32)
                 lines.append('')
                 
-                # === 近期走勢區 ===
+                # === 近期走勢區 (完整 5 行格式) ===
                 lines.append(f'【{name} {code}】近期走勢:')
-                lines.append('─' * 30)
+                lines.append('═' * 32)
                 
                 for i, row in enumerate(data[:5]):
                     date = row.get('date', '')[:10]
                     r_close = row.get('close', 0) or 0
                     r_volume = row.get('volume', 0) or 0
+                    
+                    # 指標欄位
                     r_mfi = row.get('mfi14') or row.get('mfi') or 0
+                    r_svi = row.get('svi') or 0
+                    r_vwap = row.get('vwap20') or row.get('vwap') or 0
+                    r_poc = row.get('vp_poc') or row.get('poc') or 0
+                    r_ma3 = row.get('ma3') or 0
+                    r_ma20 = row.get('ma20') or 0
+                    r_ma60 = row.get('ma60') or 0
+                    r_ma120 = row.get('ma120') or 0
+                    r_ma200 = row.get('ma200') or 0
+                    r_score = row.get('smart_score') or 0
                     
                     # 計算漲跌幅
                     change = 0
@@ -235,14 +246,50 @@ class QueryScreen(Screen):
                         if prev_vol > 0:
                             vol_ratio = r_volume / prev_vol
                     
+                    # 止盈止損計算 (簡單版: 止盈+10%, 止損-3%)
+                    take_profit = r_close * 1.10 if r_close else 0
+                    stop_loss = r_poc * 0.97 if r_poc else r_close * 0.97
+                    
+                    # 箭頭與符號
                     arrow = '▲' if change >= 0 else '▼'
                     sign = '+' if change >= 0 else ''
-                    mfi_str = f'MFI:{r_mfi:.1f}' if r_mfi else ''
+                    mfi_arrow = '↑' if r_mfi > 50 else '↓'
+                    vwap_arrow = '↑' if r_close > r_vwap else '↓' if r_vwap else ''
                     
+                    # 建立訊號列表
+                    signals = []
+                    if change > 0 and vol_ratio > 1:
+                        signals.append('價漲量增')
+                    if r_score >= 4:
+                        signals.append('主力進場')
+                    if r_ma3 > r_ma20 > r_ma60:
+                        signals.append('多頭排列')
+                    if r_close > r_poc and r_poc > 0:
+                        signals.append('POC支撐')
+                    signal_str = ','.join(signals) if signals else '觀望'
+                    
+                    # Line 1: 日期/成交量/MFI/SVI
+                    svi_str = f'(SVI:{sign}{r_svi:.1f}%)' if r_svi else ''
                     lines.append(f'{date} {name}({code})')
-                    lines.append(f'成交量:{r_volume//1000:,}張({vol_ratio:.1f}x) {mfi_str}')
+                    lines.append(f'成交量:{r_volume//1000:,}張({vol_ratio:.1f}x) MFI:{r_mfi:.1f}{mfi_arrow} {svi_str}')
+                    
+                    # Line 2: 收盤價/漲跌幅
                     lines.append(f'收盤:{r_close:,.2f}({sign}{change:.2f}%) {arrow}')
-                    lines.append('─' * 30)
+                    
+                    # Line 3: 止盈/VWAP/POC/止損
+                    if r_vwap or r_poc:
+                        lines.append(f'止盈:{take_profit:,.2f} VWAP:{r_vwap:,.2f}{vwap_arrow} POC:{r_poc:,.2f} 止損:{stop_loss:,.2f}')
+                    
+                    # Line 4: 訊號
+                    lines.append(f'訊號{r_score}/6:[{signal_str}]')
+                    
+                    # Line 5: MA均線
+                    if r_ma20 or r_ma60:
+                        lines.append(f'MA3:{r_ma3:,.2f} MA20:{r_ma20:,.2f} MA60:{r_ma60:,.2f} MA120:{r_ma120:,.2f}')
+                    
+                    lines.append('─' * 32)
+                
+                lines.append('═' * 32)
                 
                 self.result_label.text = '\n'.join(lines)
                 self.result_label.color = COLORS['text']
