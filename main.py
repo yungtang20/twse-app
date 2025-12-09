@@ -1,5 +1,5 @@
 """
-台股分析 App - v1.1.0
+台股分析 App - v1.1.1
 - 專業商業風格 UI
 - 深藍灰色主題
 - 卡片式佈局
@@ -280,6 +280,17 @@ class ScanScreen(Screen):
             size_hint_x=0.2
         ))
         
+        # 自訂 Spinner 選項類別 (修復中文字體)
+        from kivy.uix.spinner import SpinnerOption
+        class ChineseSpinnerOption(SpinnerOption):
+            def __init__(self, **kwargs):
+                super().__init__(**kwargs)
+                self.font_name = DEFAULT_FONT
+                self.font_size = sp(14)
+                self.background_normal = ''
+                self.background_color = COLORS['card']
+                self.color = COLORS['text']
+        
         # 從插件系統動態載入掃描選項
         scan_options = self._load_plugin_options()
         self.strategy_spinner = Spinner(
@@ -290,7 +301,8 @@ class ScanScreen(Screen):
             size_hint_x=0.8,
             background_normal='',
             background_color=COLORS['button'],
-            color=COLORS['text']
+            color=COLORS['text'],
+            option_cls=ChineseSpinnerOption  # 套用自訂選項類別
         )
         spinner_row.add_widget(self.strategy_spinner)
         settings_card.add_widget(spinner_row)
