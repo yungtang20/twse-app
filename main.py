@@ -1,5 +1,5 @@
 """
-台股分析 App - v1.2.1 (修復閃退)
+台股分析 App - v1.2.2 (修復 import)
 - 專業商業風格 UI
 - 深藍灰色主題
 - 卡片式佈局
@@ -14,7 +14,8 @@ from kivy.uix.label import Label
 from kivy.uix.button import Button
 from kivy.uix.textinput import TextInput
 from kivy.uix.scrollview import ScrollView
-from kivy.graphics import Color, Rectangle, RoundedRectangle
+from kivy.uix.widget import Widget
+from kivy.graphics import Color, Rectangle, RoundedRectangle, Line
 from kivy.clock import Clock
 from kivy.core.text import LabelBase
 from kivy.metrics import sp, dp
