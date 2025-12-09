@@ -1,5 +1,5 @@
 """
-台股分析 App - v1.1.1
+台股分析 App - v1.1.2
 - 專業商業風格 UI
 - 深藍灰色主題
 - 卡片式佈局
@@ -192,38 +192,57 @@ class QueryScreen(Screen):
             
             if data:
                 name = info.get('name', '') if info else ''
-                industry = info.get('industry', '') if info else ''
                 
                 lines = []
-                lines.append(f'{code} {name}')
-                if industry:
-                    lines.append(f'產業: {industry}\n')
-                else:
-                    lines.append('')
+                # 最新一筆資料 (模擬即時股價)
+                latest = data[0] if data else {}
+                date_str = latest.get('date', '')[:10] if latest.get('date') else ''
+                close = latest.get('close', 0) or 0
+                open_p = latest.get('open', close) or close
+                high = latest.get('high', close) or close
+                low = latest.get('low', close) or close
+                volume = latest.get('volume', 0) or 0
                 
-                lines.append('近期走勢:')
-                lines.append('─' * 20)
+                # === 即時股價區 ===
+                lines.append(f'=== {date_str} {name} ({code}) ===')
+                lines.append(f'目前股價: {close:,.2f}')
+                lines.append(f'開盤: {open_p:,.2f}  最高: {high:,.2f}  最低: {low:,.2f}')
+                lines.append(f'成交量: {volume//1000:,} 張')
+                lines.append('=' * 30)
+                lines.append('')
                 
-                # 計算漲跌幅 (用前一天的收盤價)
+                # === 近期走勢區 ===
+                lines.append(f'【{name} {code}】近期走勢:')
+                lines.append('─' * 30)
+                
                 for i, row in enumerate(data[:5]):
                     date = row.get('date', '')[:10]
-                    close = row.get('close', 0) or 0
-                    volume = row.get('volume', 0) or 0
+                    r_close = row.get('close', 0) or 0
+                    r_volume = row.get('volume', 0) or 0
+                    r_mfi = row.get('mfi14') or row.get('mfi') or 0
                     
-                    # 嘗試計算漲跌幅
+                    # 計算漲跌幅
                     change = 0
                     if i + 1 < len(data):
                         prev_close = data[i + 1].get('close', 0) or 0
                         if prev_close > 0:
-                            change = ((close - prev_close) / prev_close) * 100
+                            change = ((r_close - prev_close) / prev_close) * 100
+                    
+                    # 量比計算
+                    vol_ratio = 1.0
+                    if i + 1 < len(data):
+                        prev_vol = data[i + 1].get('volume', 0) or 0
+                        if prev_vol > 0:
+                            vol_ratio = r_volume / prev_vol
                     
                     arrow = '▲' if change >= 0 else '▼'
-                    color_sign = '+' if change >= 0 else ''
-                    lines.append(f'{date}')
-                    lines.append(f'  收盤 ${close:,.2f}  {arrow} {color_sign}{change:.2f}%')
-                    if volume > 0:
-                        lines.append(f'  成交量 {volume//1000:,} 張')
-                    lines.append('')
+                    sign = '+' if change >= 0 else ''
+                    mfi_str = f'MFI:{r_mfi:.1f}' if r_mfi else ''
+                    
+                    lines.append(f'{date} {name}({code})')
+                    lines.append(f'成交量:{r_volume//1000:,}張({vol_ratio:.1f}x) {mfi_str}')
+                    lines.append(f'收盤:{r_close:,.2f}({sign}{change:.2f}%) {arrow}')
+                    lines.append('─' * 30)
                 
                 self.result_label.text = '\n'.join(lines)
                 self.result_label.color = COLORS['text']
