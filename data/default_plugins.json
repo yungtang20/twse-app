@@ -1,0 +1,144 @@
+{
+    "version": "1.0",
+    "plugins": [
+        {
+            "id": "smart_money",
+            "name": "聰明錢掃描 (6分制)",
+            "description": "NVI/PVI 主力籌碼分析，評分 0-6 分",
+            "version": "1.0.0",
+            "author": "system",
+            "builtin": true,
+            "enabled": true,
+            "params": {
+                "min_volume": {
+                    "type": "int",
+                    "default": 500000,
+                    "label": "最小成交量(股)"
+                },
+                "min_score": {
+                    "type": "int",
+                    "default": 4,
+                    "label": "最低分數"
+                }
+            },
+            "code": "def scan(data, params):\n    results = []\n    min_vol = params.get('min_volume', 500000)\n    min_score = params.get('min_score', 4)\n    \n    for code, ind in data.items():\n        vol = ind.get('volume', 0) or 0\n        if vol < min_vol:\n            continue\n        \n        score = ind.get('smart_score') or 0\n        if score >= min_score:\n            results.append((code, score, ind))\n    \n    results.sort(key=lambda x: x[1], reverse=True)\n    return results"
+        },
+        {
+            "id": "mfi_oversold",
+            "name": "MFI 超賣",
+            "description": "MFI < 20 超賣區域",
+            "version": "1.0.0",
+            "author": "system",
+            "builtin": true,
+            "enabled": true,
+            "params": {
+                "min_volume": {
+                    "type": "int",
+                    "default": 500000,
+                    "label": "最小成交量(股)"
+                },
+                "mfi_threshold": {
+                    "type": "float",
+                    "default": 20,
+                    "label": "MFI 門檻"
+                }
+            },
+            "code": "def scan(data, params):\n    results = []\n    min_vol = params.get('min_volume', 500000)\n    threshold = params.get('mfi_threshold', 20)\n    \n    for code, ind in data.items():\n        vol = ind.get('volume', 0) or 0\n        if vol < min_vol:\n            continue\n        \n        mfi = ind.get('mfi14') or ind.get('mfi') or 50\n        if mfi < threshold:\n            results.append((code, mfi, ind))\n    \n    results.sort(key=lambda x: x[1])\n    return results"
+        },
+        {
+            "id": "mfi_overbought",
+            "name": "MFI 超買",
+            "description": "MFI > 80 超買區域",
+            "version": "1.0.0",
+            "author": "system",
+            "builtin": true,
+            "enabled": true,
+            "params": {
+                "min_volume": {
+                    "type": "int",
+                    "default": 500000,
+                    "label": "最小成交量(股)"
+                },
+                "mfi_threshold": {
+                    "type": "float",
+                    "default": 80,
+                    "label": "MFI 門檻"
+                }
+            },
+            "code": "def scan(data, params):\n    results = []\n    min_vol = params.get('min_volume', 500000)\n    threshold = params.get('mfi_threshold', 80)\n    \n    for code, ind in data.items():\n        vol = ind.get('volume', 0) or 0\n        if vol < min_vol:\n            continue\n        \n        mfi = ind.get('mfi14') or ind.get('mfi') or 50\n        if mfi > threshold:\n            results.append((code, mfi, ind))\n    \n    results.sort(key=lambda x: x[1], reverse=True)\n    return results"
+        },
+        {
+            "id": "ma_bullish",
+            "name": "均線多頭",
+            "description": "MA5 > MA20 > MA60 多頭排列",
+            "version": "1.0.0",
+            "author": "system",
+            "builtin": true,
+            "enabled": true,
+            "params": {
+                "min_volume": {
+                    "type": "int",
+                    "default": 500000,
+                    "label": "最小成交量(股)"
+                }
+            },
+            "code": "def scan(data, params):\n    results = []\n    min_vol = params.get('min_volume', 500000)\n    \n    for code, ind in data.items():\n        vol = ind.get('volume', 0) or 0\n        if vol < min_vol:\n            continue\n        \n        ma5 = ind.get('ma5') or 0\n        ma20 = ind.get('ma20') or 0\n        ma60 = ind.get('ma60') or 0\n        \n        if ma5 > ma20 > ma60 > 0:\n            score = (ma5 - ma60) / ma60 * 100\n            results.append((code, score, ind))\n    \n    results.sort(key=lambda x: x[1], reverse=True)\n    return results"
+        },
+        {
+            "id": "kd_monthly",
+            "name": "月KD交叉",
+            "description": "月線 K 值穿越 D 值黃金交叉",
+            "version": "1.0.0",
+            "author": "system",
+            "builtin": true,
+            "enabled": true,
+            "params": {
+                "min_volume": {
+                    "type": "int",
+                    "default": 500000,
+                    "label": "最小成交量(股)"
+                }
+            },
+            "code": "def scan(data, params):\n    results = []\n    min_vol = params.get('min_volume', 500000)\n    \n    for code, ind in data.items():\n        vol = ind.get('volume', 0) or 0\n        if vol < min_vol:\n            continue\n        \n        k = ind.get('k_monthly') or ind.get('k9') or 50\n        d = ind.get('d_monthly') or ind.get('d9') or 50\n        \n        # K < 30 且 K > D (低位黃金交叉)\n        if k < 30 and k > d:\n            results.append((code, k, ind))\n    \n    results.sort(key=lambda x: x[1])\n    return results"
+        },
+        {
+            "id": "vp_breakout",
+            "name": "VP 突破",
+            "description": "價格突破 VP 上界",
+            "version": "1.0.0",
+            "author": "system",
+            "builtin": true,
+            "enabled": true,
+            "params": {
+                "min_volume": {
+                    "type": "int",
+                    "default": 500000,
+                    "label": "最小成交量(股)"
+                }
+            },
+            "code": "def scan(data, params):\n    results = []\n    min_vol = params.get('min_volume', 500000)\n    \n    for code, ind in data.items():\n        vol = ind.get('volume', 0) or 0\n        if vol < min_vol:\n            continue\n        \n        close = ind.get('close') or 0\n        vp_upper = ind.get('vp_upper') or ind.get('vp_high') or 0\n        \n        if close > 0 and vp_upper > 0 and close > vp_upper:\n            diff = (close - vp_upper) / vp_upper * 100\n            results.append((code, diff, ind))\n    \n    results.sort(key=lambda x: x[1], reverse=True)\n    return results"
+        },
+        {
+            "id": "triple_filter",
+            "name": "三重篩選",
+            "description": "成交量放大 + 趨勢向上 + 突破壓力",
+            "version": "1.0.0",
+            "author": "system",
+            "builtin": true,
+            "enabled": true,
+            "params": {
+                "min_volume": {
+                    "type": "int",
+                    "default": 500000,
+                    "label": "最小成交量(股)"
+                },
+                "volume_ratio": {
+                    "type": "float",
+                    "default": 1.5,
+                    "label": "量比門檻"
+                }
+            },
+            "code": "def scan(data, params):\n    results = []\n    min_vol = params.get('min_volume', 500000)\n    vol_ratio_threshold = params.get('volume_ratio', 1.5)\n    \n    for code, ind in data.items():\n        vol = ind.get('volume', 0) or 0\n        vol_prev = ind.get('vol_prev', 0) or 0\n        \n        if vol < min_vol or vol_prev <= 0:\n            continue\n        \n        close = ind.get('close') or 0\n        open_p = ind.get('open') or close\n        high = ind.get('high') or close\n        \n        # 三重條件\n        vol_ratio = vol / vol_prev\n        trend_up = close > open_p\n        breakout = close >= high * 0.98 if high > 0 else False\n        \n        if vol_ratio >= vol_ratio_threshold and trend_up and breakout:\n            results.append((code, vol_ratio, ind))\n    \n    results.sort(key=lambda x: x[1], reverse=True)\n    return results"
+        }
+    ]
+}
