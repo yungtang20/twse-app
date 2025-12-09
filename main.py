@@ -1,5 +1,5 @@
 """
-台股分析 App - v1.1.3
+台股分析 App - v1.1.4
 - 專業商業風格 UI
 - 深藍灰色主題
 - 卡片式佈局
@@ -575,9 +575,9 @@ class ScanScreen(Screen):
         else:
             self.result_label.text = '無法連接雲端'
     
-    def _run_kd_scan(self):
+    def _run_kd_scan(self, limit=10):
         try:
-            data = supabase.scan_kd_golden(limit=10)
+            data = supabase.scan_kd_golden(limit=limit)
             if data:
                 codes = [row.get('code', '') for row in data]
                 names = supabase.get_stock_names(codes)
@@ -613,9 +613,9 @@ class ScanScreen(Screen):
         else:
             self.result_label.text = '無法連接雲端'
     
-    def _run_ma_scan(self):
+    def _run_ma_scan(self, limit=10):
         try:
-            data = supabase.scan_ma_rising(limit=10)
+            data = supabase.scan_ma_rising(limit=limit)
             if data:
                 codes = [row.get('code', '') for row in data]
                 names = supabase.get_stock_names(codes)
