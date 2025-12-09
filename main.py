@@ -1,5 +1,5 @@
 """
-台股分析 App - v1.2.2 (修復 import)
+台股分析 App - v1.2.3 (UI/UX 升級版)
 - 專業商業風格 UI
 - 深藍灰色主題
 - 卡片式佈局
@@ -41,6 +41,25 @@ try:
     plugin_manager = PluginManager(os.path.join(os.path.dirname(__file__), 'data'))
 except ImportError:
     plugin_manager = None
+
+# 載入本地股票清單 (修復股名顯示)
+STOCKS_MAP = {}
+try:
+    with open(os.path.join(os.path.dirname(__file__), 'data', 'stocks.json'), 'r', encoding='utf-8') as f:
+        import json
+        STOCKS_MAP = json.load(f)
+except Exception as e:
+    print(f"Error loading stocks.json: {e}")
+
+def get_stock_name(code):
+    """獲取股票名稱 (優先查本地，失敗查 Supabase)"""
+    if code in STOCKS_MAP:
+        return STOCKS_MAP[code]
+    if supabase:
+        info = supabase.get_stock_info(code)
+        if info:
+            return info.get('name', code)
+    return code
 
 # 專業商業風格配色
 COLORS = {
@@ -537,27 +556,59 @@ class ScanScreen(Screen):
             self.result_label.text = '無法連接雲端'
             self.result_label.color = COLORS['error']
     
+    def _format_scan_result_item(self, index, row, name):
+        """格式化單筆掃描結果 (顯示一格式)"""
+        code = row.get('code', '')
+        date = row.get('date', '')[:10] if row.get('date') else ''
+        close = row.get('close', 0) or 0
+        vol = row.get('volume', 0) or 0
+        score = row.get('smart_score', 0)
+        
+        # 計算漲跌幅與顏色
+        prev_close = row.get('close_prev') or close
+        chg = (close - prev_close) / prev_close * 100 if prev_close else 0
+        color_hex = "ff5252" if chg > 0 else "00e676" if chg < 0 else "ffffff"
+        arrow = "▲" if chg > 0 else "▼" if chg < 0 else ""
+        
+        # 輔助數據
+        mfi = row.get('MFI', 0) or 0
+        svi = row.get('SVI', 0) or 0
+        ma3 = row.get('MA3', 0) or 0
+        ma20 = row.get('MA20', 0) or 0
+        ma60 = row.get('MA60', 0) or 0
+        ma120 = row.get('MA120', 0) or 0
+        ma200 = row.get('MA200', 0) or 0
+        
+        # 訊號列表 (模擬)
+        signals = []
+        if chg > 0 and vol > 1000: signals.append("價漲量增")
+        if score >= 5: signals.append("主力進場")
+        if ma3 > ma20 > ma60: signals.append("多頭排列")
+        if svi > 20: signals.append("籌碼鎖定")
+        signal_str = ",".join(signals)
+        
+        return f"""{index}. {name} ({code})        Score:{score}
+   {date} {name}({code}) 成交量:{vol:,}張 MFI:{mfi:.1f} (SVI:{svi:+.1f}%)
+   收盤價:[color={color_hex}]{close:.2f}({chg:+.2f}%)[/color] {arrow}
+   止盈:{close*1.1:.2f}   VWAP:{row.get('VWAP',0):.2f}   POC:{row.get('POC',0):.2f}   止損:{close*0.9:.2f}
+   訊號{len(signals)}/4:[{signal_str}]
+   MA3:{ma3:.2f} MA20:{ma20:.2f} MA60:{ma60:.2f} MA120:{ma120:.2f} MA200:{ma200:.2f}
+"""
+
     def _run_smart_money_scan(self, min_vol=500, limit=10):
         try:
             data = supabase.scan_smart_money(min_volume=min_vol, limit=limit)
             if data:
-                # 取得股票名稱
+                # 取得股票名稱 (優先查本地)
                 codes = [row.get('code', '') for row in data]
-                names = supabase.get_stock_names(codes)
+                names = {c: get_stock_name(c) for c in codes}
                 
-                lines = [f'【聰明錢掃描結果】(6分制) 顯示 {len(data)} 檔', '═' * 28, '']
+                lines = [f'【聰明錢掃描結果】(6分制) 顯示 {len(data)} 檔', '═' * 40, '']
                 for i, row in enumerate(data, 1):
                     code = row.get('code', '')
-                    name = names.get(code, '')
-                    date = row.get('date', '')[:10] if row.get('date') else ''
-                    close = row.get('close', 0) or 0
-                    vol = row.get('volume', 0) or 0
-                    score = row.get('smart_score', 0)
-                    
-                    lines.append(f'{i}. {name}({code})')
-                    lines.append(f'   {date} 收盤:${close:,.2f}')
-                    lines.append(f'   量:{vol//1000:,}張 Score:{score}/6')
-                    lines.append('─' * 28)
+                    name = names.get(code, code)
+                    lines.append(self._format_scan_result_item(i, row, name))
+                    lines.append('─' * 40)
                 
                 self.result_label.text = '\n'.join(lines)
                 self.result_label.color = COLORS['text']
@@ -581,27 +632,21 @@ class ScanScreen(Screen):
             data = supabase.scan_kd_golden(limit=limit)
             if data:
                 codes = [row.get('code', '') for row in data]
-                names = supabase.get_stock_names(codes)
+                names = {c: get_stock_name(c) for c in codes}
                 
-                lines = ['【KD黃金交叉結果】', '═' * 28, '']
+                lines = ['【KD黃金交叉結果】', '═' * 40, '']
                 for i, row in enumerate(data, 1):
                     code = row.get('code', '')
-                    name = names.get(code, '')
-                    date = row.get('date', '')[:10] if row.get('date') else ''
-                    close = row.get('close', 0) or 0
-                    k = row.get('k9', 0)
-                    d = row.get('d9', 0)
-                    
-                    lines.append(f'{i}. {name}({code})')
-                    lines.append(f'   {date} 收盤:${close:,.2f}')
-                    lines.append(f'   K:{k:.1f} D:{d:.1f}')
-                    lines.append('─' * 28)
+                    name = names.get(code, code)
+                    lines.append(self._format_scan_result_item(i, row, name))
+                    lines.append('─' * 40)
                 
                 self.result_label.text = '\n'.join(lines)
                 self.result_label.color = COLORS['text']
             else:
                 self.result_label.text = '沒有符合條件的股票'
                 self.result_label.color = COLORS['warning']
+        except Exception as e:
         except Exception as e:
             self.result_label.text = f'掃描錯誤: {str(e)}'
             self.result_label.color = COLORS['error']
@@ -619,21 +664,14 @@ class ScanScreen(Screen):
             data = supabase.scan_ma_rising(limit=limit)
             if data:
                 codes = [row.get('code', '') for row in data]
-                names = supabase.get_stock_names(codes)
+                names = {c: get_stock_name(c) for c in codes}
                 
-                lines = ['【均線多頭結果】', '═' * 28, '']
+                lines = ['【均線多頭結果】', '═' * 40, '']
                 for i, row in enumerate(data, 1):
                     code = row.get('code', '')
-                    name = names.get(code, '')
-                    date = row.get('date', '')[:10] if row.get('date') else ''
-                    close = row.get('close', 0) or 0
-                    ma5 = row.get('ma5', 0) or 0
-                    ma20 = row.get('ma20', 0) or 0
-                    
-                    lines.append(f'{i}. {name}({code})')
-                    lines.append(f'   {date} 收盤:${close:,.2f}')
-                    lines.append(f'   MA5:{ma5:.0f} MA20:{ma20:.0f}')
-                    lines.append('─' * 28)
+                    name = names.get(code, code)
+                    lines.append(self._format_scan_result_item(i, row, name))
+                    lines.append('─' * 40)
                 
                 self.result_label.text = '\n'.join(lines)
                 self.result_label.color = COLORS['text']
@@ -820,70 +858,99 @@ class ChartScreen(Screen):
         )
         header.add_widget(self.title_label)
         
+        # 頂部控制列 (週期 + MA 開關)
+        control_bar = BoxLayout(size_hint_y=None, height=dp(40), spacing=dp(5))
+        
         # 週期切換
         for period, label in [('day', '日'), ('week', '週'), ('month', '月')]:
-            btn = Button(
+            btn = ToggleButton(
                 text=label,
+                group='period',
+                state='down' if period == self.period else 'normal',
                 font_name=DEFAULT_FONT,
-                font_size=sp(12),
-                size_hint_x=0.1,
-                background_color=COLORS['button'] if period == self.period else COLORS['card'],
+                font_size=sp(14),
+                size_hint_x=None,
+                width=dp(40),
+                background_normal='',
+                background_color=COLORS['card'],
+                background_down=COLORS['accent'],
                 color=COLORS['text']
             )
             btn.period = period
             btn.bind(on_press=self.on_period_change)
-            header.add_widget(btn)
-        layout.add_widget(header)
-        
-        # K 線圖區域 (使用 Widget 繪製)
-        chart_card = BoxLayout(orientation='vertical', size_hint_y=0.7)
-        with chart_card.canvas.before:
-            Color(*COLORS['card'])
-            chart_card.rect = RoundedRectangle(pos=chart_card.pos, size=chart_card.size, radius=[dp(12)])
-        chart_card.bind(
-            pos=lambda i, v: setattr(chart_card.rect, 'pos', v),
-            size=lambda i, v: setattr(chart_card.rect, 'size', v)
-        )
-        
-        self.chart_widget = Widget(size_hint_y=0.75)
-        self.chart_widget.bind(size=self.draw_chart, pos=self.draw_chart)
-        chart_card.add_widget(self.chart_widget)
-        
-        # 成交量區域
-        self.volume_widget = Widget(size_hint_y=0.25)
-        self.volume_widget.bind(size=self.draw_volume, pos=self.draw_volume)
-        chart_card.add_widget(self.volume_widget)
-        layout.add_widget(chart_card)
-        
-        # MA 均線開關
-        ma_row = BoxLayout(size_hint_y=0.06, spacing=dp(4))
+            control_bar.add_widget(btn)
+            
+        # MA 開關 (使用 ToggleButton)
         ma_colors = {'ma3': (0.3, 0.6, 1, 1), 'ma20': (1, 0.8, 0, 1), 'ma60': (0.8, 0.3, 0.8, 1), 
                      'ma120': (1, 0.5, 0, 1), 'ma200': (0.5, 0.5, 0.5, 1)}
         for ma, color in ma_colors.items():
-            btn = Button(
+            btn = ToggleButton(
                 text=ma.upper(),
                 font_name=DEFAULT_FONT,
                 font_size=sp(10),
-                background_color=color if self.ma_enabled[ma] else COLORS['card'],
+                size_hint_x=None,
+                width=dp(50),
+                background_normal='',
+                background_color=COLORS['card'],
+                background_down=color,
                 color=COLORS['text']
             )
             btn.ma_name = ma
-            btn.ma_color = color
             btn.bind(on_press=self.toggle_ma)
-            ma_row.add_widget(btn)
-        layout.add_widget(ma_row)
+            control_bar.add_widget(btn)
+            
+        layout.add_widget(control_bar)
         
-        # 查詢按鈕
-        query_btn = Button(
-            text='查詢 K 線圖',
+        # K 線主圖
+        chart_card = BoxLayout(orientation='vertical', size_hint_y=0.55)
+        with chart_card.canvas.before:
+            Color(*COLORS['card'])
+            chart_card.rect = RoundedRectangle(pos=chart_card.pos, size=chart_card.size, radius=[dp(12)])
+        chart_card.bind(pos=lambda i,v: setattr(chart_card.rect, 'pos', v), size=lambda i,v: setattr(chart_card.rect, 'size', v))
+        
+        self.chart_widget = Widget()
+        self.chart_widget.bind(size=self.draw_chart, pos=self.draw_chart)
+        chart_card.add_widget(self.chart_widget)
+        layout.add_widget(chart_card)
+        
+        # 成交量副圖
+        vol_card = BoxLayout(orientation='vertical', size_hint_y=0.15)
+        with vol_card.canvas.before:
+            Color(*COLORS['card'])
+            vol_card.rect = RoundedRectangle(pos=vol_card.pos, size=vol_card.size, radius=[dp(12)])
+        vol_card.bind(pos=lambda i,v: setattr(vol_card.rect, 'pos', v), size=lambda i,v: setattr(vol_card.rect, 'size', v))
+        
+        self.volume_widget = Widget()
+        self.volume_widget.bind(size=self.draw_volume, pos=self.draw_volume)
+        vol_card.add_widget(self.volume_widget)
+        layout.add_widget(vol_card)
+        
+        # 指標副圖 (含下拉選單)
+        ind_card = BoxLayout(orientation='vertical', size_hint_y=0.2)
+        with ind_card.canvas.before:
+            Color(*COLORS['card'])
+            ind_card.rect = RoundedRectangle(pos=ind_card.pos, size=ind_card.size, radius=[dp(12)])
+        ind_card.bind(pos=lambda i,v: setattr(ind_card.rect, 'pos', v), size=lambda i,v: setattr(ind_card.rect, 'size', v))
+        
+        # 指標選擇器
+        ind_spinner = Spinner(
+            text='KD 指標',
+            values=('KD 指標', 'MACD', 'RSI', 'MFI'),
             font_name=DEFAULT_FONT,
-            font_size=sp(16),
-            size_hint_y=0.08,
+            font_size=sp(12),
+            size_hint_y=None,
+            height=dp(30),
+            background_normal='',
             background_color=COLORS['button'],
-            color=COLORS['text']
+            option_cls=ChineseSpinnerOption
         )
-        query_btn.bind(on_press=self.load_chart)
-        layout.add_widget(query_btn)
+        ind_spinner.bind(text=self.on_indicator_change)
+        ind_card.add_widget(ind_spinner)
+        
+        self.indicator_widget = Widget()
+        self.indicator_widget.bind(size=self.draw_indicator, pos=self.draw_indicator)
+        ind_card.add_widget(self.indicator_widget)
+        layout.add_widget(ind_card)
         
         self.add_widget(layout)
     
@@ -895,11 +962,31 @@ class ChartScreen(Screen):
         self.period = instance.period
         self.load_chart(None)
     
+    def on_indicator_change(self, instance, text):
+        self.current_indicator = text
+        self.draw_indicator(None, None)
+
     def toggle_ma(self, instance):
         ma = instance.ma_name
-        self.ma_enabled[ma] = not self.ma_enabled[ma]
-        instance.background_color = instance.ma_color if self.ma_enabled[ma] else COLORS['card']
+        self.ma_enabled[ma] = instance.state == 'down'
         self.draw_chart(None, None)
+
+    def draw_indicator(self, instance, value):
+        self.indicator_widget.canvas.clear()
+        if not self.df or self.df.empty:
+            return
+            
+        with self.indicator_widget.canvas:
+            # 繪製邊框
+            Color(*COLORS['divider'])
+            Line(rectangle=(self.indicator_widget.x, self.indicator_widget.y, self.indicator_widget.width, self.indicator_widget.height), width=1)
+            
+            # 顯示指標名稱
+            Color(*COLORS['text_secondary'])
+            
+        # TODO: 實作具體的指標繪製邏輯 (KD, MACD 等)
+        # 這部分需要計算指標數據並繪製線條
+        pass
     
     def load_chart(self, instance):
         code = self.code_input.text.strip()
@@ -1029,7 +1116,139 @@ class ChartScreen(Screen):
                 Rectangle(pos=(cx - bar_width/2, y), size=(bar_width, bar_h))
 
 
-# ==================== 自選頁面 ====================
+# ==================== AI 助手頁面 ====================
+class AIScreen(Screen):
+    def __init__(self, **kwargs):
+        super().__init__(**kwargs)
+        layout = BoxLayout(orientation='vertical', padding=dp(16), spacing=dp(10))
+        
+        with layout.canvas.before:
+            Color(*COLORS['bg'])
+            self.bg = Rectangle(pos=layout.pos, size=layout.size)
+        layout.bind(pos=self._update_bg, size=self._update_bg)
+        
+        # 標題
+        title_box = BoxLayout(size_hint_y=None, height=dp(50))
+        title_box.add_widget(Label(
+            text='🤖 AI 助手',
+            font_name=DEFAULT_FONT,
+            font_size=sp(20),
+            color=COLORS['text'],
+            bold=True,
+            halign='left'
+        ))
+        layout.add_widget(title_box)
+        
+        # 對話歷史區
+        chat_card = BoxLayout(orientation='vertical', size_hint_y=0.7)
+        with chat_card.canvas.before:
+            Color(*COLORS['card'])
+            chat_card.rect = RoundedRectangle(pos=chat_card.pos, size=chat_card.size, radius=[dp(12)])
+        chat_card.bind(pos=lambda i,v: setattr(chat_card.rect, 'pos', v), size=lambda i,v: setattr(chat_card.rect, 'size', v))
+        
+        scroll = ScrollView()
+        self.chat_history = Label(
+            text='🤖: 您好！我是您的股市 AI 助手。\n您可以問我：「2330 走勢如何？」或「幫我分析聯發科」',
+            font_name=DEFAULT_FONT,
+            font_size=sp(15),
+            color=COLORS['text'],
+            halign='left',
+            valign='top',
+            size_hint_y=None,
+            markup=True,
+            padding=[dp(10), dp(10)]
+        )
+        self.chat_history.bind(texture_size=self._update_label_size)
+        scroll.add_widget(self.chat_history)
+        chat_card.add_widget(scroll)
+        layout.add_widget(chat_card)
+        
+        # 輸入區
+        input_row = BoxLayout(size_hint_y=None, height=dp(50), spacing=dp(10))
+        self.msg_input = TextInput(
+            hint_text='輸入問題...',
+            font_name=DEFAULT_FONT,
+            font_size=sp(16),
+            multiline=False,
+            size_hint_x=0.7,
+            background_color=COLORS['input'],
+            foreground_color=COLORS['text'],
+            padding=[dp(10), dp(10)]
+        )
+        input_row.add_widget(self.msg_input)
+        
+        send_btn = Button(
+            text='送出',
+            font_name=DEFAULT_FONT,
+            font_size=sp(16),
+            size_hint_x=0.2,
+            background_normal='',
+            background_color=COLORS['accent'],
+            color=COLORS['text']
+        )
+        send_btn.bind(on_press=self.send_message)
+        input_row.add_widget(send_btn)
+        
+        # 語音按鈕 (模擬)
+        mic_btn = Button(
+            text='🎤',
+            font_name=DEFAULT_FONT,
+            font_size=sp(20),
+            size_hint_x=0.1,
+            background_normal='',
+            background_color=COLORS['button'],
+            color=COLORS['text']
+        )
+        input_row.add_widget(mic_btn)
+        layout.add_widget(input_row)
+        
+        # 快速提問區
+        quick_row = BoxLayout(size_hint_y=None, height=dp(40), spacing=dp(5))
+        for text in ['生成插件', '分析股票', '解釋指標', '新聞']:
+            btn = Button(
+                text=text,
+                font_name=DEFAULT_FONT,
+                font_size=sp(12),
+                background_normal='',
+                background_color=COLORS['button'],
+                color=COLORS['text']
+            )
+            btn.bind(on_press=self.quick_ask)
+            quick_row.add_widget(btn)
+        layout.add_widget(quick_row)
+        
+        self.add_widget(layout)
+        
+    def _update_bg(self, instance, value):
+        self.bg.pos = instance.pos
+        self.bg.size = instance.size
+        
+    def _update_label_size(self, instance, value):
+        instance.height = value[1]
+        instance.text_size = (instance.width - dp(20), None)
+        
+    def send_message(self, instance):
+        msg = self.msg_input.text.strip()
+        if not msg: return
+        
+        self.chat_history.text += f"\n\n👤: {msg}"
+        self.msg_input.text = ''
+        
+        # 模擬 AI 回應
+        Clock.schedule_once(lambda dt: self.ai_reply(msg), 0.5)
+        
+    def ai_reply(self, msg):
+        reply = "🤖: 我還在學習中，目前只能回答簡單的股票問題。"
+        if '2330' in msg or '台積電' in msg:
+            reply = "🤖: 台積電 (2330) 近期表現強勢，外資持續買超，技術面呈現多頭排列。"
+        elif '分析' in msg:
+            reply = "🤖: 請提供股票代碼，我將為您進行技術面與籌碼面分析。"
+            
+        self.chat_history.text += f"\n\n{reply}"
+        
+    def quick_ask(self, instance):
+        self.msg_input.text = instance.text
+        self.send_message(None)
 class WatchlistScreen(Screen):
     def __init__(self, **kwargs):
         super().__init__(**kwargs)

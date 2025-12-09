@@ -7,7 +7,7 @@ source.dir = .
 source.include_exts = py,png,jpg,kv,atlas,json,ttf,otf
 source.include_patterns = data/*.json,fonts/*.ttf
 
-version = 1.2.2
+version = 1.2.3
 
 # 依賴套件
 requirements = python3,kivy==2.3.0,requests
