@@ -1,11 +1,16 @@
 """
-台股分析 App - v1.2.3 (UI/UX 升級版)
+台股分析 App - v1.2.4 (閃退修復版)
 - 專業商業風格 UI
 - 深藍灰色主題
 - 卡片式佈局
 - 插件系統整合
 """
 import os
+import sys
+
+# Kivy 配置必須在導入前設定
+os.environ['KIVY_TEXT'] = 'pil'  # 使用 PIL 文字渲染 (Android 相容)
+
 from kivy.app import App
 from kivy.uix.screenmanager import ScreenManager, Screen, SlideTransition
 from kivy.uix.boxlayout import BoxLayout
@@ -20,36 +25,81 @@ from kivy.clock import Clock
 from kivy.core.text import LabelBase
 from kivy.metrics import sp, dp
 
-# 註冊中文字體
-FONT_PATH = os.path.join(os.path.dirname(__file__), 'fonts', 'NotoSansTC.ttf')
-if os.path.exists(FONT_PATH):
-    LabelBase.register(name='NotoSansTC', fn_regular=FONT_PATH)
-    DEFAULT_FONT = 'NotoSansTC'
-else:
-    DEFAULT_FONT = 'Roboto'
+# Android 路徑處理
+def get_resource_path(relative_path):
+    """獲取資源路徑 (相容 Android 與 Windows)"""
+    try:
+        # 嘗試使用 Kivy 的 resource_find
+        from kivy.resources import resource_find
+        found = resource_find(relative_path)
+        if found:
+            return found
+    except Exception:
+        pass
+    
+    # Fallback: 使用 __file__ 目錄
+    try:
+        base_path = os.path.dirname(os.path.abspath(__file__))
+        full_path = os.path.join(base_path, relative_path)
+        if os.path.exists(full_path):
+            return full_path
+    except Exception:
+        pass
+    
+    # 最後嘗試直接路徑
+    if os.path.exists(relative_path):
+        return relative_path
+    
+    return None
 
-# Supabase Client
+# 註冊中文字體 (加強異常處理)
+DEFAULT_FONT = 'Roboto'
+try:
+    font_path = get_resource_path('fonts/NotoSansTC.ttf')
+    if font_path and os.path.exists(font_path):
+        LabelBase.register(name='NotoSansTC', fn_regular=font_path)
+        DEFAULT_FONT = 'NotoSansTC'
+        print(f"[OK] 字體載入成功: {font_path}")
+    else:
+        print("[WARN] 找不到中文字體，使用預設 Roboto")
+except Exception as e:
+    print(f"[ERROR] 字體載入失敗: {e}")
+
+# Supabase Client (加強異常處理)
+supabase = None
 try:
     from src.supabase_client import SupabaseClient
     supabase = SupabaseClient()
-except ImportError:
-    supabase = None
+    print("[OK] Supabase 連線成功")
+except ImportError as e:
+    print(f"[WARN] Supabase 模組不存在: {e}")
+except Exception as e:
+    print(f"[ERROR] Supabase 初始化失敗: {e}")
 
-# Plugin Manager
+# Plugin Manager (加強異常處理)
+plugin_manager = None
 try:
     from src.plugin_engine import PluginManager
-    plugin_manager = PluginManager(os.path.join(os.path.dirname(__file__), 'data'))
-except ImportError:
-    plugin_manager = None
+    data_path = get_resource_path('data')
+    if data_path:
+        plugin_manager = PluginManager(data_path)
+        print(f"[OK] 插件系統載入成功: {data_path}")
+except ImportError as e:
+    print(f"[WARN] 插件模組不存在: {e}")
+except Exception as e:
+    print(f"[ERROR] 插件系統初始化失敗: {e}")
 
-# 載入本地股票清單 (修復股名顯示)
+# 載入本地股票清單 (加強異常處理)
 STOCKS_MAP = {}
 try:
-    with open(os.path.join(os.path.dirname(__file__), 'data', 'stocks.json'), 'r', encoding='utf-8') as f:
-        import json
-        STOCKS_MAP = json.load(f)
+    stocks_path = get_resource_path('data/stocks.json')
+    if stocks_path:
+        with open(stocks_path, 'r', encoding='utf-8') as f:
+            import json
+            STOCKS_MAP = json.load(f)
+        print(f"[OK] 股票清單載入成功: {len(STOCKS_MAP)} 檔")
 except Exception as e:
-    print(f"Error loading stocks.json: {e}")
+    print(f"[WARN] 股票清單載入失敗: {e}")
 
 def get_stock_name(code):
     """獲取股票名稱 (優先查本地，失敗查 Supabase)"""
