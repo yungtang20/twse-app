@@ -1,25 +1,25 @@
-import { Routes, Route } from 'react-router-dom'
-import Layout from './components/Layout'
-import Home from './pages/Home'
-import Scan from './pages/Scan'
-import Ranking from './pages/Ranking'
-import StockDetail from './pages/StockDetail'
-import Settings from './pages/Settings'
+import { Routes, Route } from "react-router-dom";
+import { Layout } from "@/components/layout/Layout";
+import { Dashboard } from "@/pages/Dashboard";
+
+// Placeholders for other pages
+const MarketScan = () => <div className="text-2xl font-bold">市場掃描 (建置中)</div>;
+const Rankings = () => <div className="text-2xl font-bold">法人排行 (建置中)</div>;
+const StockAnalysis = () => <div className="text-2xl font-bold">個股分析 (建置中)</div>;
+const Settings = () => <div className="text-2xl font-bold">系統設定 (建置中)</div>;
 
 function App() {
     return (
         <Routes>
-            <Route path="/" element={<Layout />}>
-                <Route index element={<Home />} />
-                <Route path="scan" element={<Scan />} />
-                <Route path="scan/:type" element={<Scan />} />
-                <Route path="ranking" element={<Ranking />} />
-                <Route path="ranking/:entity/:direction" element={<Ranking />} />
-                <Route path="stock/:code" element={<StockDetail />} />
-                <Route path="settings" element={<Settings />} />
+            <Route element={<Layout />}>
+                <Route path="/" element={<Dashboard />} />
+                <Route path="/scan" element={<MarketScan />} />
+                <Route path="/rankings" element={<Rankings />} />
+                <Route path="/analysis" element={<StockAnalysis />} />
+                <Route path="/settings" element={<Settings />} />
             </Route>
         </Routes>
-    )
+    );
 }
 
-export default App
+export default App;

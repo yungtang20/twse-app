@@ -2,7 +2,7 @@
 台灣股市分析系統 - 股票 API 路由
 """
 from fastapi import APIRouter, HTTPException, Query
-from typing import Optional, List
+from typing import Optional, List, Dict, Any
 from pydantic import BaseModel
 
 from services.db import (
@@ -10,6 +10,7 @@ from services.db import (
     get_stock_by_code,
     get_stock_history,
     get_stock_indicators,
+    get_institutional_data,
     get_system_status
 )
 
@@ -65,7 +66,7 @@ class HistoryItem(BaseModel):
 class APIResponse(BaseModel):
     """標準 API 回應"""
     success: bool
-    data: Optional[dict | list] = None
+    data: Optional[Any] = None
     message: Optional[str] = None
 
 
@@ -173,6 +174,25 @@ async def get_indicators(code: str):
         }
     except HTTPException:
         raise
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@router.get("/stocks/{code}/institutional", response_model=APIResponse)
+async def get_institutional(
+    code: str,
+    limit: int = Query(30, ge=1, le=100, description="回傳筆數")
+):
+    """
+    取得法人買賣超資料 (從 Supabase)
+    """
+    try:
+        data = get_institutional_data(code, limit)
+        
+        return {
+            "success": True,
+            "data": data
+        }
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
 

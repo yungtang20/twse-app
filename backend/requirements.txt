@@ -20,3 +20,4 @@ numpy>=1.26.0
 # 認證 (可選)
 # python-jose[cryptography]>=3.3.0
 # passlib[bcrypt]>=1.7.4
+supabase>=2.3.0
