@@ -1,0 +1,49 @@
+code,start_date,end_date,fields,comment
+1796,2025-12-16,2025-12-16,close;amount,volume=3
+2035,2025-12-16,2025-12-16,close;amount,volume=6
+2073,2025-12-16,2025-12-16,close;amount,volume=1
+2724,2025-12-16,2025-12-16,close;amount,volume=363
+2924,2025-12-16,2025-12-16,close;amount,volume=0 (volume=0 → cannot calc amount from close*volume)
+2941,2025-12-16,2025-12-16,close;amount,volume=1
+3064,2025-12-16,2025-12-16,close;amount,volume=95
+3426,2025-12-16,2025-12-16,close;amount,volume=0
+4584,2025-12-16,2025-12-16,close;amount,volume=0
+4609,2025-12-16,2025-12-16,close;amount,volume=1
+4706,2025-12-16,2025-12-16,close;amount,volume=100
+5310,2025-12-16,2025-12-16,close;amount,volume=0
+5703,2025-12-16,2025-12-16,close;amount,volume=100
+6103,2025-12-16,2025-12-16,close;amount,volume=66
+6236,2025-12-16,2025-12-16,close;amount,volume=0
+6855,2025-12-16,2025-12-16,close;amount,volume=300
+8921,2025-12-16,2025-12-16,close;amount,volume=0
+8923,2025-12-16,2025-12-16,close;amount,volume=4
+8941,2025-12-16,2025-12-16,close;amount,volume=7
+9960,2025-12-16,2025-12-16,close;amount,volume=321
+
+6730,2025-12-16,2025-12-16,institutional,missing institutional data on 2025-12-16
+
+# Insufficient history: fill to latest 2025-12-16 (when max_date < 20251216), or fetch earlier history before min_date when max_date==20251216 but total_cnt is small
+2888,2025-07-12,2025-12-16,close;volume;amount,fill records after max_date=2025-07-11 to reach 2025-12-16
+3716,earlier_than_2024-09-02,2024-09-01,close;volume;amount,need older history before min_date=2024-09-02 (total_cnt=315)
+6288,2025-08-05,2025-12-16,close;volume;amount,fill records after max_date=2025-08-04 to reach 2025-12-16
+6890,earlier_than_2024-06-12,2024-06-11,close;volume;amount,need older history before min_date=2024-06-12
+6949,earlier_than_2024-03-08,2024-03-07,close;volume;amount,need older history before min_date=2024-03-08
+6957,earlier_than_2024-06-25,2024-06-24,close;volume;amount,need older history before min_date=2024-06-25
+6969,earlier_than_2024-09-09,2024-09-08,close;volume;amount,need older history before min_date=2024-09-09
+7709,earlier_than_2024-01-08,2024-01-07,close;volume;amount,need older history before min_date=2024-01-08
+7713,earlier_than_2024-01-02,2024-01-01,close;volume;amount,need older history before min_date=2024-01-02
+7716,earlier_than_2024-03-28,2024-03-27,close;volume;amount,need older history before min_date=2024-03-28
+7717,earlier_than_2025-11-17,2025-11-16,close;volume;amount,only 22 rows (min_date=2025-11-17), need full history
+7718,earlier_than_2024-02-22,2024-02-21,close;volume;amount,need older history before min_date=2024-02-22
+7728,earlier_than_2024-03-18,2024-03-17,close;volume;amount,need older history before min_date=2024-03-18
+7734,earlier_than_2024-03-14,2024-03-13,close;volume;amount,need older history before min_date=2024-03-14
+7738,earlier_than_2024-06-13,2024-06-12,close;volume;amount,need older history before min_date=2024-06-13
+7743,earlier_than_2024-04-23,2024-04-22,close;volume;amount,need older history before min_date=2024-04-23
+7744,earlier_than_2024-09-25,2024-09-24,close;volume;amount,need older history before min_date=2024-09-25
+7747,earlier_than_2024-05-27,2024-05-26,close;volume;amount,need older history before min_date=2024-05-27
+7751,earlier_than_2024-06-13,2024-06-12,close;volume;amount,need older history before min_date=2024-06-13
+7753,earlier_than_2024-08-29,2024-08-28,close;volume;amount,need older history before min_date=2024-08-29
+7757,earlier_than_2024-06-26,2024-06-25,close;volume;amount,need older history before min_date=2024-06-26
+7767,earlier_than_2024-10-30,2024-10-29,close;volume;amount,need older history before min_date=2024-10-30
+7770,earlier_than_2024-09-12,2024-09-11,close;volume;amount,need older history before min_date=2024-09-12
+7782,earlier_than_2024-10-23,2024-10-22,close;volume;amount,need older history before min_date=2024-10-23

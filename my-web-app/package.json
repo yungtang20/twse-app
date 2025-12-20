@@ -1,0 +1,25 @@
+{
+    "name": "my-web-app",
+    "version": "1.0.0",
+    "description": "Create a modern web application called 'my-web-app' using React and TypeScript. It should have a user login system, a dashboard to view data, and a settings page. The goal is to provide a personal finance tracker for users.",
+    "main": "index.js",
+    "scripts": {
+        "test": "jest",
+        "build": "tsc",
+        "start": "node dist/index.js"
+    },
+    "keywords": [],
+    "author": "",
+    "license": "ISC",
+    "dependencies": {
+        "react": "^18.2.0",
+        "react-dom": "^18.2.0",
+        "typescript": "^5.0.0"
+    },
+    "devDependencies": {
+        "@types/react": "^18.2.0",
+        "@types/node": "^20.0.0",
+        "jest": "^29.0.0",
+        "ts-jest": "^29.0.0"
+    }
+}

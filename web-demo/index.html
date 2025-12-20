@@ -1,0 +1,415 @@
+<!DOCTYPE html>
+<html lang="zh-TW">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>台灣股市分析系統</title>
+    <meta name="description" content="台灣股市分析系統 - 技術指標掃描、法人買賣超排行、個股分析">
+    
+    <!-- Google Fonts -->
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Noto+Sans+TC:wght@300;400;500;700&display=swap" rel="stylesheet">
+    
+    <link rel="stylesheet" href="style.css">
+</head>
+<body>
+    <!-- 頂部導航 (桌面版) -->
+    <header class="header">
+        <div class="header-container">
+            <a href="#" class="logo">
+                <span class="logo-icon">📈</span>
+                <span class="logo-text">台灣股市分析</span>
+            </a>
+            
+            <!-- 搜尋框 -->
+            <div class="search-box">
+                <input type="text" id="stockSearch" placeholder="輸入股票代號 (如 2330)" maxlength="4">
+                <button class="search-btn" onclick="searchStock()">
+                    <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                        <circle cx="11" cy="11" r="8"></circle>
+                        <path d="m21 21-4.35-4.35"></path>
+                    </svg>
+                </button>
+            </div>
+            
+            <!-- 桌面導航 -->
+            <nav class="desktop-nav">
+                <a href="#" class="nav-link active" data-page="home">首頁</a>
+                <a href="#" class="nav-link" data-page="scan">市場掃描</a>
+                <a href="#" class="nav-link" data-page="ranking">法人排行</a>
+                <a href="#" class="nav-link" data-page="settings">設定</a>
+            </nav>
+        </div>
+    </header>
+
+    <!-- 主要內容區 -->
+    <main class="main-content">
+        <!-- 側邊欄 (桌面版) -->
+        <aside class="sidebar">
+            <div class="sidebar-section">
+                <h3 class="sidebar-title">市場掃描</h3>
+                <ul class="sidebar-menu">
+                    <li><a href="#" onclick="loadScan('vp')">📊 VP掃描 (箱型)</a></li>
+                    <li><a href="#" onclick="loadScan('mfi')">💰 MFI掃描 (資金流向)</a></li>
+                    <li><a href="#" onclick="loadScan('ma')">📈 均線掃描 (多頭)</a></li>
+                    <li><a href="#" onclick="loadScan('kd')">🔀 交叉訊號</a></li>
+                    <li><a href="#" onclick="loadScan('vsbc')">🧮 VSBC策略</a></li>
+                    <li><a href="#" onclick="loadScan('smart')">🧠 聰明錢</a></li>
+                </ul>
+            </div>
+            
+            <div class="sidebar-section">
+                <h3 class="sidebar-title">法人排行</h3>
+                <ul class="sidebar-menu">
+                    <li><a href="#" onclick="loadRanking('foreign-buy')">🟢 外資買超</a></li>
+                    <li><a href="#" onclick="loadRanking('trust-buy')">🔵 投信買超</a></li>
+                    <li><a href="#" onclick="loadRanking('dealer-buy')">🟣 自營商買超</a></li>
+                </ul>
+            </div>
+        </aside>
+        
+        <!-- 內容區 -->
+        <div class="content">
+            <!-- 首頁儀表板 -->
+            <section id="page-home" class="page active">
+                <!-- 系統狀態卡片 -->
+                <div class="card system-status">
+                    <h2 class="card-title">
+                        <span class="status-dot online"></span>
+                        系統狀態
+                    </h2>
+                    <div class="status-grid">
+                        <div class="status-item">
+                            <span class="status-label">資料庫</span>
+                            <span class="status-value">taiwan_stock.db</span>
+                        </div>
+                        <div class="status-item">
+                            <span class="status-label">最新更新</span>
+                            <span class="status-value" id="lastUpdate">2025-12-20</span>
+                        </div>
+                        <div class="status-item">
+                            <span class="status-label">股票總數</span>
+                            <span class="status-value" id="stockCount">1,892</span>
+                        </div>
+                        <div class="status-item">
+                            <span class="status-label">資料範圍</span>
+                            <span class="status-value">2022-01-01 ~ 今</span>
+                        </div>
+                    </div>
+                </div>
+                
+                <!-- 快速掃描卡片 -->
+                <h2 class="section-title">快速掃描</h2>
+                <div class="quick-scan-grid">
+                    <button class="scan-card" onclick="loadScan('vp-up')">
+                        <div class="scan-icon">📈</div>
+                        <div class="scan-name">VP上</div>
+                        <div class="scan-desc">突破壓力位</div>
+                    </button>
+                    <button class="scan-card" onclick="loadScan('vp-down')">
+                        <div class="scan-icon">📉</div>
+                        <div class="scan-name">VP下</div>
+                        <div class="scan-desc">跌破支撐位</div>
+                    </button>
+                    <button class="scan-card" onclick="loadScan('mfi-oversold')">
+                        <div class="scan-icon">💰</div>
+                        <div class="scan-name">MFI超賣</div>
+                        <div class="scan-desc">MFI < 20</div>
+                    </button>
+                    <button class="scan-card" onclick="loadScan('ma-bull')">
+                        <div class="scan-icon">🐂</div>
+                        <div class="scan-name">多頭排列</div>
+                        <div class="scan-desc">均線上揚</div>
+                    </button>
+                </div>
+                
+                <!-- 今日熱門 -->
+                <h2 class="section-title">今日熱門</h2>
+                <div class="stock-list">
+                    <div class="stock-card" onclick="viewStock('2330')">
+                        <div class="stock-info">
+                            <span class="stock-code">2330</span>
+                            <span class="stock-name">台積電</span>
+                        </div>
+                        <div class="stock-price">
+                            <span class="price up">1,095.00</span>
+                            <span class="change up">+2.34%</span>
+                        </div>
+                    </div>
+                    <div class="stock-card" onclick="viewStock('2317')">
+                        <div class="stock-info">
+                            <span class="stock-code">2317</span>
+                            <span class="stock-name">鴻海</span>
+                        </div>
+                        <div class="stock-price">
+                            <span class="price down">189.50</span>
+                            <span class="change down">-1.05%</span>
+                        </div>
+                    </div>
+                    <div class="stock-card" onclick="viewStock('2454')">
+                        <div class="stock-info">
+                            <span class="stock-code">2454</span>
+                            <span class="stock-name">聯發科</span>
+                        </div>
+                        <div class="stock-price">
+                            <span class="price up">1,380.00</span>
+                            <span class="change up">+1.47%</span>
+                        </div>
+                    </div>
+                </div>
+            </section>
+            
+            <!-- 市場掃描頁 -->
+            <section id="page-scan" class="page">
+                <div class="page-header">
+                    <h1>市場掃描</h1>
+                    <p class="page-desc">選擇策略進行全市場掃描</p>
+                </div>
+                
+                <!-- 掃描策略卡片 -->
+                <div class="scan-strategy-grid">
+                    <div class="strategy-card" onclick="loadScan('vp')">
+                        <h3>📊 VP掃描</h3>
+                        <p>箱型壓力/支撐位分析</p>
+                        <div class="strategy-tags">
+                            <span class="tag">技術面</span>
+                            <span class="tag">成交量</span>
+                        </div>
+                    </div>
+                    <div class="strategy-card" onclick="loadScan('mfi')">
+                        <h3>💰 MFI掃描</h3>
+                        <p>資金流向指標分析</p>
+                        <div class="strategy-tags">
+                            <span class="tag">資金面</span>
+                            <span class="tag">超買超賣</span>
+                        </div>
+                    </div>
+                    <div class="strategy-card" onclick="loadScan('ma')">
+                        <h3>📈 均線掃描</h3>
+                        <p>多頭/空頭排列篩選</p>
+                        <div class="strategy-tags">
+                            <span class="tag">趨勢</span>
+                            <span class="tag">均線</span>
+                        </div>
+                    </div>
+                    <div class="strategy-card" onclick="loadScan('vsbc')">
+                        <h3>🧮 VSBC策略</h3>
+                        <p>量價/箱型/籌碼綜合</p>
+                        <div class="strategy-tags">
+                            <span class="tag">綜合</span>
+                            <span class="tag">籌碼</span>
+                        </div>
+                    </div>
+                    <div class="strategy-card" onclick="loadScan('smart')">
+                        <h3>🧠 聰明錢</h3>
+                        <p>NVI主力籌碼追蹤</p>
+                        <div class="strategy-tags">
+                            <span class="tag">主力</span>
+                            <span class="tag">NVI</span>
+                        </div>
+                    </div>
+                    <div class="strategy-card" onclick="loadScan('2560')">
+                        <h3>⚡ 2560戰法</h3>
+                        <p>均線/量能突破</p>
+                        <div class="strategy-tags">
+                            <span class="tag">短線</span>
+                            <span class="tag">突破</span>
+                        </div>
+                    </div>
+                </div>
+                
+                <!-- 掃描結果區 (動態載入) -->
+                <div id="scan-results" class="scan-results hidden">
+                    <div class="results-header">
+                        <h2 id="scan-title">掃描結果</h2>
+                        <span id="scan-count" class="badge">0 檔</span>
+                    </div>
+                    <div id="results-table" class="results-table">
+                        <!-- 動態載入結果 -->
+                    </div>
+                </div>
+            </section>
+            
+            <!-- 法人排行頁 -->
+            <section id="page-ranking" class="page">
+                <div class="page-header">
+                    <h1>法人買賣超排行</h1>
+                </div>
+                
+                <!-- 排行類型選擇 -->
+                <div class="ranking-tabs">
+                    <button class="tab-btn active" data-type="buy">買超排行</button>
+                    <button class="tab-btn" data-type="sell">賣超排行</button>
+                </div>
+                
+                <!-- 法人類型 -->
+                <div class="entity-tabs">
+                    <button class="entity-btn active" data-entity="foreign">外資</button>
+                    <button class="entity-btn" data-entity="trust">投信</button>
+                    <button class="entity-btn" data-entity="dealer">自營商</button>
+                </div>
+                
+                <!-- 排行表格 -->
+                <div class="ranking-table">
+                    <table>
+                        <thead>
+                            <tr>
+                                <th>排名</th>
+                                <th>代號</th>
+                                <th>名稱</th>
+                                <th>收盤價</th>
+                                <th>漲跌%</th>
+                                <th>買超張數</th>
+                                <th>連買天數</th>
+                            </tr>
+                        </thead>
+                        <tbody id="ranking-body">
+                            <tr>
+                                <td>1</td>
+                                <td>2330</td>
+                                <td>台積電</td>
+                                <td class="up">1,095.00</td>
+                                <td class="up">+2.34%</td>
+                                <td class="up">+12,450</td>
+                                <td>5</td>
+                            </tr>
+                            <tr>
+                                <td>2</td>
+                                <td>2454</td>
+                                <td>聯發科</td>
+                                <td class="up">1,380.00</td>
+                                <td class="up">+1.47%</td>
+                                <td class="up">+8,230</td>
+                                <td>3</td>
+                            </tr>
+                            <tr>
+                                <td>3</td>
+                                <td>3034</td>
+                                <td>聯詠</td>
+                                <td class="down">518.00</td>
+                                <td class="down">-0.58%</td>
+                                <td class="up">+5,120</td>
+                                <td>7</td>
+                            </tr>
+                        </tbody>
+                    </table>
+                </div>
+            </section>
+            
+            <!-- 個股詳情頁 -->
+            <section id="page-stock" class="page">
+                <div class="stock-detail-header">
+                    <div class="stock-main-info">
+                        <h1 id="detail-code">2330</h1>
+                        <span id="detail-name">台積電</span>
+                    </div>
+                    <div class="stock-main-price">
+                        <span id="detail-price" class="price up">1,095.00</span>
+                        <span id="detail-change" class="change up">+25.00 (+2.34%)</span>
+                    </div>
+                </div>
+                
+                <!-- K線圖區 -->
+                <div class="chart-container">
+                    <div class="chart-placeholder">
+                        <p>📊 K線圖區域</p>
+                        <p class="chart-hint">(實際開發時使用 TradingView Widget 或 ECharts)</p>
+                    </div>
+                </div>
+                
+                <!-- 技術指標表格 -->
+                <div class="indicators-grid">
+                    <div class="indicator-card">
+                        <span class="ind-label">MA5</span>
+                        <span class="ind-value">1,082.40</span>
+                    </div>
+                    <div class="indicator-card">
+                        <span class="ind-label">MA20</span>
+                        <span class="ind-value">1,065.50</span>
+                    </div>
+                    <div class="indicator-card">
+                        <span class="ind-label">MA60</span>
+                        <span class="ind-value">1,020.30</span>
+                    </div>
+                    <div class="indicator-card">
+                        <span class="ind-label">RSI</span>
+                        <span class="ind-value">62.5</span>
+                    </div>
+                    <div class="indicator-card">
+                        <span class="ind-label">MFI</span>
+                        <span class="ind-value">58.3</span>
+                    </div>
+                    <div class="indicator-card">
+                        <span class="ind-label">KD(K)</span>
+                        <span class="ind-value">71.2</span>
+                    </div>
+                </div>
+                
+                <!-- 法人買賣超 -->
+                <div class="institutional-section">
+                    <h3>法人買賣超 (近5日)</h3>
+                    <div class="institutional-bars">
+                        <div class="inst-row">
+                            <span class="inst-name">外資</span>
+                            <div class="inst-bar">
+                                <div class="bar-fill buy" style="width: 75%"></div>
+                            </div>
+                            <span class="inst-value up">+12,450</span>
+                        </div>
+                        <div class="inst-row">
+                            <span class="inst-name">投信</span>
+                            <div class="inst-bar">
+                                <div class="bar-fill buy" style="width: 25%"></div>
+                            </div>
+                            <span class="inst-value up">+2,130</span>
+                        </div>
+                        <div class="inst-row">
+                            <span class="inst-name">自營商</span>
+                            <div class="inst-bar">
+                                <div class="bar-fill sell" style="width: 30%"></div>
+                            </div>
+                            <span class="inst-value down">-3,200</span>
+                        </div>
+                    </div>
+                </div>
+            </section>
+        </div>
+    </main>
+    
+    <!-- 底部導航 (手機版) -->
+    <nav class="bottom-nav">
+        <a href="#" class="nav-item active" data-page="home">
+            <svg class="nav-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                <path d="m3 9 9-7 9 7v11a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z"></path>
+                <polyline points="9 22 9 12 15 12 15 22"></polyline>
+            </svg>
+            <span>首頁</span>
+        </a>
+        <a href="#" class="nav-item" data-page="scan">
+            <svg class="nav-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                <circle cx="11" cy="11" r="8"></circle>
+                <path d="m21 21-4.35-4.35"></path>
+            </svg>
+            <span>掃描</span>
+        </a>
+        <a href="#" class="nav-item" data-page="ranking">
+            <svg class="nav-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                <path d="M12 20V10"></path>
+                <path d="M18 20V4"></path>
+                <path d="M6 20v-4"></path>
+            </svg>
+            <span>排行</span>
+        </a>
+        <a href="#" class="nav-item" data-page="settings">
+            <svg class="nav-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                <circle cx="12" cy="12" r="3"></circle>
+                <path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1 0 2.83 2 2 0 0 1-2.83 0l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-2 2 2 2 0 0 1-2-2v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83 0 2 2 0 0 1 0-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1-2-2 2 2 0 0 1 2-2h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 0-2.83 2 2 0 0 1 2.83 0l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 2-2 2 2 0 0 1 2 2v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 0 2 2 0 0 1 0 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 2 2 2 2 0 0 1-2 2h-.09a1.65 1.65 0 0 0-1.51 1z"></path>
+            </svg>
+            <span>設定</span>
+        </a>
+    </nav>
+
+    <script src="app.js"></script>
+</body>
+</html>

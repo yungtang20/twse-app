@@ -1,0 +1,5 @@
+Project URL:https://gqiyvefcldxslrqpqlri.supabase.co
+Publishable key:sb_publishable_yXSGYxyxPMaoVu4MbGK5Vw_IuZsl5yu
+Secret keys:sb_secret_XSeaHx_76CRxA6j8nZ3qDg_nzgFgTAN
+Standby key:f196fd72-d71d-4e1d-99de-e9e85f11af55
+Current key:295f8593-1c3f-47aa-abb2-adc49c6bba94

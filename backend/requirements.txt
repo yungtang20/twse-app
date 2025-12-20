@@ -1,0 +1,22 @@
+# 台灣股市分析系統 - 後端依賴套件
+fastapi>=0.109.0
+uvicorn[standard]>=0.27.0
+pydantic>=2.5.0
+python-multipart>=0.0.6
+
+# 資料庫
+# SQLite 內建於 Python，無需額外安裝
+
+# 資料處理
+pandas>=2.1.0
+numpy>=1.26.0
+
+# 快取 (可選)
+# redis>=5.0.0
+
+# 排程 (可選)
+# apscheduler>=3.10.0
+
+# 認證 (可選)
+# python-jose[cryptography]>=3.3.0
+# passlib[bcrypt]>=1.7.4

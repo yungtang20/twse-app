@@ -1,0 +1,9 @@
+requests
+pandas
+numpy
+twstock
+lxml
+colorama
+supabase
+apscheduler
+pytz

@@ -1,0 +1,59 @@
+/* Scan 頁面樣式 */
+.scan-page {}
+
+.scan-strategy-grid {
+    display: grid;
+    grid-template-columns: repeat(1, 1fr);
+    gap: 1rem;
+}
+
+@media (min-width: 640px) {
+    .scan-strategy-grid {
+        grid-template-columns: repeat(2, 1fr);
+    }
+}
+
+@media (min-width: 1024px) {
+    .scan-strategy-grid {
+        grid-template-columns: repeat(3, 1fr);
+    }
+}
+
+.strategy-card {
+    background: var(--bg-card);
+    border: 1px solid var(--border-color);
+    border-radius: var(--radius-lg);
+    padding: 1rem;
+    cursor: pointer;
+    transition: all 0.15s ease;
+}
+
+.strategy-card:hover {
+    border-color: var(--color-primary);
+    transform: translateY(-2px);
+}
+
+.strategy-card h3 {
+    font-size: 1rem;
+    margin-bottom: 0.5rem;
+}
+
+.strategy-card p {
+    color: var(--text-secondary);
+    font-size: 0.875rem;
+    margin-bottom: 0.75rem;
+}
+
+.strategy-tags {
+    display: flex;
+    gap: 0.5rem;
+    flex-wrap: wrap;
+}
+
+.tag {
+    font-size: 0.75rem;
+    padding: 2px 8px;
+    background: rgba(59, 130, 246, 0.1);
+    color: var(--color-primary);
+    border-radius: var(--radius-sm);
+}

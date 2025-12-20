@@ -1,0 +1,49 @@
+/* StockCard 樣式 */
+.stock-card {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    padding: 1rem;
+    background: var(--bg-card);
+    border: 1px solid var(--border-color);
+    border-radius: var(--radius-md);
+    cursor: pointer;
+    transition: all 0.15s ease;
+}
+
+.stock-card:hover {
+    border-color: var(--color-primary);
+    background: var(--bg-hover);
+}
+
+.stock-info {
+    display: flex;
+    align-items: center;
+    gap: 1rem;
+}
+
+.stock-code {
+    font-weight: 700;
+    font-family: monospace;
+}
+
+.stock-name {
+    color: var(--text-secondary);
+    font-size: 0.875rem;
+}
+
+.stock-price {
+    display: flex;
+    flex-direction: column;
+    align-items: flex-end;
+    gap: 2px;
+}
+
+.price {
+    font-weight: 600;
+    font-size: 1rem;
+}
+
+.change {
+    font-size: 0.75rem;
+}
