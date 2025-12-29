@@ -285,73 +285,95 @@ def upload_to_supabase(supabase: Client, table: str, data: List[Dict], batch_siz
     return success_count
 
 def download_institutional(date_str: str) -> List[Dict]:
-    """下載三大法人買賣超 (使用 OpenAPI)"""
+    """下載三大法人買賣超 (使用 OpenAPI + 備援)"""
     print_flush(f"📥 下載法人買賣超 ({date_str})...")
     date_int = int(date_str)
-    # date_fmt = f"{date_str[:4]}-{date_str[4:6]}-{date_str[6:8]}" # Remove date_fmt
     combined_data = []
 
     # 1. TWSE
-    # 修正：使用正確的 OpenAPI URL (T86_ALL)
     twse_url = "https://openapi.twse.com.tw/v1/fund/T86_ALL"
     try:
-        print_flush("  📥 下載上市法人資料...")
+        print_flush("  📥 下載上市法人資料 (OpenAPI)...")
         r = requests.get(twse_url, headers=HEADERS, timeout=60)
-        # 檢查回應是否為 JSON
+        
         try:
             data = r.json()
-        except json.JSONDecodeError:
-            print_flush(f"  ⚠ TWSE 回應非 JSON: {r.text[:100]}")
-            data = []
+            if not isinstance(data, list):
+                raise ValueError("Response is not a list")
+                
+            for item in data:
+                code = str(item.get("Code", "")).strip()
+                if not code.isdigit() or len(code) != 4:
+                    continue
+                
+                f_net = safe_int(item.get("ForeignInvestorsBuySellNet", 0))
+                t_net = safe_int(item.get("InvestmentTrustBuySellNet", 0))
+                d_net = safe_int(item.get("DealerBuySellNet", 0))
+                
+                combined_data.append({
+                    "code": code,
+                    "date_int": date_int,
+                    "foreign_net": f_net,
+                    "trust_net": t_net,
+                    "dealer_net": d_net
+                })
+        except (json.JSONDecodeError, ValueError) as e:
+            print_flush(f"  ⚠ TWSE OpenAPI 失敗 ({e})，嘗試備援接口...")
+            raise Exception("OpenAPI failed")
 
-        for item in data:
-            code = str(item.get("Code", "")).strip()
-            if not code.isdigit() or len(code) != 4:
-                continue
-            
-            f_net = safe_int(item.get("ForeignInvestorsBuySellNet", 0))
-            t_net = safe_int(item.get("InvestmentTrustBuySellNet", 0))
-            d_net = safe_int(item.get("DealerBuySellNet", 0))
-            
-            combined_data.append({
-                "code": code,
-                "date_int": date_int,
-                # "date": date_fmt, # Remove date field
-                "foreign_net": f_net,
-                "trust_net": t_net,
-                "dealer_net": d_net
-            })
     except Exception as e:
-        print_flush(f"  ⚠ TWSE 法人資料下載失敗: {e}")
+        # Fallback to TWSE Website
+        try:
+            fallback_url = f"https://www.twse.com.tw/rwd/zh/fund/T86?date={date_str}&selectType=ALLBUT0999&response=json"
+            print_flush("  📥 下載上市法人資料 (備援接口)...")
+            time.sleep(3)
+            r = requests.get(fallback_url, headers=HEADERS, timeout=60)
+            data = r.json()
+            
+            if data.get("stat") == "OK":
+                fields = data.get("fields", [])
+                idx_foreign = -1
+                idx_trust = -1
+                idx_dealer = -1
+                
+                # 動態尋找欄位索引
+                for i, f in enumerate(fields):
+                    if "外資" in f and "買賣超" in f:
+                        idx_foreign = i
+                    elif "投信" in f and "買賣超" in f:
+                        idx_trust = i
+                    elif "自營商" in f and "買賣超" in f and "合計" in f:
+                        idx_dealer = i
+                
+                # 如果找不到合計，找一般的自營商
+                if idx_dealer == -1:
+                    for i, f in enumerate(fields):
+                        if "自營商" in f and "買賣超" in f:
+                            idx_dealer = i
+                            break
+                            
+                for row in data.get("data", []):
+                    code = str(row[0]).strip()
+                    if not code.isdigit() or len(code) != 4:
+                        continue
+                        
+                    f_net = safe_int(row[idx_foreign]) if idx_foreign != -1 else 0
+                    t_net = safe_int(row[idx_trust]) if idx_trust != -1 else 0
+                    d_net = safe_int(row[idx_dealer]) if idx_dealer != -1 else 0
+                    
+                    combined_data.append({
+                        "code": code,
+                        "date_int": date_int,
+                        "foreign_net": f_net,
+                        "trust_net": t_net,
+                        "dealer_net": d_net
+                    })
+            else:
+                print_flush(f"  ❌ 備援接口無資料: {data.get('stat')}")
+        except Exception as fallback_e:
+             print_flush(f"  ❌ TWSE 法人資料下載完全失敗: {fallback_e}")
 
     # 2. TPEX
-    tpex_url = "https://www.tpex.org.tw/openapi/v1/tpex_3insti_daily_trading"
-    try:
-        print_flush("  📥 下載上櫃法人資料...")
-        time.sleep(2)
-        r = requests.get(tpex_url, headers=HEADERS, timeout=60)
-        data = r.json()
-        for item in data:
-            code = str(item.get("SecuritiesCompanyCode", "")).strip()
-            if not code.isdigit() or len(code) != 4:
-                continue
-            
-            f_net = safe_int(item.get("ForeignInvestorsBuySellNet", 0))
-            t_net = safe_int(item.get("InvestmentTrustBuySellNet", 0))
-            d_net = safe_int(item.get("DealerBuySellNet", 0))
-            
-            combined_data.append({
-                "code": code,
-                "date_int": date_int,
-                # "date": date_fmt, # Remove date field
-                "foreign_net": f_net,
-                "trust_net": t_net,
-                "dealer_net": d_net
-            })
-    except Exception as e:
-        print_flush(f"  ⚠ TPEX 法人資料下載失敗: {e}")
-    
-    print_flush(f"  ✓ 法人買賣超: {len(combined_data)} 筆")
     return combined_data
 
 # ==============================
