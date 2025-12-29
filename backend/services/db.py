@@ -189,8 +189,8 @@ def get_cloud_status() -> Dict:
             
         latest_date = res_date.data[0]["date_int"] if res_date.data else None
         
-        # 查詢雲端股票數量 (概估，因為 count(*) 在 Supabase API 可能較慢，這裡改用 stock_meta 查詢)
-        res_count = db_manager.supabase.table("stock_meta") \
+        # 查詢雲端股票數量 (概估，因為 count(*) 在 Supabase API 可能較慢，這裡改用 stock_data 查詢)
+        res_count = db_manager.supabase.table("stock_data") \
             .select("code", count="exact") \
             .execute()
             

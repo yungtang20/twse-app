@@ -245,6 +245,10 @@ def download_tpex_quotes(date_str: str) -> List[Dict]:
         
         print_flush(f"  ✓ 上櫃行情: {len(quotes)} 筆")
         return quotes
+    except Exception as e:
+        print_flush(f"  ❌ 下載失敗: {e}")
+        return []
+
 def upload_to_supabase(supabase: Client, table: str, data: List[Dict], batch_size: int = 1000):
     """批次上傳到 Supabase"""
     if not data:
