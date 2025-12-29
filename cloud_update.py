@@ -384,13 +384,24 @@ def download_institutional(date_str: str) -> List[Dict]:
         
         # 檢查日期
         if data:
-            first_date = data[0].get("Date", "")
-            # 格式: 112/12/29
-            if first_date:
+            first_date = str(data[0].get("Date", ""))
+            tpex_date_int = 0
+            
+            # 嘗試解析日期
+            if "/" in first_date:
+                # 格式: 112/12/29
                 parts = first_date.split("/")
                 if len(parts) == 3:
                     tpex_date_int = (int(parts[0]) + 1911) * 10000 + int(parts[1]) * 100 + int(parts[2])
-                    if tpex_date_int == date_int:
+            elif len(first_date) == 7:
+                # 格式: 1121229
+                y = int(first_date[:3])
+                m = int(first_date[3:5])
+                d = int(first_date[5:])
+                tpex_date_int = (y + 1911) * 10000 + m * 100 + d
+                
+            if tpex_date_int > 0:
+                if tpex_date_int == date_int:
                         for item in data:
                             code = str(item.get("SecuritiesCompanyCode", "")).strip()
                             if not code.isdigit() or len(code) != 4:
