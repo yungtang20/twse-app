@@ -245,9 +245,35 @@ def download_tpex_quotes(date_str: str) -> List[Dict]:
         
         print_flush(f"  ✓ 上櫃行情: {len(quotes)} 筆")
         return quotes
-    except Exception as e:
-        print_flush(f"  ❌ 下載失敗: {e}")
-        return []
+def upload_to_supabase(supabase: Client, table: str, data: List[Dict], batch_size: int = 1000):
+    """批次上傳到 Supabase"""
+    if not data:
+        print_flush(f"  ⚠ {table}: 無資料")
+        return 0
+    
+    print_flush(f"📤 上傳 {table} ({len(data)} 筆)...")
+    
+    total_batches = math.ceil(len(data) / batch_size)
+    success_count = 0
+    
+    for i in range(total_batches):
+        start = i * batch_size
+        end = min((i + 1) * batch_size, len(data))
+        batch = data[start:end]
+        
+        try:
+            # 使用 upsert 並指定衝突時忽略 (ignore_duplicates=False 會更新)
+            # 對於 stock_data，我們希望更新現有資料
+            supabase.table(table).upsert(batch, on_conflict="code,date").execute()
+            success_count += len(batch)
+            
+            if (i + 1) % 5 == 0 or (i + 1) == total_batches:
+                print_flush(f"  進度: {i + 1}/{total_batches} ({success_count}/{len(data)})")
+        except Exception as e:
+            print_flush(f"  ❌ Batch {i + 1} 失敗: {e}")
+    
+    print_flush(f"  ✓ {table}: {success_count}/{len(data)} 筆")
+    return success_count
 
 def download_institutional(date_str: str) -> List[Dict]:
     """下載三大法人買賣超 (使用 OpenAPI)"""
@@ -256,30 +282,34 @@ def download_institutional(date_str: str) -> List[Dict]:
     combined_data = []
 
     # 1. TWSE
+    # 修正：使用正確的 OpenAPI URL (T86_ALL)
     twse_url = "https://openapi.twse.com.tw/v1/fund/T86_ALL"
     try:
         print_flush("  📥 下載上市法人資料...")
         r = requests.get(twse_url, headers=HEADERS, timeout=60)
-        data = r.json()
+        # 檢查回應是否為 JSON
+        try:
+            data = r.json()
+        except json.JSONDecodeError:
+            print_flush(f"  ⚠ TWSE 回應非 JSON: {r.text[:100]}")
+            data = []
+
         for item in data:
             code = str(item.get("Code", "")).strip()
             if not code.isdigit() or len(code) != 4:
                 continue
             
-            # 外資、投信、自營商
-            # OpenAPI 欄位名稱通常是中文或特定英文
             f_net = safe_int(item.get("ForeignInvestorsBuySellNet", 0))
             t_net = safe_int(item.get("InvestmentTrustBuySellNet", 0))
             d_net = safe_int(item.get("DealerBuySellNet", 0))
-            total_net = safe_int(item.get("TotalBuySellNet", 0))
+            # total_net 欄位在 Supabase 中不存在，移除
             
             combined_data.append({
                 "code": code,
                 "date_int": date_int,
                 "foreign_net": f_net,
                 "trust_net": t_net,
-                "dealer_net": d_net,
-                "total_net": total_net
+                "dealer_net": d_net
             })
     except Exception as e:
         print_flush(f"  ⚠ TWSE 法人資料下載失敗: {e}")
@@ -299,52 +329,19 @@ def download_institutional(date_str: str) -> List[Dict]:
             f_net = safe_int(item.get("ForeignInvestorsBuySellNet", 0))
             t_net = safe_int(item.get("InvestmentTrustBuySellNet", 0))
             d_net = safe_int(item.get("DealerBuySellNet", 0))
-            total_net = safe_int(item.get("ThreeInstitutionsBuySellNet", 0))
             
             combined_data.append({
                 "code": code,
                 "date_int": date_int,
                 "foreign_net": f_net,
                 "trust_net": t_net,
-                "dealer_net": d_net,
-                "total_net": total_net
+                "dealer_net": d_net
             })
     except Exception as e:
         print_flush(f"  ⚠ TPEX 法人資料下載失敗: {e}")
     
     print_flush(f"  ✓ 法人買賣超: {len(combined_data)} 筆")
     return combined_data
-
-# ==============================
-# Supabase 上傳
-# ==============================
-def upload_to_supabase(supabase: Client, table: str, data: List[Dict], batch_size: int = 1000):
-    """批次上傳到 Supabase"""
-    if not data:
-        print_flush(f"  ⚠ {table}: 無資料")
-        return 0
-    
-    print_flush(f"📤 上傳 {table} ({len(data)} 筆)...")
-    
-    total_batches = math.ceil(len(data) / batch_size)
-    success_count = 0
-    
-    for i in range(total_batches):
-        start = i * batch_size
-        end = min((i + 1) * batch_size, len(data))
-        batch = data[start:end]
-        
-        try:
-            supabase.table(table).upsert(batch).execute()
-            success_count += len(batch)
-            
-            if (i + 1) % 5 == 0 or (i + 1) == total_batches:
-                print_flush(f"  進度: {i + 1}/{total_batches} ({success_count}/{len(data)})")
-        except Exception as e:
-            print_flush(f"  ❌ Batch {i + 1} 失敗: {e}")
-    
-    print_flush(f"  ✓ {table}: {success_count}/{len(data)} 筆")
-    return success_count
 
 # ==============================
 # 主程式

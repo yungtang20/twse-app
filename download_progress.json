@@ -1,32 +1,11 @@
 {
-  "last_code_index": 20,
+  "last_code_index": 499,
   "missing_stocks": [],
   "new_stocks": [],
-  "failed_stocks": [
-    "1813",
-    "1295",
-    "1796",
-    "1742",
-    "2061",
-    "1784",
-    "1781",
-    "1336",
-    "1570",
-    "1586",
-    "1788",
-    "1268",
-    "1294",
-    "1593",
-    "1777",
-    "1565",
-    "1259",
-    "1599",
-    "1240",
-    "1584"
-  ],
+  "failed_stocks": [],
   "in_progress": null,
   "stock_list_last_idx": 0,
   "stock_list_processed": [],
   "calc_last_idx": 0,
-  "timestamp": "2025-12-29T15:06:36.666839"
+  "timestamp": "2025-12-29T16:26:47.128268"
 }
