@@ -370,6 +370,8 @@ def download_institutional(date_str: str) -> List[Dict]:
                     })
             else:
                 print_flush(f"  ❌ 備援接口無資料: {data.get('stat')}")
+            
+            print_flush(f"  ✓ 上市法人 (備援): {len(combined_data)} 筆")
         except Exception as fallback_e:
              print_flush(f"  ❌ TWSE 法人資料下載完全失敗: {fallback_e}")
 
