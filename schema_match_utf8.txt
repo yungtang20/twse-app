@@ -1,0 +1,10 @@
+Tables: ['stock_meta', 'stock_history', 'stock_snapshot', 'margin_data', 'market_index', 'institutional_investors', 'stock_data']
+Checked stock_meta - No match
+Checked stock_history - No match
+
+--- MATCH FOUND IN stock_snapshot ---
+Columns: ['code', 'name', 'date', 'close', 'volume', 'close_prev', 'vol_prev', 'ma3', 'ma20', 'ma60', 'ma120', 'ma200', 'wma3', 'wma20', 'wma60', 'wma120', 'wma200', 'mfi14', 'vwap20', 'chg14_pct', 'rsi', 'macd', 'signal', 'vp_poc', 'vp_upper', 'vp_lower', 'month_k', 'month_d', 'daily_k', 'daily_d', 'week_k', 'week_d', 'ma3_prev', 'ma20_prev', 'ma60_prev', 'ma120_prev', 'ma200_prev', 'wma3_prev', 'wma20_prev', 'wma60_prev', 'wma120_prev', 'wma200_prev', 'mfi14_prev', 'vwap20_prev', 'chg14_pct_prev', 'month_k_prev', 'month_d_prev', 'daily_k_prev', 'daily_d_prev', 'week_k_prev', 'week_d_prev', 'smi', 'svi', 'nvi', 'pvi', 'clv', 'major_holders_pct', 'foreign_buy', 'trust_buy', 'dealer_buy', 'adl', 'rs', 'smi_signal', 'svi_signal', 'nvi_signal', 'vsa_signal', 'smart_score', 'smi_prev', 'svi_prev', 'nvi_prev', 'smart_score_prev', 'vol_div_signal', 'weekly_nvi_signal', 'vwap60', 'bbw', 'fib_0618', 'weekly_close', 'weekly_open', 'monthly_close', 'monthly_open', 'vwap200', 'mansfield_rs', 'margin_balance', 'margin_util_rate', 'short_balance', 'short_util_rate', 'div_3day_bull', 'div_3day_bear', 'vol_ma3', 'pvi_prev', 'pe', 'pb', 'yield', 'amount', 'ma5', 'ma25', 'ma25_slope', 'vol_ma5', 'vol_ma60', 'bias_ma5', 'macd_diff', 'macd_dea', 'macd_bar', 'kdj_k', 'kdj_d', 'kdj_j', 'rsi12', 'lwr', 'bbi', 'mtm', 'mtm_ma', 'pattern_morning_star', 'pattern_evening_star', 'total_shareholders', 'vsbc_upper', 'vsbc_lower']
+Checked margin_data - No match
+Checked market_index - No match
+Checked institutional_investors - No match
+Checked stock_data - No match

@@ -5,10 +5,12 @@ from fastapi import APIRouter, HTTPException, Query
 from typing import Optional, List, Dict, Any
 from pydantic import BaseModel
 
-from services.db import (
+from backend.services.db import (
     get_all_stocks,
     get_stock_by_code,
     get_stock_history,
+    get_stock_shareholding_history,
+    get_tdcc_total_holders,
     get_stock_indicators,
     get_institutional_data,
     get_system_status
@@ -61,7 +63,14 @@ class HistoryItem(BaseModel):
     close: Optional[float] = None
     volume: Optional[int] = None
     amount: Optional[float] = None
+    tdcc_count: Optional[int] = None
+    large_shareholder_pct: Optional[float] = None
 
+class ShareholdingItem(BaseModel):
+    """分級持股資料"""
+    date_int: int
+    holders: int
+    proportion: float
 
 class APIResponse(BaseModel):
     """標準 API 回應"""
@@ -77,7 +86,7 @@ class APIResponse(BaseModel):
 @router.get("/stocks", response_model=APIResponse)
 async def list_stocks(
     market: Optional[str] = Query(None, description="市場 (twse/tpex)"),
-    limit: int = Query(100, ge=1, le=2000, description="回傳筆數"),
+    limit: int = Query(100, ge=1, le=5000, description="回傳筆數"),
     offset: int = Query(0, ge=0, description="偏移量")
 ):
     """
@@ -132,7 +141,7 @@ async def get_stock(code: str):
 @router.get("/stocks/{code}/history", response_model=APIResponse)
 async def get_history(
     code: str,
-    limit: int = Query(60, ge=1, le=500, description="回傳筆數")
+    limit: int = Query(60, ge=1, le=2000, description="回傳筆數")
 ):
     """
     取得股票歷史 K 線資料
@@ -156,6 +165,47 @@ async def get_history(
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
 
+@router.get("/stocks/{code}/shareholding", response_model=APIResponse)
+async def get_shareholding(
+    code: str,
+    threshold: int = Query(1000, description="持股門檻 (1000, 800, 600, 400, 200, 100, 50, 10)")
+):
+    """
+    取得股票分級持股歷史
+    - total_holders: 集保總人數 (所有分級的人數合計)
+    - large_holders: 大戶持股資料 (根據門檻篩選)
+    """
+    try:
+        # 映射 threshold 到 min_level
+        mapping = {
+            1000: 15,
+            800: 14,
+            600: 13,
+            400: 12,
+            200: 11,
+            100: 10,
+            50: 9,
+            10: 4
+        }
+        min_level = mapping.get(threshold, 15)
+        
+        # 取得集保總人數 (不分級)
+        total_holders_history = get_tdcc_total_holders(code)
+        
+        # 取得大戶持股 (依門檻篩選)
+        large_holders_history = get_stock_shareholding_history(code, min_level)
+        
+        return {
+            "success": True,
+            "data": {
+                "code": code,
+                "threshold": threshold,
+                "total_holders": total_holders_history,  # 集保總人數
+                "large_holders": large_holders_history   # 大戶持股
+            }
+        }
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
 
 @router.get("/stocks/{code}/indicators", response_model=APIResponse)
 async def get_indicators(code: str):

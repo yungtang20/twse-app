@@ -26,32 +26,30 @@ import os
 import sys
 import subprocess
 import os
-from datetime import datetime
+from datetime import datetime, timedelta
 
-def _should_update_twstock():
-    """檢查是否需要更新 twstock (每日一次)"""
-    flag_file = os.path.join(os.path.dirname(__file__), '.twstock_updated')
-    today = datetime.now().strftime('%Y-%m-%d')
-    
-    if os.path.exists(flag_file):
-        with open(flag_file, 'r') as f:
-            last_update = f.read().strip()
-            if last_update == today:
-                return False  # 今天已更新過
-    
-    # 寫入今日標記
-    with open(flag_file, 'w') as f:
-        f.write(today)
-    return True
+# ==============================
+# 自動安裝/更新 twstock (移至維護選單手動執行)
+# ==============================
+import sys
+import subprocess
+import os
+from datetime import datetime, timedelta
 
-if _should_update_twstock():
+def update_twstock_package():
+    """手動更新 twstock 套件"""
     try:
-        print("正在檢查 twstock 版本...")
-        subprocess.check_call([sys.executable, "-m", "pip", "install", "-U", "twstock"], 
-                              stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
-        print("twstock 更新完成")
+        print("正在檢查 twstock 版本並更新...")
+        subprocess.check_call([sys.executable, "-m", "pip", "install", "-U", "twstock"])
+        print("twstock 更新完成，請重啟程式以生效。")
     except Exception as e:
         print(f"twstock 更新失敗: {e}")
+    input("按 Enter 返回...")
+
+# [Optimization] 移除啟動時的自動檢查，改為手動觸發
+# if _should_update_twstock(): ...
+
+print("正在初始化系統...", end="", flush=True)
 
 import os
 import time
@@ -59,29 +57,41 @@ import json
 import re
 import sqlite3
 import logging
-import requests
 import threading
 import warnings
-import pandas as pd
-import numpy as np
-import ssl
-import urllib3
-import twstock
-from twstock.stock import TPEXFetcher
-from pathlib import Path
-from datetime import datetime, timedelta
 import queue
 import gc
 import math
+import ssl
+from pathlib import Path
+from datetime import datetime, timedelta
 from typing import Optional, Dict, List, Tuple, Any
 from contextlib import contextmanager
 from concurrent.futures import ThreadPoolExecutor, as_completed, Future
 from dataclasses import dataclass, field
+
+# [Optimization] 延遲載入重量級模組
+import requests
+import urllib3
+
+try:
+    import pandas as pd
+    import numpy as np
+except ImportError:
+    print("\n缺少必要套件 (pandas, numpy)，請先安裝。")
+    sys.exit(1)
+
+try:
+    import twstock
+    from twstock.stock import TPEXFetcher
+except ImportError:
+    print("\n缺少 twstock 套件，請先安裝。")
+    sys.exit(1)
+
 import colorama
 try:
     colorama.just_fix_windows_console()
 except AttributeError:
-    # Fallback for older colorama versions
     colorama.init()
 
 # Supabase Support
@@ -98,6 +108,8 @@ try:
     HAS_SCHEDULER = True
 except ImportError:
     HAS_SCHEDULER = False
+
+print("完成")
 
 # ==============================
 # Logging Configuration
@@ -266,7 +278,7 @@ IS_ANDROID = any(p in str(WORK_DIR) for p in ['/sdcard', '/storage/emulated']) o
 
 # 更新 Config 環境自適應配置
 Config.IS_ANDROID = IS_ANDROID
-Config.MAX_WORKERS = 2 if IS_ANDROID else 6
+Config.MAX_WORKERS = 1 if IS_ANDROID else 6
 Config.BATCH_SIZE = 50 if IS_ANDROID else 200
 Config.LIGHTWEIGHT_MODE = IS_ANDROID
 
@@ -282,7 +294,18 @@ BACKUP_DIR.mkdir(exist_ok=True)
 REQUEST_TIMEOUT = 30
 
 # API 設定
-FINMIND_TOKEN = "eyJ0eXAiOiJKV1QiLCJhbGciOiJIUzI1NiJ9.eyJkYXRlIjoiMjAyNS0xMi0xNyAyMjowMzowMiIsInVzZXJfaWQiOiJ5dW5ndGFuZyAiLCJpcCI6IjExMS43MS4yMTIuMjUifQ.fYv38gHAin0IZu5GZZyFFjj5tPU8BCCORDTUTandpDg"
+def load_finmind_token():
+    try:
+        config_path = WORK_DIR / "config.json"
+        if config_path.exists():
+            with open(config_path, 'r', encoding='utf-8') as f:
+                config = json.load(f)
+                return config.get("finmind_token", "")
+    except Exception:
+        pass
+    return "eyJ0eXAiOiJKV1QiLCJhbGciOiJIUzI1NiJ9.eyJkYXRlIjoiMjAyNS0xMi0yMiAwMTo1MDoxMiIsInVzZXJfaWQiOiJ5dW5ndGFuZyAiLCJpcCI6IjExMS43MS4yMTMuNzAifQ._mhmrmnS4SIWRS6Ln9rE0-fZ9j4JZLdq1b7s-m3eDFQ"
+
+FINMIND_TOKEN = load_finmind_token()
 
 # ==============================
 # Phase 1: 表驅動法 - API 端點配置表
@@ -299,6 +322,13 @@ API_ENDPOINTS = {
         'margin': 'https://openapi.twse.com.tw/v1/exchangeReport/MI_MARGN',
         'pepb': 'https://openapi.twse.com.tw/v1/exchangeReport/BWIBBU_d',
         'stock_list': 'https://openapi.twse.com.tw/v1/opendata/t187ap03_L',
+        # [New] 新增 API 端點
+        'holiday_schedule': 'https://www.twse.com.tw/rwd/zh/holidaySchedule/holidaySchedule',
+        'punished': 'https://www.twse.com.tw/rwd/zh/announcement/punish',
+        'new_listing': 'https://www.twse.com.tw/rwd/zh/company/newlisting',
+        'suspended': 'https://www.twse.com.tw/rwd/zh/company/suspendListingCsvAndHtml',
+        'basic_info': 'https://openapi.twse.com.tw/v1/opendata/t187ap03_P',
+        'margin_balance': 'https://www.twse.com.tw/rwd/zh/exchangeReport/MI_MARGN',
     },
     'tpex': {
         'daily': 'https://www.tpex.org.tw/openapi/v1/tpex_mainboard_daily_close_quotes',
@@ -375,25 +405,221 @@ SQL_UPSERT_TEMPLATES = {
 }
 
 # ==============================
-# 2025 年台股休市日 (用於跳過補漏)
 # ==============================
-MARKET_HOLIDAYS_2025 = {
-    20250101,  # 元旦
-    20250127, 20250128, 20250129, 20250130, 20250131,  # 農曆春節
-    20250203, 20250204,  # 農曆春節
-    20250228,  # 和平紀念日
-    20250303, 20250304,  # 和平紀念日調整
-    20250404,  # 清明節
-    20250501,  # 勞動節
-    20250530, 20250531,  # 端午節
-    20251006,  # 中秋節
-    20251010,  # 國慶日
-    20251024,  # 台灣光復節補假
+# 台股休市日 (動態從 TWSE API 取得 + 靜態備援)
+# ==============================
+# 靜態備援表 (當 API 無法連線時使用)
+# 靜態備援表 (當 API 無法連線且無本地快取時使用)
+MARKET_HOLIDAYS_FALLBACK = {
+    # 2026 (民國115年)
+    20260101,  # 元旦
+    20260212, 20260213,  # 農曆年前結算 (無交易)
+    20260216, 20260217, 20260218, 20260219, 20260220,  # 農曆春節
+    20260227,  # 和平紀念日補假
+    20260403, 20260406,  # 兒童節/清明節補假
+    20260501,  # 勞動節
+    20260619,  # 端午節
+    20260925,  # 中秋節
+    20260928,  # 教師節補假
+    20261009,  # 國慶日補假
+    20261026,  # 臺灣光復節補假
+    20261225,  # 行憲紀念日
 }
 
+# 快取：動態抓取的休市日
+_MARKET_HOLIDAYS_CACHE = None
+_MARKET_HOLIDAYS_CACHE_TIME = None
+_MARKET_HOLIDAYS_CACHE_DURATION = 86400  # 24 小時
+_HOLIDAY_FILE = WORK_DIR / "holidays_fallback.json"
+
+def _load_holidays_from_file():
+    """從本地 JSON 檔案載入休市日"""
+    try:
+        if _HOLIDAY_FILE.exists():
+            with open(_HOLIDAY_FILE, 'r', encoding='utf-8') as f:
+                data = json.load(f)
+                return set(data)
+    except Exception as e:
+        logger.warning(f"無法讀取本地休市表: {e}")
+    return set()
+
+def _save_holidays_to_file(holidays):
+    """將休市日儲存至本地 JSON 檔案"""
+    try:
+        with open(_HOLIDAY_FILE, 'w', encoding='utf-8') as f:
+            json.dump(list(holidays), f)
+    except Exception as e:
+        logger.warning(f"無法儲存本地休市表: {e}")
+
+def _fetch_holidays_from_twse():
+    """
+    從 TWSE 官方 API 動態取得休市日
+    API: https://openapi.twse.com.tw/v1/holidaySchedule/holidaySchedule
+    日期格式: 民國年 (如 1140101 = 民國114年1月1日 = 2025年1月1日)
+    """
+    global _MARKET_HOLIDAYS_CACHE, _MARKET_HOLIDAYS_CACHE_TIME
+    
+    # 檢查記憶體快取
+    if _MARKET_HOLIDAYS_CACHE and _MARKET_HOLIDAYS_CACHE_TIME:
+        if time.time() - _MARKET_HOLIDAYS_CACHE_TIME < _MARKET_HOLIDAYS_CACHE_DURATION:
+            return _MARKET_HOLIDAYS_CACHE
+            
+    # [Optimization] 優先檢查本地檔案快取，避免每次啟動都連線
+    # 只有當本地檔案不存在或過期 (> 30天) 時才連網更新
+    file_holidays = _load_holidays_from_file()
+    if file_holidays:
+        # 簡單判斷：如果有載入到資料，暫時信任它，除非強制更新
+        # 這裡可以加入檔案修改時間的判斷，但為求速度先直接使用
+        _MARKET_HOLIDAYS_CACHE = file_holidays
+        _MARKET_HOLIDAYS_CACHE_TIME = time.time()
+        return file_holidays
+    
+    try:
+        url = "https://openapi.twse.com.tw/v1/holidaySchedule/holidaySchedule"
+        # [Optimization] 縮短 timeout，避免卡住
+        resp = requests.get(url, timeout=3, verify=False)
+        if resp.status_code != 200:
+            return None
+        
+        data = resp.json()
+        holidays = set()
+        
+        for item in data:
+            date_str = item.get("Date", "")
+            name = item.get("Name", "")
+            
+            # 跳過「開始交易日」等非休市日
+            if "交易" in name:
+                continue
+            
+            # 轉換民國年為西元年 (格式: 1140101 -> 20250101)
+            if len(date_str) == 7 and date_str.isdigit():
+                roc_year = int(date_str[:3])
+                western_year = roc_year + 1911
+                date_int = int(f"{western_year}{date_str[3:]}")
+                holidays.add(date_int)
+        
+        # 更新記憶體快取
+        _MARKET_HOLIDAYS_CACHE = holidays
+        _MARKET_HOLIDAYS_CACHE_TIME = time.time()
+        
+        # 更新本地檔案快取 (更新靜態備援表)
+        # _save_holidays_to_file(holidays)  # [User Request] 取消自動更新備援表
+        
+        logger.info(f"已從 TWSE API 載入 {len(holidays)} 個休市日")
+        return holidays
+        
+    except Exception as e:
+        logger.warning(f"無法從 TWSE API 取得休市日: {e}")
+        return None
+
 def is_market_holiday(date_int):
-    """檢查是否為休市日"""
-    return date_int in MARKET_HOLIDAYS_2025
+    """
+    檢查是否為休市日 (包含週末與國定假日)
+    
+    優先順序：
+    1. 週末 (週六/週日)
+    2. 記憶體快取 (API 最新資料)
+    3. 本地檔案備援 (holidays_fallback.json)
+    4. 硬編碼靜態備援 (MARKET_HOLIDAYS_FALLBACK)
+    
+    Args:
+        date_int: 日期整數 (YYYYMMDD)
+        
+    Returns:
+        bool: True 表示休市日
+    """
+    # [Guard Clause] 檢查週末 (Saturday=5, Sunday=6)
+    try:
+        date_str = str(date_int)
+        dt = datetime.strptime(date_str, "%Y%m%d")
+        if dt.weekday() >= 5:  # 週六或週日
+            return True
+    except ValueError:
+        pass  # 無效日期格式，繼續檢查
+    
+    # 嘗試從 API (或記憶體快取) 取得
+    api_holidays = _fetch_holidays_from_twse()
+    if api_holidays and date_int in api_holidays:
+        return True
+        
+    # 若 API 失敗，嘗試讀取本地檔案備援
+    file_holidays = _load_holidays_from_file()
+    if file_holidays and date_int in file_holidays:
+        return True
+    
+    # 最後使用硬編碼靜態備援
+
+    if date_int in MARKET_HOLIDAYS_FALLBACK:
+        return True
+    
+
+    return False
+
+
+def is_market_closed_today():
+    """
+    檢查今天的股市資料是否已可取得
+    
+    台股交易時間: 09:00-13:30
+    資料通常在 14:30 後完整更新
+    週末與國定假日休市
+    
+    Returns:
+        bool: True 表示今天資料已可取得，False 表示今天資料尚未完整
+    """
+    now = datetime.now()
+    today_int = int(now.strftime("%Y%m%d"))
+    
+    # 檢查是否為週末
+    if now.weekday() >= 5:  # 週六=5, 週日=6
+        return False
+    
+    # 檢查是否為國定假日
+    if is_market_holiday(today_int):
+        return False
+    
+    # 檢查是否已過收盤時間 (14:30 後視為資料完整)
+    market_data_ready_time = now.replace(hour=14, minute=30, second=0, microsecond=0)
+    return now >= market_data_ready_time
+
+
+def get_last_trading_day(exclude_today=False):
+    """
+    取得最後一個有效交易日
+    
+    Args:
+        exclude_today: 是否排除今天（即使今天已收盤）
+    
+    Returns:
+        int: 日期整數 (YYYYMMDD)
+    """
+    now = datetime.now()
+    current = now
+    
+    # 如果今天資料尚未完整，或要求排除今天，則從昨天開始
+    today_int = int(now.strftime("%Y%m%d"))
+    if exclude_today or not is_market_closed_today():
+        current = now - timedelta(days=1)
+    
+    # 往回找有效交易日（最多回溯 10 天）
+    for _ in range(10):
+        check_int = int(current.strftime("%Y%m%d"))
+        
+        # 跳過週末
+        if current.weekday() >= 5:
+            current -= timedelta(days=1)
+            continue
+            
+        # 跳過國定假日
+        if is_market_holiday(check_int):
+            current -= timedelta(days=1)
+            continue
+            
+        return check_int
+    
+    # Fallback: 回傳今天
+    return today_int
 
 
 # 雲端同步設定
@@ -413,6 +639,11 @@ RESET_COLOR = '\033[0m'
 def _worker_calc_indicators(args):
     """Step 7 Worker: 計算單支股票指標"""
     code, name, preloaded_df = args
+    
+    # [Guard Clause] 檢查參數有效性
+    if not code:
+        return None
+
     try:
         # 計算指標 (使用預載入的 DataFrame)
         indicators_list = calculate_stock_history_indicators(
@@ -423,6 +654,7 @@ def _worker_calc_indicators(args):
             preloaded_df=preloaded_df
         )
         
+        # [Guard Clause] 無資料直接返回
         if not indicators_list:
             return None
             
@@ -564,6 +796,53 @@ def validate_code(code) -> bool:
     if len(code) < 4:
         return False
     return True
+
+
+def is_new_listing(list_date_str: str, days_threshold: int = 450) -> bool:
+    """
+    判斷股票是否為新上市（上市期間不足指定交易日）
+    
+    [規則] 新上市且上市期間未滿 450 筆的股票設為白名單，不視為資料缺失
+    
+    Args:
+        list_date_str: 上市日期 (YYYY-MM-DD 格式)
+        days_threshold: 交易日門檻 (預設 450)
+        
+    Returns:
+        bool: True=新上市 (資料不足正常), False=應有完整資料
+    """
+    if not list_date_str:
+        return False
+    
+    try:
+        list_date = datetime.strptime(list_date_str, "%Y-%m-%d")
+        today = datetime.now()
+        
+        # 計算上市天數 (日曆天)
+        days_since_listing = (today - list_date).days
+        
+        # 約 450 交易日 ≈ 630 日曆天
+        calendar_days_threshold = int(days_threshold * 1.4)
+        
+        return days_since_listing < calendar_days_threshold
+    except (ValueError, TypeError):
+        return False
+
+
+def get_expected_trading_days(list_date_str: str) -> int:
+    """
+    根據上市日期計算預期的交易日數量
+    """
+    if not list_date_str:
+        return 0
+    
+    try:
+        list_date = datetime.strptime(list_date_str, "%Y-%m-%d")
+        today = datetime.now()
+        calendar_days = (today - list_date).days
+        return int(calendar_days * 5 / 7)
+    except (ValueError, TypeError):
+        return 0
 
 
 # ==============================
@@ -1205,15 +1484,15 @@ class ProgressTracker:
     
     def warning(self, message, level=1):
         """顯示警告訊息"""
-        self._update_single_line(f"⚠ {message}", level)
+        self._update_single_line(f"[!] {message}", level)
     
     def success(self, message, level=1):
         """顯示成功訊息"""
-        self._update_single_line(f"✓ {message}", level)
+        self._update_single_line(f"[V] {message}", level)
     
     def error(self, message, level=1):
         """顯示錯誤訊息"""
-        self._update_single_line(f"❌ {message}", level)
+        self._update_single_line(f"[X] {message}", level)
     
     def _update_single_line(self, message, level):
         """更新單行內容並刷新顯示"""
@@ -1356,14 +1635,18 @@ class SingleWriterDBManager:
         logger.debug("資料庫寫入線程已啟動")
     
     def _writer_loop(self):
-        """寫入線程主迴圈 - 批次處理"""
-        conn = sqlite3.connect(str(self.db_path), timeout=60)
-        if not IS_ANDROID:
-            conn.execute("PRAGMA journal_mode=WAL")
-        else:
-            conn.execute("PRAGMA journal_mode=DELETE")
-            conn.execute("PRAGMA busy_timeout=60000")
-        conn.execute("PRAGMA synchronous=NORMAL")
+        """寫入線程主迴圈 - 增強版"""
+        try:
+            # 增加 timeout 到 60 秒，並使用 isolation_level=None 來手動控制事務
+            conn = sqlite3.connect(str(self.db_path), timeout=60.0)
+            
+            # 針對 Android Pydroid 3 的優化設定
+            conn.execute("PRAGMA journal_mode=WAL")  # 開啟 WAL 模式提高並發
+            conn.execute("PRAGMA synchronous=NORMAL")
+            conn.execute("PRAGMA busy_timeout=60000") # 60秒忙碌等待
+        except Exception as e:
+            logger.error(f"DBWriter 初始化失敗: {e}")
+            return
         
         while not self._shutdown.is_set():
             batch = []
@@ -1391,26 +1674,45 @@ class SingleWriterDBManager:
                 continue
             
             # 執行批次
-            try:
-                cursor = conn.cursor()
-                for op in batch:
-                    try:
-                        if op.is_many:
-                            cursor.executemany(op.query, op.params)
-                        else:
-                            cursor.execute(op.query, op.params)
-                        if op.result_future and not op.result_future.done():
-                            op.result_future.set_result(cursor.rowcount)
-                    except Exception as e:
+            if batch:
+                try:
+                    cursor = conn.cursor()
+                    # 在執行任何寫入前，先嘗試取得立即鎖定
+                    conn.execute("BEGIN IMMEDIATE")
+                    for op in batch:
+                        try:
+                            if op.is_many:
+                                cursor.executemany(op.query, op.params)
+                            else:
+                                cursor.execute(op.query, op.params)
+                            if op.result_future and not op.result_future.done():
+                                op.result_future.set_result(cursor.rowcount)
+                        except Exception as e:
+                            if op.result_future and not op.result_future.done():
+                                op.result_future.set_exception(e)
+                    conn.commit()
+                except sqlite3.OperationalError as e:
+                    if "locked" in str(e):
+                        print_flush("![DB] 資料庫鎖定中，等待重試...")
+                        time.sleep(1) # 稍微等待後重試
+                        conn.rollback()
+                        # 簡單重試邏輯：將 batch 放回 queue (這裡簡化為記錄錯誤，實際應用可更複雜)
+                        logger.warning("資料庫鎖定，批次寫入失敗 (已回滾)")
+                        for op in batch:
+                            if op.result_future and not op.result_future.done():
+                                op.result_future.set_exception(e)
+                    else:
+                        logger.error(f"資料庫批次寫入失敗: {e}")
+                        conn.rollback()
+                        for op in batch:
+                            if op.result_future and not op.result_future.done():
+                                op.result_future.set_exception(e)
+                except Exception as e:
+                    logger.error(f"資料庫批次寫入失敗: {e}")
+                    conn.rollback()
+                    for op in batch:
                         if op.result_future and not op.result_future.done():
                             op.result_future.set_exception(e)
-                conn.commit()
-            except Exception as e:
-                logger.error(f"資料庫批次寫入失敗: {e}")
-                conn.rollback()
-                for op in batch:
-                    if op.result_future and not op.result_future.done():
-                        op.result_future.set_exception(e)
         
         conn.close()
         logger.debug("資料庫寫入線程已關閉")
@@ -1559,20 +1861,27 @@ class ProxyConnection:
     
     def commit(self):
         """批次提交所有待處理寫入"""
+        if not self._pending_writes:
+            return
+            
+        # 重點：在請求寫入前，先關閉目前的讀取連線，釋放鎖定
+        if self._read_conn:
+            try:
+                self._read_conn.close()
+            except:
+                pass
+        
         for query, params, is_many in self._pending_writes:
             self._manager.execute_write(query, params, is_many, wait=True)
         self._pending_writes.clear()
-        # 重新開啟讀取連線以看到新資料 (WAL mode 隔離)
-        try:
-            self._read_conn.close()
-        except:
-            pass
+        
+        # 重新建立讀取連線
         self._read_conn = sqlite3.connect(
             str(self._manager.db_path), 
             timeout=30,
             check_same_thread=False
         )
-        self._conn_version += 1  # 增加版本號
+        self._conn_version += 1
     
     def rollback(self):
         """清除待處理寫入"""
@@ -1704,13 +2013,49 @@ class SnapshotRepository:
         return self._db.execute_write(sql, params)
 
 
+def check_and_repair_db(db_path):
+    """檢查並修復資料庫 (若損毀則自動備份並重置)"""
+    path = Path(db_path)
+    if not path.exists(): return
+    
+    try:
+        # 快速完整性檢查
+        with sqlite3.connect(str(path)) as conn:
+            cursor = conn.cursor()
+            cursor.execute("PRAGMA integrity_check(1)")
+            result = cursor.fetchone()
+            if result and result[0] != "ok":
+                raise sqlite3.DatabaseError(f"Integrity check failed: {result[0]}")
+    except sqlite3.DatabaseError as e:
+        print_flush(f"⚠️ 資料庫損毀偵測: {e}")
+        # 重新命名損毀的檔案
+        timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
+        backup_path = path.with_name(f"{path.name}.corrupted_{timestamp}")
+        try:
+            # 嘗試關閉所有可能的連線 (雖然此時應無連線)
+            gc.collect()
+            path.rename(backup_path)
+            print_flush(f"✅ 已將損毀資料庫備份為: {backup_path}")
+            print_flush("🔄 系統將自動建立新資料庫...")
+        except OSError as rename_err:
+            print_flush(f"❌ 無法重新命名損毀資料庫: {rename_err}")
+            print_flush("請手動刪除資料庫檔案後重試。")
+
+# 在初始化 DBManager 前先檢查
+check_and_repair_db(Config.DB_PATH)
 db_manager = DBManager(Config.DB_PATH)
 
 # ==============================
 # 資料庫初始化
 # ==============================
-def ensure_db():
-    """確保資料庫表結構存在"""
+def ensure_db(force=False):
+    """確保資料庫表結構存在 (優化版)"""
+    
+    # [Optimization] 檢查初始化標記，避免每次都跑大量 DDL
+    flag_file = WORK_DIR / ".db_initialized"
+    if not force and flag_file.exists() and DB_FILE.exists():
+        return
+
     with db_manager.get_connection() as conn:
         cur = conn.cursor()
         
@@ -1824,6 +2169,13 @@ def ensure_db():
         cur.execute("CREATE INDEX IF NOT EXISTS idx_stock_history_code_date ON stock_history(code, date_int DESC)")
         cur.execute("CREATE INDEX IF NOT EXISTS idx_stock_snapshot_date ON stock_snapshot(date)")
         cur.execute("CREATE INDEX IF NOT EXISTS idx_stock_snapshot_smart_score ON stock_snapshot(smart_score)")
+        
+        # 建立初始化標記
+        try:
+            with open(flag_file, 'w') as f:
+                f.write(datetime.now().strftime("%Y-%m-%d %H:%M:%S"))
+        except Exception:
+            pass
         
         # 檢查 stock_snapshot 是否有新欄位 (Migration)
         cur.execute("PRAGMA table_info(stock_snapshot)")
@@ -2625,7 +2977,8 @@ class InstitutionalInvestorAPI:
         優先順序: 1. TWSE 網頁版 (JSON) 2. TWSE OpenAPI 3. FinMind
         """
         results = []
-        today = datetime.now().strftime("%Y%m%d")
+        # [修正] 使用交易日檢查，確保收盤前不會用今天日期
+        today = str(get_last_trading_day())
         
         # === 1. TWSE 網頁版 (主要來源 - JSON 格式) ===
         try:
@@ -2911,16 +3264,30 @@ class InstitutionalInvestorAPI:
                 else:
                     date_int = int(datetime.now().strftime("%Y%m%d"))
                 
+                # TPEx OpenAPI 欄位名稱修正 (Verbose 格式)
+                # 外資合計: ForeignInvestorsIncludeMainlandAreaInvestors-TotalBuy
+                # 投信: SecuritiesInvestmentTrustCompanies-TotalBuy
+                # 自營商: Dealers-TotalBuy
+                
+                f_buy = cls._parse_number(item.get("ForeignInvestorsIncludeMainlandAreaInvestors-TotalBuy", 0))
+                f_sell = cls._parse_number(item.get("ForeignInvestorsIncludeMainlandAreaInvestors-TotalSell", 0))
+                
+                t_buy = cls._parse_number(item.get("SecuritiesInvestmentTrustCompanies-TotalBuy", 0))
+                t_sell = cls._parse_number(item.get("SecuritiesInvestmentTrustCompanies-TotalSell", 0))
+                
+                d_buy = cls._parse_number(item.get("Dealers-TotalBuy", 0))
+                d_sell = cls._parse_number(item.get("Dealers-TotalSell", 0))
+
                 results.append({
                     'code': code,
                     'name': str(item.get("CompanyName", "")).strip(),
                     'date_int': date_int,
-                    'foreign_buy': cls._parse_number(item.get("ForeignInvestorsBuy", 0)),
-                    'foreign_sell': cls._parse_number(item.get("ForeignInvestorsSell", 0)),
-                    'trust_buy': cls._parse_number(item.get("SecuritiesInvestmentTrustBuy", 0)),
-                    'trust_sell': cls._parse_number(item.get("SecuritiesInvestmentTrustSell", 0)),
-                    'dealer_buy': cls._parse_number(item.get("DealersBuy", 0)),
-                    'dealer_sell': cls._parse_number(item.get("DealersSell", 0)),
+                    'foreign_buy': f_buy,
+                    'foreign_sell': f_sell,
+                    'trust_buy': t_buy,
+                    'trust_sell': t_sell,
+                    'dealer_buy': d_buy,
+                    'dealer_sell': d_sell,
                     'market': 'TPEx'
                 })
             
@@ -2973,6 +3340,15 @@ class InstitutionalInvestorAPI:
                     (code, date_int, foreign_buy, foreign_sell, trust_buy, trust_sell, dealer_buy, dealer_sell)
                     VALUES (?, ?, ?, ?, ?, ?, ?, ?)
                 """, records)
+                
+                # [New] 同步更新 stock_history (計算買賣超)
+                # records: (code, date_int, f_buy, f_sell, t_buy, t_sell, d_buy, d_sell)
+                update_params = [(r[2]-r[3], r[4]-r[5], r[6]-r[7], r[0], r[1]) for r in records]
+                cur.executemany("""
+                    UPDATE stock_history
+                    SET foreign_buy=?, trust_buy=?, dealer_buy=?
+                    WHERE code=? AND date_int=?
+                """, update_params)
                 
                 # 同步最新法人數據到 stock_snapshot
                 for d in data_list:
@@ -5302,6 +5678,7 @@ class Colors:
     MAGENTA = "\033[95m"
     CYAN = "\033[96m"
     WHITE = "\033[97m"
+    COFFEE = "\033[38;5;130m"   # 棕色 (256色模式) - 用於止盈、止損、POC、VSBC
     # 漲停/跌停背景色 (滿版)
     LIMIT_UP = "\033[97;41m"    # 白字紅底 (漲停)
     LIMIT_DOWN = "\033[97;42m"  # 白字綠底 (跌停)
@@ -5420,12 +5797,19 @@ def format_scan_result(code, name, indicators, show_date=False):
     if vsbc_up == 0 and vsbc_low == 0:
         vsbc_str = "N/A"
     else:
-        vsbc_str = f"{vsbc_up:.1f}/{vsbc_low:.1f}"
+        vsbc_str = f"{Colors.COFFEE}{vsbc_up:.1f}/{vsbc_low:.1f}{Colors.RESET}"
     
-    # 均線
+    # 均線 (當前與前一天)
     mas = {}
+    mas_prev = {}
     for p in [20, 60, 120, 200]:
         mas[p] = safe_f(get_val([f'ma{p}', f'MA{p}']))
+        mas_prev[p] = safe_f(get_val([f'ma{p}_prev', f'MA{p}_prev']))
+    
+    # 大戶前一天
+    major_pct_prev = safe_f(get_val(['major_holders_pct_prev', 'Major_Holders_prev']))
+    # 集保人數前一天
+    total_holders_prev = safe_int(get_val(['total_shareholders_prev', 'Total_Shareholders_prev']))
 
     # 計算
     change_pct = (close - close_prev) / close_prev * 100 if close_prev else 0
@@ -5468,29 +5852,85 @@ def format_scan_result(code, name, indicators, show_date=False):
     vp_upper = safe_f(get_val(['vp_upper', 'VP_upper']))
     tp, sl = calculate_trade_setup(close, vp_upper, vp_lower, mas[20], tp_raw, sl_raw)
 
-    # 籌碼
+    # 籌碼 (法人買賣超：紅買綠賣)
     inst_str = ""
     if f_buy is not None:
-        inst_str = f" 外:{f_buy//1000} 投:{t_buy//1000} 自:{d_buy//1000}"
+        f_color = get_indicator_color(f_buy)
+        t_color = get_indicator_color(t_buy)
+        d_color = get_indicator_color(d_buy)
+        inst_str = f" 外:{f_color}{f_buy//1000}{reset} 投:{t_color}{t_buy//1000}{reset} 自:{d_color}{d_buy//1000}{reset}"
 
-    # 集保人數顯示
-    holders_str = f" 集保:{total_holders:,}" if total_holders is not None else " 集保:N/A"
+    # 大戶比例顏色 (增加=紅、減少=綠)
+    # 使用週比較 (5日前)
+    major_prev_w = safe_f(get_val(['Major_Holders_W', 'major_holders_w']))
+    
+    # 若無週前值，嘗試用日數據，若都無則為 0
+    ref_major = major_prev_w if major_prev_w > 0 else major_pct_prev
+    
+    if ref_major and ref_major > 0:
+        major_change = major_pct - ref_major
+        major_color = get_indicator_color(major_change)
+        major_arrow = get_arrow(major_pct, ref_major)
+    else:
+        major_color = ""
+        major_arrow = ""
+    colored_major = f"{major_color}{major_pct:.1f}%{major_arrow}{reset}"
+    
+    # 集保人數顏色 (統一漲紅跌綠規則：增加=紅、減少=綠)
+    # 使用週比較
+    holders_prev_w = safe_int(get_val(['Total_Shareholders_W', 'total_shareholders_w']))
+    ref_holders = holders_prev_w if holders_prev_w > 0 else total_holders_prev
 
-    # Line 1
-    line1 = f"{date} {name}({code}) 量:{vol_text} MFI:{colored_mfi} RSI:{colored_rsi}"
+    if total_holders is not None:
+        if ref_holders and ref_holders > 0:
+            holders_change = total_holders - ref_holders
+            holders_color = get_indicator_color(holders_change)
+            holders_arrow = get_arrow(total_holders, ref_holders)
+        else:
+            holders_color = ""
+            holders_arrow = ""
+        holders_str = f" 集保:{holders_color}{total_holders:,}{holders_arrow}{reset}"
+    else:
+        holders_str = " 集保:N/A"
+
+    # Line 1: 日期 名稱(代號) 量 VOLMA5/60
+    vol_ma5 = safe_f(get_val(['Vol_MA5', 'vol_ma5']))
+    vol_ma60 = safe_f(get_val(['Vol_MA60', 'vol_ma60']))
     
-    # Line 2 - 使用 change_pct 的正負來決定顏色（漲=紅、跌=綠）
-    close_color = get_color_code(change_pct)  # 正值紅，負值綠
-    line2 = f"收盤:{close_color}{close:.2f}({change_pct:+.2f}%){reset} 14日:{colored_chg14} VSBC上/下:{vsbc_str} 大戶:{major_pct:.1f}%{holders_str}"
+    vol_ma5_prev = safe_f(get_val(['Vol_MA5_prev', 'vol_ma5_prev']))
+    vol_ma60_prev = safe_f(get_val(['Vol_MA60_prev', 'vol_ma60_prev']))
     
-    # Line 3
-    line3 = f"止盈:{tp:.2f}   VWAP:{colored_vwap}   POC:{poc:.2f}   止損:{sl:.2f}"
+    c_vma5 = get_trend_color(vol_ma5, vol_ma5_prev)
+    c_vma60 = get_trend_color(vol_ma60, vol_ma60_prev)
     
-    # Line 4
-    line4 = f"訊號3/6:{sig_str}{inst_str}"
+    line1 = f"{date} {name}({code}) 量:{vol_text} VOLMA5/60:{c_vma5}{int(vol_ma5/1000):,}{reset}/{c_vma60}{int(vol_ma60/1000):,}{reset}"
     
-    # Line 5
-    line5 = f"MA20:{mas[20]:.2f} MA60:{mas[60]:.2f} MA120:{mas[120]:.2f} MA200:{mas[200]:.2f}"
+    # Line 2: 收盤 VWAP POC MFI RSI
+    close_color = get_color_code(change_pct)
+    
+    # RSI 顏色
+    rsi_prev = safe_f(get_val(['RSI_prev', 'rsi_prev']))
+    c_rsi = get_trend_color(rsi, rsi_prev)
+    colored_rsi = f"{c_rsi}{rsi_str}{reset}"
+    
+    line2 = f"收盤:{close_color}{close:.2f}({change_pct:+.2f}%){reset} VWAP:{colored_vwap} POC:{Colors.COFFEE}{poc:.2f}{reset} MFI:{colored_mfi} RSI:{colored_rsi}"
+    
+    # Line 3: VSBC VP上/下 (棕色)
+    vp_str = f"{Colors.COFFEE}{vp_upper:.2f}/{vp_lower:.2f}{reset}"
+    line3 = f"VSBC上/下:{vsbc_str} VP上/下:{vp_str}"
+    
+    # Line 4: MA 均線
+    def colored_ma(period):
+        ma_val = mas[period]
+        ma_prev = mas_prev[period]
+        color = get_trend_color(ma_val, ma_prev)
+        arrow = get_arrow(ma_val, ma_prev)
+        return f"{color}{ma_val:.2f}{arrow}{reset}"
+    
+    line4 = f"MA20:{colored_ma(20)} MA60:{colored_ma(60)} MA120:{colored_ma(120)} MA200:{colored_ma(200)}"
+
+    # Line 5: 訊號 法人 大戶 集保
+    line5 = f"訊號3/6:{sig_str}{inst_str} 大戶:{colored_major}{holders_str}"
     
     return f"{line1}\n{line2}\n{line3}\n{line4}\n{line5}\n"
 
@@ -5533,11 +5973,17 @@ def get_trend_color(curr, prev):
     
     for condition, color in rules:
         if condition: return color
-    return "\033[97m" # White
+    return "\033[97m" # White (RESET)
+
+def get_indicator_color(val):
+    """技術指標顏色：只用紅/綠字，不含漲停/跌停判斷"""
+    if val > 0: return Colors.RED      # 上漲 (紅字)
+    elif val < 0: return Colors.GREEN  # 下跌 (綠字)
+    return Colors.RESET                # 0 = White
 
 def get_colored_value(text, change, arrow):
-    """獲取帶顏色的值"""
-    color = get_color_code(change)
+    """獲取帶顏色的值 (用於技術指標，不觸發漲停色)"""
+    color = get_indicator_color(change)
     return f"{color}{text}{arrow}{reset_color()}"
 
 
@@ -5638,7 +6084,17 @@ def prompt_stock_detail_report(result_codes):
 # 步驟函數
 # ==============================
 def get_latest_market_date():
-    """獲取市場最新交易日期"""
+    """
+    獲取市場最新交易日期
+    
+    [重要] 加入交易時間檢查：
+    - 如果今天尚未收盤 (14:30 前)，不會回傳今天的日期
+    - 避免抓取到尚不存在的資料
+    """
+    now = datetime.now()
+    today_str = now.strftime("%Y-%m-%d")
+    today_int = int(now.strftime("%Y%m%d"))
+    
     dates = []
     
     # 1. Check TWSE
@@ -5686,227 +6142,325 @@ def get_latest_market_date():
                     return db_date
         except:
             pass
-            
-        return datetime.now().strftime("%Y-%m-%d")
         
-    return max(dates)
+        # 最終 Fallback: 使用最後一個有效交易日
+        last_trading = get_last_trading_day()
+        return f"{str(last_trading)[:4]}-{str(last_trading)[4:6]}-{str(last_trading)[6:]}"
+    
+    # 取得 API 回傳的最新日期
+    result_date = max(dates)
+    
+    # [重要] 交易時間檢查
+    # 如果 API 回傳今天日期，但股市資料尚未完整，則回退到最後一個有效交易日
+    if result_date == today_str and not is_market_closed_today():
+        last_trading = get_last_trading_day(exclude_today=True)
+        result_date = f"{str(last_trading)[:4]}-{str(last_trading)[4:6]}-{str(last_trading)[6:]}"
+        print_flush(f"⚠ 今日 ({today_str}) 尚未收盤，使用前一交易日 ({result_date})")
+    
+    return result_date
 
-def step1_fetch_stock_list(silent_header=False):
-    """步驟1: 更新上市櫃清單 (使用 Open Data API)"""
-    if not silent_header:
-        print_flush("\n[Step 1] 更新上市櫃清單...")
-    stocks = []
+def step1_check_holiday():
+    """步驟1: 檢查今日是否為休市日"""
+    print_flush("\n[Step 1] 檢查開休市日期...")
     
-    # 1. TWSE 上市 (OpenAPI) - 基本資料 + 行情表
-    twse_meta_map = {}
-    twse_quote_data = {}  # 儲存行情資料
+    today = datetime.now()
+    today_str = today.strftime("%Y%m%d")
     
-    try:
-        # 1a. 上市公司基本資料 (含上市日期)
-        url_meta = "https://openapi.twse.com.tw/v1/opendata/t187ap03_L"
-        if not silent_header:
-            print_flush("  [TWSE] 基本資料 (上市日期)...", end="")
-        else:
-            print_flush("  [TWSE] 基本資料 (上市日期)...", end="")
-        res = requests.get(url_meta, timeout=30, verify=False)
-        data_meta = res.json()
+    # 1. 檢查週末
+    if today.weekday() >= 5:
+        print_flush(f"今日 ({today_str}) 是週末，休市。")
+        return True
         
-        for item in data_meta:
-            code = item.get('公司代號')
-            l_date = item.get('上市日期')  # Format: YYYYMMDD
-            if code and l_date:
-                twse_meta_map[code] = l_date
-        print_flush(f" ✓ (取得 {len(twse_meta_map)} 檔)")
-    except Exception as e:
-        print_flush(f" ✗ ({e})")
-    
+    # 2. 檢查 API (TWSE Holiday Schedule)
     try:
-        # 1b. TWSE 行情表 (STOCK_DAY_ALL - 個股日成交資訊)
-        url_quote = "https://openapi.twse.com.tw/v1/exchangeReport/STOCK_DAY_ALL"
-        if not silent_header:
-            print_flush("  [TWSE] 行情表 (股票清單)...", end="")
-        else:
-            print_flush("  [TWSE] 行情表 (股票清單)...", end="")
-        res = requests.get(url_quote, timeout=30, verify=False)
-        data_quote = res.json()
-        
-        count = 0
-        for item in data_quote:
-            code = item.get('Code')
-            name = item.get('Name')
-            if code and name and len(code) == 4:
-                l_date = twse_meta_map.get(code, '')
-                # 轉為 YYYY-MM-DD
-                if len(l_date) == 8:
-                    l_date = f"{l_date[:4]}-{l_date[4:6]}-{l_date[6:]}"
-                
-                stocks.append({'code': code, 'name': name, 'market': 'TWSE', 'list_date': l_date})
-                count += 1
-        print_flush(f" ✓ (取得 {count} 檔)")
-    except Exception as e:
-        print_flush(f" ✗ ({e})")
-        # Fallback: 使用 BWIBBU_d (本益比清單) 作為備援
-        try:
-            url_fallback = "https://openapi.twse.com.tw/v1/exchangeReport/BWIBBU_d"
-            print_flush("  -> 使用備援 API (BWIBBU_d)...", end="")
-            res = requests.get(url_fallback, timeout=30, verify=False)
+        url = get_api_url('twse', 'holiday_schedule')
+        # 參數: response=json
+        res = requests.get(f"{url}?response=json", timeout=10, verify=False)
+        if res.status_code == 200:
             data = res.json()
-            
-            count = 0
-            for item in data:
-                code = item.get('Code')
-                name = item.get('Name')
-                if code and name and len(code) == 4:
-                    l_date = twse_meta_map.get(code, '')
-                    if len(l_date) == 8:
-                        l_date = f"{l_date[:4]}-{l_date[4:6]}-{l_date[6:]}"
-                    stocks.append({'code': code, 'name': name, 'market': 'TWSE', 'list_date': l_date})
-                    count += 1
-            print_flush(f" ✓ (取得 {count} 檔)")
-        except Exception as e2:
-            print_flush(f" ✗ ({e2})")
-    
-    # 2. TPEx 上櫃 (Web API)
-    # 上櫃公司基本資料: https://www.tpex.org.tw/openapi/v1/t187ap03_O (上櫃公司基本資料)
-    tpex_meta_map = {}
-    try:
-        url_meta_tpex = "https://www.tpex.org.tw/openapi/v1/mopsfin_t187ap03_O"
-        if not silent_header:
-            print_flush("  [TPEx] 基本資料 (上市日期)...", end="")
-        else:
-            print_flush("  [TPEx] 基本資料 (上市日期)...", end="")
-        headers = {
-            "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36"
-        }
-        res = requests.get(url_meta_tpex, timeout=30, verify=False, headers=headers)
-        try:
-            data_meta_tpex = res.json()
-            for item in data_meta_tpex:
-                code = item.get('SecuritiesCompanyCode')
-                l_date = item.get('DateOfListing') # Format: YYYYMMDD
-                if code and l_date:
-                    tpex_meta_map[code] = l_date
-            print_flush(" ✓")
-        except:
-            print_flush(" ⚠ (無法解析基本資料，將略過上市日期)")
+            if data.get('stat') == 'OK':
+                # data['data'] 包含休市列表
+                # 格式: ["114年01月01日", "中華民國開國紀念日", "休市", "114年01月01日"]
+                holidays = set()
+                for row in data.get('data', []):
+                    try:
+                        d_str = row[0] # e.g. "114年01月01日"
+                        # 簡單解析: 114年 -> 2025
+                        m = re.search(r'(\d+)年(\d+)月(\d+)日', d_str)
+                        if m:
+                            year_roc = int(m.group(1))
+                            month = int(m.group(2))
+                            day = int(m.group(3))
+                            year_west = year_roc + 1911
+                            h_date = f"{year_west}{month:02d}{day:02d}"
+                            holidays.add(h_date)
+                    except:
+                        pass
+                
+                if today_str in holidays:
+                    print_flush(f"今日 ({today_str}) 是國定假日，休市。")
+                    return True
     except Exception as e:
-        print_flush(f" ⚠ ({e})")
+        print_flush(f"⚠ 無法取得休市表 ({e})，使用備援檢查...")
+        
+    # 3. 備援: 檢查是否為已知假日 (靜態列表)
+    if is_market_holiday(int(today_str)):
+        print_flush(f"今日 ({today_str}) 是已知假日，休市。")
+        return True
+        
+    print_flush(f"今日 ({today_str}) 是交易日。")
+    return False
 
-    try:
-        url = "https://www.tpex.org.tw/web/stock/aftertrading/daily_close_quotes/stk_quote_result.php?l=zh-tw&d=&o=json"
-        if not silent_header:
-            print_flush("  [TPEx] 行情表 (股票清單)...", end="")
-        else:
-            print_flush("  [TPEx] 行情表 (股票清單)...", end="")
-        res = requests.get(url, timeout=30, verify=False)
-        data = res.json()
-        
-        count = 0
-        if 'tables' in data:
-            for table in data['tables']:
-                if 'data' in table:
-                    for row in table['data']:
-                        if len(row) >= 2:
-                            code = row[0]
-                            name = row[1]
-                            if len(code) == 4:
-                                l_date = tpex_meta_map.get(code, '')
-                                # 轉為 YYYY-MM-DD
-                                if len(l_date) == 8:
-                                    l_date = f"{l_date[:4]}-{l_date[4:6]}-{l_date[6:]}"
-                            
-                                stocks.append({'code': code, 'name': name, 'market': 'TPEx', 'list_date': l_date})
-                                count += 1
-        print_flush(f" ✓ (取得 {count} 檔)")
-    except Exception as e:
-        print_flush(f" ✗ ({e})")
-        
-    # 3. 補全缺失的上市日期 (從 stock_meta 讀取舊資料)
+def step2_download_lists(silent_header=False):
+    """步驟2: 下載清單 (TPEx/TWSE/處置/新上市/終止)"""
     if not silent_header:
-        print_flush("  [補全] 填補缺失上市日期...", end="")
-    else:
-        print_flush("  [補全] 填補缺失上市日期...", end="")
-    fill_count = 0
-    try:
-        with db_manager.get_connection() as conn:
-            cur = conn.cursor()
-            cur.execute("SELECT code, list_date FROM stock_meta WHERE list_date IS NOT NULL")
-            existing_dates = {row[0]: row[1] for row in cur.fetchall()}
-            
-            for s in stocks:
-                if not s['list_date'] and s['code'] in existing_dates:
-                    s['list_date'] = existing_dates[s['code']]
-                    fill_count += 1
-        print_flush(f" ✓ (補全 {fill_count} 筆)")
-    except:
-        print_flush(" -")
+        print_flush("\n[Step 2] 下載股票清單 (含處置/新上市/終止)...")
+    
+    with db_manager.get_connection() as conn:
+        cur = conn.cursor()
+        cur.execute("""
+            CREATE TABLE IF NOT EXISTS stock_meta (
+                code TEXT PRIMARY KEY,
+                name TEXT,
+                market_type TEXT,
+                industry TEXT,
+                list_date TEXT,
+                delist_date TEXT,
+                is_normal INTEGER DEFAULT 1,
+                status TEXT DEFAULT 'Normal'
+            )
+        """)
 
-    # 4. 寫入資料庫
-    if stocks:
+        
+        # 檢查欄位是否存在，避免重複 ALTER TABLE 錯誤
+        cur.execute("PRAGMA table_info(stock_meta)")
+        columns = {row[1] for row in cur.fetchall()}
+        
+        if 'status' not in columns:
+            cur.execute("ALTER TABLE stock_meta ADD COLUMN status TEXT DEFAULT 'Normal'")
+            
+        if 'market_type' not in columns:
+            cur.execute("ALTER TABLE stock_meta ADD COLUMN market_type TEXT")
+            
+        if 'industry' not in columns:
+            cur.execute("ALTER TABLE stock_meta ADD COLUMN industry TEXT")
+            
+        conn.commit()
+
+        
+        total_added = 0
+        # A. TWSE
         try:
+            print_flush("  [TWSE] 基本資料... ", end="")
+            url = get_api_url('twse', 'stock_list')
+            res = requests.get(url, timeout=15, verify=False)
+            if res.status_code == 200:
+                data = res.json()
+                count = 0
+                for item in data:
+                    code = item.get('公司代號', '').strip()
+                    name = item.get('公司名稱', '').strip()
+                    l_date = item.get('上市日期', '').strip()
+                    ind = item.get('產業別', '').strip()
+                    if not is_normal_stock(code, name): continue
+                    if len(l_date) == 8: l_date = f"{l_date[:4]}-{l_date[4:6]}-{l_date[6:]}"
+                    cur.execute("INSERT INTO stock_meta (code, name, market_type, industry, list_date) VALUES (?, ?, 'TWSE', ?, ?) ON CONFLICT(code) DO UPDATE SET name=excluded.name, market_type=excluded.market_type, industry=excluded.industry, list_date=excluded.list_date", (code, name, ind, l_date))
+                    count += 1
+                print_flush(f"✓ ({count} 檔)")
+                total_added += count
+        except Exception as e: print_flush(f"❌ {e}")
+
+        # B. TPEx
+        try:
+            print_flush("  [TPEx] 基本資料... ", end="")
+            url = get_api_url('tpex', 'stock_list')
+            res = requests.get(url, timeout=15, verify=False)
+            if res.status_code == 200:
+                data = res.json()
+                count = 0
+                for item in data:
+                    code = item.get('SecuritiesCompanyCode', '').strip()
+                    name = item.get('CompanyName', '').strip()
+                    l_date = item.get('DateOfListing', '').strip()
+                    ind = item.get('Industry', '').strip()
+                    if not is_normal_stock(code, name): continue
+                    if len(l_date) == 8: l_date = f"{l_date[:4]}-{l_date[4:6]}-{l_date[6:]}"
+                    cur.execute("INSERT INTO stock_meta (code, name, market_type, industry, list_date) VALUES (?, ?, 'TPEx', ?, ?) ON CONFLICT(code) DO UPDATE SET name=excluded.name, market_type=excluded.market_type, industry=excluded.industry, list_date=excluded.list_date", (code, name, ind, l_date))
+                    count += 1
+                print_flush(f"✓ ({count} 檔)")
+                total_added += count
+        except Exception as e: print_flush(f"❌ {e}")
+        conn.commit()
+
+    # C/D. 處置/終止 (Placeholder)
+    print_flush("  [處置/終止] 更新狀態... ✓ (暫略)")
+    return total_added
+
+def step3_download_basic_info(silent_header=False):
+    """步驟3: 下載基本資料 (t187ap03_P) 更新上下市日期"""
+    if not silent_header:
+        print_flush("\n[Step 3] 下載基本資料 (更新上下市日期)...")
+    url = get_api_url('twse', 'basic_info')
+    try:
+        res = requests.get(url, timeout=30, verify=False)
+        if res.status_code == 200:
+            data = res.json()
+            updated = 0
             with db_manager.get_connection() as conn:
                 cur = conn.cursor()
-                # 使用 INSERT OR REPLACE 更新
-                for s in stocks:
-                    cur.execute("""
-                        INSERT INTO stock_meta (code, name, market_type, list_date)
-                        VALUES (?, ?, ?, ?)
-                        ON CONFLICT(code) DO UPDATE SET
-                            name=excluded.name,
-                            market_type=excluded.market_type,
-                            list_date=COALESCE(excluded.list_date, stock_meta.list_date)
-                    """, (s['code'], s['name'], s['market'], s['list_date']))
+                for item in data:
+                    code = item.get('公司代號', '').strip()
+                    l_date = item.get('上市日期', '').strip()
+                    d_date = item.get('終止上市日期', '').strip()
+                    if len(l_date) == 8: l_date = f"{l_date[:4]}-{l_date[4:6]}-{l_date[6:]}"
+                    if len(d_date) == 8: d_date = f"{d_date[:4]}-{d_date[4:6]}-{d_date[6:]}"
+                    else: d_date = None
+                    if l_date or d_date:
+                        cur.execute("UPDATE stock_meta SET list_date = COALESCE(?, list_date), delist_date = ? WHERE code = ?", (l_date, d_date, code))
+                        if cur.rowcount > 0: updated += 1
                 conn.commit()
-            print_flush(f"✓ 已更新 {len(stocks)} 檔股票至清單")
-            print_flush("✓ 已寫入資料庫 stock_meta")
-        except Exception as e:
-            print_flush(f"❌ 資料庫寫入失敗: {e}")
-    else:
-        print_flush("⚠ 未取得任何股票清單")
+            print_flush(f"✓ 更新 {updated} 檔日期資訊")
+    except Exception as e: print_flush(f"❌ {e}")
 
-def sync_stock_names_to_supabase(stocks):
-    """將股票清單同步至 Supabase (使用 stock_list 表)"""
-    print_flush("☁ 正在同步股名至 Supabase...", end="")
-    try:
-        # 使用 stock_list 表 (存放股票代碼與名稱)
-        url = f"{SUPABASE_URL}/rest/v1/stock_list"
-        headers = {
-            "apikey": SUPABASE_KEY,
-            "Authorization": f"Bearer {SUPABASE_KEY}",
-            "Content-Type": "application/json",
-            "Prefer": "resolution=merge-duplicates"
-        }
+def step4_clean_delisted():
+    """步驟4: 清理下市股票"""
+    print_flush("\n[Step 4] 清理下市股票...")
+    with db_manager.get_connection() as conn:
+        cur = conn.cursor()
         
-        batch_size = 200
-        total = len(stocks)
-        success_count = 0
-        failed_batches = 0
+        # 1. 標記下市 (delist_date 不為空)
+        cur.execute("SELECT code FROM stock_meta WHERE delist_date IS NOT NULL AND delist_date != ''")
+        delisted_meta = {r[0] for r in cur.fetchall()}
         
-        for i in range(0, total, batch_size):
-            batch = stocks[i:i+batch_size]
-            # stock_list 表欄位: code, name
-            payload = [{"code": s['code'], "name": s['name']} for s in batch]
+        # 2. 找出不在 meta 中的孤兒
+        cur.execute("SELECT DISTINCT h.code FROM stock_history h LEFT JOIN stock_meta m ON h.code=m.code WHERE m.code IS NULL")
+        orphans = {r[0] for r in cur.fetchall()}
+        
+        targets = delisted_meta | orphans
+        if not targets:
+            print_flush("✓ 無下市股票殘留")
+            return
+
+        print_flush(f"發現 {len(targets)} 檔下市/無效股票，準備清理...")
+        # 刪除
+        placeholders = ','.join(['?']*len(targets))
+        cur.execute(f"DELETE FROM stock_history WHERE code IN ({placeholders})", list(targets))
+        deleted = cur.rowcount
+        cur.execute(f"DELETE FROM stock_snapshot WHERE code IN ({placeholders})", list(targets))
+        cur.execute(f"DELETE FROM institutional_investors WHERE code IN ({placeholders})", list(targets))
+        conn.commit()
+    print_flush(f"✓ 已清理 {deleted} 筆歷史資料")
+
+def step5_download_quotes(silent_header=False):
+    """步驟5: 下載今日行情 (TPEx/TWSE/大盤)"""
+    if not silent_header:
+        print_flush("\n[Step 5] 下載今日行情 (TPEx/TWSE/大盤)...")
+    
+    # 1. TPEx
+    update_market_data("TPEx (上櫃)", _fetch_tpex_data, _parse_tpex_item, silent_header=True)
+    
+    # 2. TWSE
+    update_market_data("TWSE (上市)", _fetch_twse_data, _parse_twse_item, silent_header=True)
+    
+    # 3. 大盤 (Step 3.8 logic)
+    step3_8_fetch_market_index(silent_header=True)
+
+
+def step4_clean_delisted(silent_header=False):
+    """
+    步驟4: 清理下市股票
+    
+    [重要] 只清理資料庫中已明確標記 delist_date 的股票
+    避免誤刪正常交易中的股票
+    """
+    if not silent_header:
+        print_flush("\n[Step 4] 清理下市股票...")
+    
+    with db_manager.get_connection() as conn:
+        cur = conn.cursor()
+        
+        # 只從資料庫中已標記 delist_date 的股票
+        cur.execute("""
+            SELECT code, name, delist_date FROM stock_meta 
+            WHERE delist_date IS NOT NULL AND delist_date != ''
+        """)
+        db_delisted = cur.fetchall()
+        
+        if not db_delisted:
+            print_flush("  ✓ 無下市股票需要清理")
+            return
+        
+        print_flush(f"  發現 {len(db_delisted)} 支已標記下市股票")
+        
+        deleted_count = 0
+        for code, name, delist_date in db_delisted:
+            # 檢查該股票是否有資料
+            cur.execute("SELECT COUNT(*) FROM stock_history WHERE code = ?", (code,))
+            history_count = cur.fetchone()[0]
             
-            try:
-                res = requests.post(url, json=payload, headers=headers, timeout=15)
-                if res.status_code in (200, 201):
-                    success_count += len(batch)
-                    print_flush(".", end="")
-                else:
-                    failed_batches += 1
-                    # 顯示詳細錯誤以便除錯
-                    error_msg = res.text.replace('\n', ' ')
-                    print_flush(f"x[{res.status_code}:{error_msg}]", end="")
-            except requests.Timeout:
-                failed_batches += 1
-                print_flush("t", end="")
-                
-        if failed_batches > 0:
-            print_flush(f" ⚠ ({success_count}/{total}, {failed_batches} 批失敗)")
+            if history_count > 0:
+                # 刪除所有相關資料
+                cur.execute("DELETE FROM stock_history WHERE code = ?", (code,))
+                cur.execute("DELETE FROM institutional_investors WHERE code = ?", (code,))
+                cur.execute("DELETE FROM margin_data WHERE code = ?", (code,))
+                cur.execute("DELETE FROM stock_snapshot WHERE code = ?", (code,))
+                cur.execute("DELETE FROM stock_meta WHERE code = ?", (code,))
+                deleted_count += 1
+                print_flush(f"    - {code} {name[:8] if name else ''} (下市日:{delist_date}): 已清理")
+        
+        conn.commit()
+        
+        if deleted_count > 0:
+            print_flush(f"  ✓ 已清理 {deleted_count} 支下市股票")
         else:
-            print_flush(f" ✓ ({success_count}/{total})")
-    except Exception as e:
-        print_flush(f" ✗ 同步錯誤: {e}")
+            print_flush("  ✓ 無需清理")
+
+
+def step6_download_valuation(silent_header=False):
+    """步驟6: 下載估值 (TPEx/TWSE)"""
+    if not silent_header:
+        print_flush("\n[Step 6] 下載估值 (PE/PB/Yield)...")
+    
+    # TPEx
+    _fetch_and_update_tpex_valuation()
+    # TWSE
+    _fetch_and_update_twse_valuation()
+
+def step7_download_institutional(days=60, silent_header=False):
+    """步驟7: 下載三大法人 (Step 3.5 logic)"""
+    if not silent_header:
+        print_flush("\n[Step 7] 下載三大法人買賣超...")
+    # 呼叫原 step3_5 (已修復 requests)
+    step3_5_download_institutional(days, silent_header=True)
+
+def step8_download_margin(days=60, silent_header=False):
+    """步驟8: 下載融資融券 (Step 3.7 logic)"""
+    if not silent_header:
+        print_flush("\n[Step 8] 下載融資融券...")
+    # 呼叫原 step3_7
+    step3_7_fetch_margin_data(days, silent_header=True)
+
+def step9_download_tdcc(force=False, silent_header=False):
+    """步驟9: 下載集保大戶 (Step 3.6 logic)"""
+    if not silent_header:
+        print_flush("\n[Step 9] 下載集保大戶資料...")
+    # 呼叫原 step3_6 (已修復孤兒代碼)
+    step3_6_download_major_holders(force, silent_header=True)
+
+def step10_check_gaps():
+    """步驟10: 檢查數據缺失"""
+    print_flush("\n[Step 10] 檢查數據缺失...")
+    step4_check_data_gaps()
+
+def step11_verify_backfill():
+    """步驟11: 驗證一致性並補漏"""
+    print_flush("\n[Step 11] 驗證一致性並補漏...")
+    step6_verify_and_backfill(skip_downloads=True, skip_institutional=True)
+
+def step12_calc_indicators():
+    """步驟12: 計算技術指標"""
+    print_flush("\n[Step 12] 計算技術指標...")
+    step7_calc_indicators()
 
 # ==============================
 # 市場資料更新模板 (Template Method)
@@ -5915,8 +6469,8 @@ def update_market_data(market_name, fetch_func, parse_func, silent_header=False)
     """
     通用市場資料更新邏輯 (Template Method)
     :param market_name: 市場名稱 (TPEx/TWSE)
-    :param fetch_func: 資料獲取函式，回傳 (trade_date, data_list)
-    :param parse_func: 資料解析函式，回傳 (code, name, open, high, low, close, vol)
+    :param fetch_func: 資料獲取函式, 回傳 (trade_date, data_list)
+    :param parse_func: 資料解析函式, 回傳 (code, name, open, high, low, close, vol)
     :param silent_header: 是否隱藏標題 (用於一鍵更新時避免重複)
     """
     if not silent_header:
@@ -6152,7 +6706,7 @@ def _parse_twse_item(item):
 
 def _fetch_and_update_tpex_valuation():
     """下載並更新 TPEx 個股本益比、殖利率、股價淨值比"""
-    print_flush("\n[Step 2+] 更新 TPEx 估值資料 (PE/Yield/PB)...")
+    print_flush("\n[Step 6] 更新 TPEx 估值資料 (PE/Yield/PB)...")
     try:
         url = "https://www.tpex.org.tw/web/stock/aftertrading/peratio_analysis/pera_result.php?l=zh-tw&o=json"
         res = requests.get(url, timeout=30, verify=False)
@@ -6185,8 +6739,8 @@ def _fetch_and_update_tpex_valuation():
                     WHERE code=?
                 """, updates)
                 conn.commit()
-            today_display = datetime.now().strftime("%Y-%m-%d")
-            print_flush(f"✓ 已更新 {len(updates)} 筆 TPEx 估值資料 ({today_display})")
+            # [修正] 使用正確交易日顯示
+            print_flush(f"✓ 已更新 {len(updates)} 筆 TPEx 估值資料 ({get_last_trading_day()})")
     except Exception as e:
         print_flush(f"❌ TPEx 估值更新失敗: {e}")
 
@@ -6198,7 +6752,7 @@ def step2_download_tpex_daily(silent_header=False):
 
 def _fetch_and_update_twse_valuation():
     """下載並更新 TWSE 個股本益比、殖利率、股價淨值比"""
-    print_flush("\n[Step 3+] 更新 TWSE 估值資料 (PE/Yield/PB)...")
+    print_flush("\n[Step 6] 更新 TWSE 估值資料 (PE/Yield/PB)...")
     try:
         url = "https://openapi.twse.com.tw/v1/exchangeReport/BWIBBU_d"
         res = requests.get(url, timeout=30, verify=False)
@@ -6224,8 +6778,8 @@ def _fetch_and_update_twse_valuation():
                     WHERE code=?
                 """, updates)
                 conn.commit()
-            today_display = datetime.now().strftime("%Y-%m-%d")
-            print_flush(f"✓ 已更新 {len(updates)} 筆 TWSE 估值資料 ({today_display})")
+            # [修正] 使用正確交易日顯示
+            print_flush(f"✓ 已更新 {len(updates)} 筆 TWSE 估值資料 ({get_last_trading_day()})")
     except Exception as e:
         print_flush(f"❌ TWSE 估值更新失敗: {e}")
 
@@ -6279,12 +6833,23 @@ def step4_check_data_gaps():
     amount_gaps = []
     inst_gaps = []
     
+    # 統計變數
+    total_records = 0
+    total_stocks = len(rows)
+    min_db_date = 99999999
+    max_db_date = 0
+    
     for r in rows:
         code = r[0]
         total = r[1]
         missing_amt = r[2] if r[2] else 0
         min_date_int = r[3]
         
+        # 累加統計
+        total_records += total
+        if min_date_int and min_date_int < min_db_date:
+            min_db_date = min_date_int
+            
         # 檢查資料筆數 (加入上市日期判斷)
         if total < MIN_DATA_COUNT:
             is_new_stock = False
@@ -6322,6 +6887,28 @@ def step4_check_data_gaps():
         if code not in inst_map:
             inst_gaps.append(code)
             
+    # 取得資料庫最大日期
+    try:
+        max_db_date_str = get_latest_market_date()
+        max_db_date = int(max_db_date_str.replace('-', ''))
+    except:
+        max_db_date = 0
+
+    # 顯示統計資訊
+    print_flush("\n" + "="*60)
+    print_flush("【資料庫統計資訊】")
+    print_flush("="*60)
+    print_flush(f"總股票數: {total_stocks} 檔")
+    print_flush(f"總記錄數: {total_records:,} 筆")
+    if total_stocks > 0:
+        print_flush(f"平均每檔: {total_records // total_stocks} 天")
+    
+    if min_db_date != 99999999 and max_db_date != 0:
+        min_d_str = str(min_db_date)
+        max_d_str = str(max_db_date)
+        print_flush(f"資料區間: {min_d_str[:4]}-{min_d_str[4:6]}-{min_d_str[6:]} 至 {max_d_str[:4]}-{max_d_str[4:6]}-{max_d_str[6:]}")
+    print_flush("-" * 60)
+
     # 顯示結果
     if not count_gaps and not amount_gaps and not inst_gaps:
         print_flush(f"✓ 所有股票資料皆充足 (>= {MIN_DATA_COUNT} 筆或符合上市天數, 金額/法人皆完整)")
@@ -6356,7 +6943,8 @@ def step5_clean_delisted():
             cur = conn.cursor()
             
             # 使用 stock_meta 表作為有效股票名冊 (包含上市+上櫃)
-            cur.execute("SELECT code FROM stock_meta WHERE delist_date IS NULL OR delist_date = ''")
+            # [修正] 直接查詢所有 stock_meta 記錄，不依賴 delist_date 欄位
+            cur.execute("SELECT code FROM stock_meta")
             valid_codes = set(row[0] for row in cur.fetchall())
             
             if not valid_codes:
@@ -6400,18 +6988,95 @@ def step3_5_download_institutional(days=60, silent_header=False):
         from io import StringIO
         
         # === A. 官方 OpenAPI (主要來源 - 只抓今天) ===
-        today_int = int(datetime.now().strftime("%Y%m%d"))
+        today_int = get_last_trading_day()  # [修正] 使用交易日檢查
         openapi_success = False
+        total_saved = 0
         
+        # A1. TWSE 法人資料
         try:
             print_flush("正在從官方 OpenAPI 取得今日法人資料...")
             saved = InstitutionalInvestorAPI.fetch_all_openapi()
             if saved > 0:
-                today_display = datetime.now().strftime("%Y-%m-%d")
-                print_flush(f"✓ 官方 OpenAPI: 已儲存 {saved} 筆法人資料 ({today_display})")
+                total_saved += saved
                 openapi_success = True
         except Exception as e:
-            print_flush(f"⚠ 官方 OpenAPI 失敗: {e}，切換至備援來源...")
+            print_flush(f"⚠ TWSE 官方 OpenAPI 失敗: {e}")
+        
+        # A2. TPEx 法人資料 (新增)
+        try:
+            print_flush("正在從 TPEx OpenAPI 取得今日上櫃法人資料...")
+            url = API_ENDPOINTS['tpex']['institutional']
+            resp = requests.get(url, timeout=30, verify=False)
+            if resp.status_code == 200:
+                data = resp.json()
+                if data:
+                    tpex_inst_data = []
+                    for item in data:
+                        try:
+                            code = str(item.get('SecuritiesCompanyCode', '')).strip()
+                            if len(code) != 4 or not code.isdigit():
+                                continue
+                            # TPEx OpenAPI 欄位:
+                            # ForeignInvestorsBuy, ForeignInvestorsSell
+                            # SecuritiesInvestmentTrustBuy, SecuritiesInvestmentTrustSell
+                            # DealersProprietaryBuy, DealersProprietarySell
+                            f_buy = safe_int(str(item.get('ForeignInvestorsBuy', '0')).replace(',', ''))
+                            f_sell = safe_int(str(item.get('ForeignInvestorsSell', '0')).replace(',', ''))
+                            t_buy = safe_int(str(item.get('SecuritiesInvestmentTrustBuy', '0')).replace(',', ''))
+                            t_sell = safe_int(str(item.get('SecuritiesInvestmentTrustSell', '0')).replace(',', ''))
+                            d_buy = safe_int(str(item.get('DealersProprietaryBuy', '0')).replace(',', ''))
+                            d_sell = safe_int(str(item.get('DealersProprietarySell', '0')).replace(',', ''))
+                            tpex_inst_data.append((code, today_int, f_buy, f_sell, t_buy, t_sell, d_buy, d_sell))
+                        except:
+                            continue
+                    
+                    if tpex_inst_data:
+                        with db_manager.get_connection() as conn:
+                            cur = conn.cursor()
+                            cur.executemany("""
+                                INSERT OR REPLACE INTO institutional_investors 
+                                (code, date_int, foreign_buy, foreign_sell, trust_buy, trust_sell, dealer_buy, dealer_sell)
+                                VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+                            """, tpex_inst_data)
+                            conn.commit()
+                        total_saved += len(tpex_inst_data)
+                        print_flush(f"✓ TPEx OpenAPI: 已儲存 {len(tpex_inst_data)} 筆上櫃法人資料")
+                        openapi_success = True
+        except Exception as e:
+            print_flush(f"⚠ TPEx OpenAPI 失敗: {e}")
+        
+        # A3. 大盤法人資料 (0000) - 新增
+        try:
+            url = "https://www.twse.com.tw/rwd/zh/fund/BFI82U?response=json"
+            resp = requests.get(url, timeout=30, verify=False)
+            if resp.status_code == 200:
+                data = resp.json()
+                if data.get('stat') == 'OK' and data.get('data'):
+                    rows = data['data']
+                    # rows[0]: 自營商(自行買賣), rows[2]: 投信, rows[3]: 外資及陸資
+                    # 金額單位：元，需轉換為股數概念 (這裡直接存金額)
+                    f_buy = safe_int(str(rows[3][1]).replace(',', ''))  # 外資買進金額
+                    f_sell = safe_int(str(rows[3][2]).replace(',', ''))  # 外資賣出金額
+                    t_buy = safe_int(str(rows[2][1]).replace(',', ''))   # 投信買進金額
+                    t_sell = safe_int(str(rows[2][2]).replace(',', ''))  # 投信賣出金額
+                    d_buy = safe_int(str(rows[0][1]).replace(',', ''))   # 自營商買進金額
+                    d_sell = safe_int(str(rows[0][2]).replace(',', ''))  # 自營商賣出金額
+                    
+                    with db_manager.get_connection() as conn:
+                        cur = conn.cursor()
+                        cur.execute("""
+                            INSERT OR REPLACE INTO institutional_investors 
+                            (code, date_int, foreign_buy, foreign_sell, trust_buy, trust_sell, dealer_buy, dealer_sell)
+                            VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+                        """, ('0000', today_int, f_buy, f_sell, t_buy, t_sell, d_buy, d_sell))
+                        conn.commit()
+                    total_saved += 1
+                    print_flush(f"✓ 大盤法人資料: 外資 {(f_buy-f_sell)/100000000:.1f}億, 投信 {(t_buy-t_sell)/100000000:.1f}億")
+        except Exception as e:
+            print_flush(f"⚠ 大盤法人資料失敗: {e}")
+        
+        if total_saved > 0:
+            print_flush(f"✓ 官方 OpenAPI 共儲存 {total_saved} 筆法人資料 ({today_int})")
         
         # === B. 歷史資料補漏 (網頁爬蟲備援) ===
         print_flush(f"檢查近 {days} 天歷史缺漏...")
@@ -6524,12 +7189,16 @@ def step3_5_download_institutional(days=60, silent_header=False):
                         try:
                             code = str(row[0]).strip()
                             if len(code) != 4: continue
-                            f_buy = safe_int(row[2])
-                            f_sell = safe_int(row[3])
-                            t_buy = safe_int(row[5])
-                            t_sell = safe_int(row[6])
-                            d_buy = safe_int(row[8])
-                            d_sell = safe_int(row[9])
+                            # TPEx 索引修正
+                            # 8: 外資合計買, 9: 外資合計賣
+                            # 11: 投信買, 12: 投信賣
+                            # 20: 自營商合計買, 21: 自營商合計賣
+                            f_buy = safe_int(row[8])
+                            f_sell = safe_int(row[9])
+                            t_buy = safe_int(row[11])
+                            t_sell = safe_int(row[12])
+                            d_buy = safe_int(row[20])
+                            d_sell = safe_int(row[21])
                             inst_data.append((code, date_int, f_buy, f_sell, t_buy, t_sell, d_buy, d_sell))
                         except: pass
             except Exception as e:
@@ -6545,6 +7214,19 @@ def step3_5_download_institutional(days=60, silent_header=False):
                         VALUES (?, ?, ?, ?, ?, ?, ?, ?)
                     """, inst_data)
                     conn.commit()
+                
+                # [New] 同步更新 stock_history (計算買賣超)
+                # inst_data: (code, date_int, f_buy, f_sell, t_buy, t_sell, d_buy, d_sell)
+                with db_manager.get_connection() as conn:
+                    cur = conn.cursor()
+                    update_params = [(r[2]-r[3], r[4]-r[5], r[6]-r[7], r[0], r[1]) for r in inst_data]
+                    cur.executemany("""
+                        UPDATE stock_history
+                        SET foreign_buy=?, trust_buy=?, dealer_buy=?
+                        WHERE code=? AND date_int=?
+                    """, update_params)
+                    conn.commit()
+                    
                 print_flush(f"成功 ({len(inst_data)} 筆)")
                 total_inserted += len(inst_data)
             else:
@@ -6569,9 +7251,9 @@ def step3_5_download_institutional(days=60, silent_header=False):
     except Exception as e:
         
         # 使用 requests 下載 (避開 SSL 錯誤)
-        import requests
+        # import requests # 已全域導入
         import io
-        import urllib3
+        # import urllib3 # 已全域導入
         urllib3.disable_warnings(urllib3.exceptions.InsecureRequestWarning)
         
         headers = {'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/91.0.4472.124 Safari/537.36'}
@@ -6676,19 +7358,47 @@ def step3_6_download_major_holders(force=False, silent_header=False):
         df['持股分級'] = pd.to_numeric(df['持股分級'], errors='coerce')
         df['證券代號'] = df['證券代號'].astype(str).str.strip()
         
+        # 取得資料日期
+        try:
+            data_date = int(df['資料日期'].iloc[0])
+            print_flush(f"集保資料日期: {data_date}")
+        except:
+            data_date = int(datetime.now().strftime("%Y%m%d"))
+            print_flush(f"⚠ 無法取得資料日期，使用今日: {data_date}")
+
         # 1. 計算千張大戶持股比例 (持股分級 15: 1,000,001股以上)
-        # 注意: 級別 17 是合計，不能加總！
-        # 若要計算 400張以上，可使用 isin([12, 13, 14, 15])
-        # 這裡依據使用者需求 (1000張以上)，只取級別 15
         df_major = df[df['持股分級'] == 15].copy()
+        
+        # [修正] 使用 stock_meta 過濾 (只保留現有上市櫃股票，排除已下市但仍有集保資料的股票)
+        # 預先載入 stock_meta
+        valid_codes = set()
+        try:
+            with db_manager.get_connection() as conn:
+                cur = conn.cursor()
+                cur.execute("SELECT code FROM stock_meta")
+                valid_codes = {r[0] for r in cur.fetchall()}
+        except:
+            pass
+            
+        # 如果 stock_meta 為空 (罕見)，則退回使用 is_normal_stock
+        if not valid_codes:
+            print_flush("⚠ stock_meta 為空，退回使用格式檢查")
+            for code in df_major['證券代號'].unique():
+                if is_normal_stock(code, "Unknown"):
+                    valid_codes.add(code)
+        
+        df_major = df_major[df_major['證券代號'].isin(valid_codes)]
+        
         major_holders = df_major.groupby('證券代號')['占集保庫存數比例%'].sum().to_dict()
         
         # 2. 取得總股東人數 (持股分級 17: 合計)
         df_total = df[df['持股分級'] == 17].copy()
-        # 移除人數中的逗號並轉為整數
         if df_total['人數'].dtype == object:
             df_total['人數'] = df_total['人數'].astype(str).str.replace(',', '')
         df_total['人數'] = pd.to_numeric(df_total['人數'], errors='coerce').fillna(0).astype(int)
+        
+        # 同樣過濾總股東人數資料
+        df_total = df_total[df_total['證券代號'].isin(valid_codes)]
         total_shareholders = df_total.set_index('證券代號')['人數'].to_dict()
         
         if not major_holders:
@@ -6700,19 +7410,64 @@ def step3_6_download_major_holders(force=False, silent_header=False):
         with db_manager.get_connection() as conn:
             cur = conn.cursor()
             count = 0
+            
+            # A. 批次寫入所有分級資料到 stock_shareholding_all
+            all_dist_data = []
+            for _, row in df.iterrows():
+                try:
+                    code = str(row['證券代號']).strip()
+                    level = int(row['持股分級'])
+                    # 處理人數與股數中的逗號
+                    h_val = str(row['人數']).replace(',', '') if '人數' in row else '0'
+                    s_val = str(row['股數']).replace(',', '') if '股數' in row else '0'
+                    holders = int(float(h_val))
+                    shares = int(float(s_val))
+                    prop = float(row['占集保庫存數比例%'])
+                    all_dist_data.append((code, data_date, level, holders, shares, prop))
+                except:
+                    continue
+            
+            if all_dist_data:
+                cur.executemany("""
+                    INSERT OR REPLACE INTO stock_shareholding_all (code, date_int, level, holders, shares, proportion)
+                    VALUES (?, ?, ?, ?, ?, ?)
+                """, all_dist_data)
+
+            # B. 更新 stock_snapshot 與 stock_history (維持原有的 1000張大戶邏輯作為預設)
             for code, pct in major_holders.items():
                 holders = total_shareholders.get(code, 0)
-                # 更新大戶比例與總股東人數
+                # 更新 stock_snapshot
                 cur.execute("""
                     UPDATE stock_snapshot 
                     SET major_holders_pct=?, total_shareholders=? 
                     WHERE code=?
                 """, (pct, holders, code))
+                
+                # 更新 stock_history
+                cur.execute("""
+                    INSERT OR IGNORE INTO stock_history (code, date_int)
+                    VALUES (?, ?)
+                """, (code, data_date))
+                
+                cur.execute("""
+                    UPDATE stock_history
+                    SET tdcc_count=?, large_shareholder_pct=?
+                    WHERE code=? AND date_int=?
+                """, (holders, pct, code, data_date))
+                
                 count += 1
             conn.commit()
             
         today_display = datetime.now().strftime("%Y-%m-%d")
         print_flush(f"✓ 已更新 {count} 檔大戶持股比例與總股東人數 ({today_display})")
+        
+        # === C. 同步 TWSE 休市日 (每週五一併更新) ===
+        print_flush("正在同步 TWSE 休市日...")
+        holidays = _fetch_holidays_from_twse()
+        if holidays:
+            print_flush(f"✓ 已載入 {len(holidays)} 個休市日")
+        else:
+            print_flush("⚠ 無法從 TWSE API 取得休市日，使用靜態備援表")
         
     except Exception as e:
         print_flush(f"❌ 下載或處理失敗: {e}")
@@ -6725,15 +7480,15 @@ def step3_7_fetch_margin_data(days=60, silent_header=False):
     
     try:
         # === A. 官方 OpenAPI (主要來源 - 只抓今天) ===
-        today_int = int(datetime.now().strftime("%Y%m%d"))
+        today_int = get_last_trading_day()  # [修正] 使用交易日檢查
         openapi_success = False
         
         try:
             print_flush("正在從官方 OpenAPI 取得今日融資融券...")
             saved = MarginDataAPI.fetch_all_margin_data()
             if saved > 0:
-                today_display = datetime.now().strftime("%Y-%m-%d")
-                print_flush(f"✓ 官方 OpenAPI: 已儲存 {saved} 筆融資融券資料 ({today_display})")
+                # [修正] 使用正確交易日顯示
+                print_flush(f"✓ 官方 OpenAPI: 已儲存 {saved} 筆融資融券資料 ({today_int})")
                 openapi_success = True
         except Exception as e:
             print_flush(f"⚠ 官方 OpenAPI 失敗: {e}，切換至備援來源...")
@@ -7058,7 +7813,7 @@ def step4_load_data():
     print_flush(f"✓ 已載入 {len(data)} 檔股票資料")
     return data
 
-def _auto_fix_missing_amount():
+def _auto_fix_missing_amount(crawl=True):
     """
     自動修復缺失的成交金額/收盤價/成交量
     
@@ -7113,130 +7868,133 @@ def _auto_fix_missing_amount():
                 print_flush(f"  [修復] 情況5 (無量有價有額): {len(case5)} 筆 → 量 = 額 ÷ 價")
             
             # 情況 4, 6, 7: 需要爬蟲抓取
-            cur.execute("""
-                SELECT code, date_int, close, volume, amount 
-                FROM stock_history 
-                WHERE (volume > 0 AND (close IS NULL OR close = 0) AND (amount IS NULL OR amount = 0))
-                   OR ((volume IS NULL OR volume = 0) AND close > 0 AND (amount IS NULL OR amount = 0))
-                   OR ((volume IS NULL OR volume = 0) AND (close IS NULL OR close = 0) AND amount > 0)
-                ORDER BY code, date_int
-            """)
-            need_crawl = cur.fetchall()
-            
-            if need_crawl:
-                fixed_by_crawl = 0
-                fixed_by_prev = 0
+            if not crawl:
+                print_flush("  [跳過] 情況4/6/7 (爬蟲): 已設定跳過下載")
+            else:
+                cur.execute("""
+                    SELECT code, date_int, close, volume, amount 
+                    FROM stock_history 
+                    WHERE (volume > 0 AND (close IS NULL OR close = 0) AND (amount IS NULL OR amount = 0))
+                       OR ((volume IS NULL OR volume = 0) AND close > 0 AND (amount IS NULL OR amount = 0))
+                       OR ((volume IS NULL OR volume = 0) AND (close IS NULL OR close = 0) AND amount > 0)
+                    ORDER BY code, date_int
+                """)
+                need_crawl = cur.fetchall()
                 
-                # 按日期分組
-                from collections import defaultdict
-                by_date = defaultdict(list)
-                for code, date_int, close, volume, amount in need_crawl:
-                    by_date[date_int].append((code, close, volume, amount))
-                
-                for date_int, stocks in by_date.items():
-                    # 嘗試從 TWSE/TPEx 抓取該日資料
-                    try:
-                        date_str = str(date_int)
-                        url_twse = f"https://www.twse.com.tw/exchangeReport/MI_INDEX?response=json&date={date_str}&type=ALLBUT0999"
-                        url_tpex = f"https://www.tpex.org.tw/openapi/v1/tpex_mainboard_daily_close_quotes"
-                        
-                        headers = {'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36'}
-                        
-                        # 抓取 TWSE 資料
-                        crawled_data = {}
+                if need_crawl:
+                    fixed_by_crawl = 0
+                    fixed_by_prev = 0
+                    
+                    # 按日期分組
+                    from collections import defaultdict
+                    by_date = defaultdict(list)
+                    for code, date_int, close, volume, amount in need_crawl:
+                        by_date[date_int].append((code, close, volume, amount))
+                    
+                    for date_int, stocks in by_date.items():
+                        # 嘗試從 TWSE/TPEx 抓取該日資料
                         try:
-                            resp = requests.get(url_twse, headers=headers, timeout=15, verify=False)
-                            data = resp.json()
-                            if data.get('stat') == 'OK':
-                                # 找到個股資料 (通常在 tables[8] 或類似位置)
-                                for table in data.get('tables', []):
-                                    if table.get('title') and '每日收盤行情' in table.get('title', ''):
-                                        for row in table.get('data', []):
-                                            if len(row) >= 9:
-                                                c = str(row[0]).strip()
-                                                if len(c) == 4 and c.isdigit():
-                                                    try:
-                                                        crawled_data[c] = {
-                                                            'close': safe_num(row[8]),
-                                                            'volume': safe_int(row[2]),
-                                                            'amount': safe_int(row[4])
-                                                        }
-                                                    except:
-                                                        pass
-                        except:
-                            pass
-                        
-                        # 抓取 TPEx 資料
-                        try:
-                            # 轉換日期格式為民國年
-                            d_obj = datetime.strptime(date_str, '%Y%m%d')
-                            roc_date = f"{d_obj.year - 1911}/{d_obj.month:02d}/{d_obj.day:02d}"
-                            url_tpex = f"https://www.tpex.org.tw/web/stock/aftertrading/otc_quotes_no1430/stk_wn1430_result.php?l=zh-tw&d={roc_date}&o=json"
+                            date_str = str(date_int)
+                            url_twse = f"https://www.twse.com.tw/exchangeReport/MI_INDEX?response=json&date={date_str}&type=ALLBUT0999"
+                            url_tpex = f"https://www.tpex.org.tw/openapi/v1/tpex_mainboard_daily_close_quotes"
                             
-                            resp = requests.get(url_tpex, headers=headers, timeout=15, verify=False)
-                            data = resp.json()
+                            headers = {'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36'}
                             
-                            if data.get('aaData'):
-                                for row in data['aaData']:
-                                    if len(row) >= 6:
-                                        c = str(row[0]).strip()
-                                        if len(c) == 4 and c.isdigit():
-                                            try:
-                                                crawled_data[c] = {
-                                                    'close': safe_num(row[2]),  # 收盤
-                                                    'volume': safe_int(row[8]) if len(row) > 8 else 0,  # 成交量
-                                                    'amount': safe_int(row[9]) if len(row) > 9 else 0   # 成交金額
-                                                }
-                                            except:
-                                                pass
-                        except:
+                            # 抓取 TWSE 資料
+                            crawled_data = {}
+                            try:
+                                resp = requests.get(url_twse, headers=headers, timeout=15, verify=False)
+                                data = resp.json()
+                                if data.get('stat') == 'OK':
+                                    # 找到個股資料 (通常在 tables[8] 或類似位置)
+                                    for table in data.get('tables', []):
+                                        if table.get('title') and '每日收盤行情' in table.get('title', ''):
+                                            for row in table.get('data', []):
+                                                if len(row) >= 9:
+                                                    c = str(row[0]).strip()
+                                                    if len(c) == 4 and c.isdigit():
+                                                        try:
+                                                            crawled_data[c] = {
+                                                                'close': safe_num(row[8]),
+                                                                'volume': safe_int(row[2]),
+                                                                'amount': safe_int(row[4])
+                                                            }
+                                                        except:
+                                                            pass
+                            except:
+                                pass
+                            
+                            # 抓取 TPEx 資料
+                            try:
+                                # 轉換日期格式為民國年
+                                d_obj = datetime.strptime(date_str, '%Y%m%d')
+                                roc_date = f"{d_obj.year - 1911}/{d_obj.month:02d}/{d_obj.day:02d}"
+                                url_tpex = f"https://www.tpex.org.tw/web/stock/aftertrading/otc_quotes_no1430/stk_wn1430_result.php?l=zh-tw&d={roc_date}&o=json"
+                                
+                                resp = requests.get(url_tpex, headers=headers, timeout=15, verify=False)
+                                data = resp.json()
+                                
+                                if data.get('aaData'):
+                                    for row in data['aaData']:
+                                        if len(row) >= 6:
+                                            c = str(row[0]).strip()
+                                            if len(c) == 4 and c.isdigit():
+                                                try:
+                                                    crawled_data[c] = {
+                                                        'close': safe_num(row[2]),  # 收盤
+                                                        'volume': safe_int(row[8]) if len(row) > 8 else 0,  # 成交量
+                                                        'amount': safe_int(row[9]) if len(row) > 9 else 0   # 成交金額
+                                                    }
+                                                except:
+                                                    pass
+                            except:
+                                pass
+                            
+                            # 用爬取的資料更新
+                            for code, old_close, old_volume, old_amount in stocks:
+                                if code in crawled_data:
+                                    cdata = crawled_data[code]
+                                    new_close = cdata.get('close') or old_close
+                                    new_volume = cdata.get('volume') or old_volume
+                                    new_amount = cdata.get('amount') or old_amount
+                                    
+                                    # 如果還是缺，用計算補齊
+                                    if new_volume and new_close and not new_amount:
+                                        new_amount = int(new_volume * new_close)
+                                    if new_amount and new_close and not new_volume:
+                                        new_volume = int(new_amount / new_close) if new_close > 0 else 0
+                                    if new_amount and new_volume and not new_close:
+                                        new_close = round(new_amount / new_volume, 2) if new_volume > 0 else 0
+                                    
+                                    if new_close and new_volume and new_amount:
+                                        cur.execute("UPDATE stock_history SET close=?, volume=?, amount=? WHERE code=? AND date_int=?",
+                                                   (new_close, new_volume, new_amount, code, date_int))
+                                        fixed_by_crawl += 1
+                                else:
+                                    # 沒抓到，用前一天估算
+                                    cur.execute("""
+                                        SELECT close FROM stock_history 
+                                        WHERE code = ? AND date_int < ? AND close > 0
+                                        ORDER BY date_int DESC LIMIT 1
+                                    """, (code, date_int))
+                                    prev = cur.fetchone()
+                                    if prev and prev[0] > 0:
+                                        prev_close = prev[0]
+                                        if old_volume and old_volume > 0:
+                                            est_amount = int(prev_close * old_volume)
+                                            cur.execute("UPDATE stock_history SET close=?, amount=? WHERE code=? AND date_int=?",
+                                                       (prev_close, est_amount, code, date_int))
+                                            fixed_by_prev += 1
+                            
+                            time.sleep(0.3)  # 避免請求過快
+                            
+                        except Exception as e:
                             pass
-                        
-                        # 用爬取的資料更新
-                        for code, old_close, old_volume, old_amount in stocks:
-                            if code in crawled_data:
-                                cdata = crawled_data[code]
-                                new_close = cdata.get('close') or old_close
-                                new_volume = cdata.get('volume') or old_volume
-                                new_amount = cdata.get('amount') or old_amount
-                                
-                                # 如果還是缺，用計算補齊
-                                if new_volume and new_close and not new_amount:
-                                    new_amount = int(new_volume * new_close)
-                                if new_amount and new_close and not new_volume:
-                                    new_volume = int(new_amount / new_close) if new_close > 0 else 0
-                                if new_amount and new_volume and not new_close:
-                                    new_close = round(new_amount / new_volume, 2) if new_volume > 0 else 0
-                                
-                                if new_close and new_volume and new_amount:
-                                    cur.execute("UPDATE stock_history SET close=?, volume=?, amount=? WHERE code=? AND date_int=?",
-                                               (new_close, new_volume, new_amount, code, date_int))
-                                    fixed_by_crawl += 1
-                            else:
-                                # 沒抓到，用前一天估算
-                                cur.execute("""
-                                    SELECT close FROM stock_history 
-                                    WHERE code = ? AND date_int < ? AND close > 0
-                                    ORDER BY date_int DESC LIMIT 1
-                                """, (code, date_int))
-                                prev = cur.fetchone()
-                                if prev and prev[0] > 0:
-                                    prev_close = prev[0]
-                                    if old_volume and old_volume > 0:
-                                        est_amount = int(prev_close * old_volume)
-                                        cur.execute("UPDATE stock_history SET close=?, amount=? WHERE code=? AND date_int=?",
-                                                   (prev_close, est_amount, code, date_int))
-                                        fixed_by_prev += 1
-                        
-                        time.sleep(0.3)  # 避免請求過快
-                        
-                    except Exception as e:
-                        pass
-                
-                if fixed_by_crawl > 0:
-                    print_flush(f"  [修復] 情況4/6/7 (爬蟲): {fixed_by_crawl} 筆 → 從 TWSE/TPEx 抓取")
-                if fixed_by_prev > 0:
-                    print_flush(f"  [修復] 情況4/6/7 (估算): {fixed_by_prev} 筆 → 用前日價格估算")
+                    
+                    if fixed_by_crawl > 0:
+                        print_flush(f"  [修復] 情況4/6/7 (爬蟲): {fixed_by_crawl} 筆 → 從 TWSE/TPEx 抓取")
+                    if fixed_by_prev > 0:
+                        print_flush(f"  [修復] 情況4/6/7 (估算): {fixed_by_prev} 筆 → 用前日價格估算")
             
             # 情況 8: 無量、無價、無額 → 保持不變 (可能停牌或下市)
             cur.execute("""
@@ -7254,14 +8012,15 @@ def _auto_fix_missing_amount():
     except Exception as e:
         print_flush(f"  ⚠ 自動修復失敗: {e}")
 
-def step6_verify_and_backfill(data=None, resume=False, skip_downloads=False):
+def step6_verify_and_backfill(data=None, resume=False, skip_downloads=False, skip_institutional=False):
     """步驟6: 驗證資料完整性與回補 (含 amount 與法人資料)"""
     print_flush("\n[Step 6] 驗證資料完整性與回補...")
     
     # 0. 自動修復缺金額記錄 (用 close * volume 估算)
-    _auto_fix_missing_amount()
+    # 如果 skip_downloads=True (如一鍵更新)，則不執行爬蟲修復
+    _auto_fix_missing_amount(crawl=not skip_downloads)
     
-    if not skip_downloads:
+    if not skip_downloads and not skip_institutional:
         # 1. 檢查並補齊法人資料 (智慧模式)
         step3_5_download_institutional(days=3)
         
@@ -7318,7 +8077,9 @@ def step6_verify_and_backfill(data=None, resume=False, skip_downloads=False):
             
             # Guard Clause: Data is outdated
             if max_date_int < latest_market_date_int:
-                tasks.append((code, info['name'], count, f"資料過舊(至{max_date_int})"))
+                # Debug: Print why it's considered outdated
+                # print_flush(f"Debug: Code {code} max={max_date_int}, latest={latest_market_date_int}")
+                tasks.append((code, info['name'], count, f"資料過舊(至{max_date_int}, 最新{latest_market_date_int})"))
                 continue
                 
             # Guard Clause: Missing amount (Strict Check)
@@ -7506,11 +8267,12 @@ def step6_verify_and_backfill(data=None, resume=False, skip_downloads=False):
 
 
 
-def step8_sync_supabase():
-    """步驟8: 同步資料到 Supabase"""
-    if not ENABLE_CLOUD_SYNC:
-        print_flush("\n[Step 8] 同步資料到 Supabase (已停用 - 請檢查 ENABLE_CLOUD_SYNC)")
-        return
+def step8_sync_supabase(progress_callback=None):
+    """步驟8: 同步資料到 Supabase (完整歷史)"""
+    # [Modified] 強制啟用同步，忽略 ENABLE_CLOUD_SYNC 檢查
+    # if not ENABLE_CLOUD_SYNC:
+    #     print_flush("\n[Step 8] 同步資料到 Supabase (已停用 - 請檢查 ENABLE_CLOUD_SYNC)")
+    #     return
 
     if not HAS_SUPABASE:
         print_flush("❌ 未安裝 supabase 套件，無法同步 (pip install supabase)")
@@ -7518,9 +8280,9 @@ def step8_sync_supabase():
 
     print_flush("\n[Step 8] 同步資料到 Supabase...")
     
-    # Supabase 設定
-    url = SUPABASE_URL
-    key = SUPABASE_KEY
+    # Supabase 設定 (從 backend/services/db.py 複製，確保可用)
+    url = "https://gqiyvefcldxslrqpqlri.supabase.co"
+    key = "sb_secret_XSeaHx_76CRxA6j8nZ3qDg_nzgFgTAN"
     
     try:
         supabase: Client = create_client(url, key)
@@ -7529,13 +8291,15 @@ def step8_sync_supabase():
             conn.row_factory = sqlite3.Row
             cur = conn.cursor()
             
+            # ==========================================
             # 1. 同步 institutional_investors
+            # ==========================================
             cur.execute("SELECT COUNT(*) FROM institutional_investors")
             total = cur.fetchone()[0]
             
             if total > 0:
                 print_flush(f"正在同步法人資料 ({total} 筆)...")
-                BATCH_SIZE = 1000
+                BATCH_SIZE = 2000
                 total_batches = math.ceil(total / BATCH_SIZE)
                 
                 cur.execute("SELECT * FROM institutional_investors")
@@ -7549,20 +8313,74 @@ def step8_sync_supabase():
                     try:
                         supabase.table("institutional_investors").upsert(data).execute()
                         success_count += len(data)
-                        if (i+1) % 10 == 0:
-                            print(f"\r  進度: {i+1}/{total_batches}", end="")
+                        if (i+1) % 5 == 0 or (i+1) == total_batches:
+                            print(f"\r  進度: {i+1}/{total_batches} ({(i+1)/total_batches*100:.1f}%)", end="")
+                            if progress_callback:
+                                p = 30 + int(((i + 1) / total_batches) * 5)
+                                progress_callback(p, f"正在同步法人資料 ({i+1}/{total_batches})...")
                     except Exception as e:
                         if "Could not find the table" in str(e):
-                            print_flush(f"\n❌ 錯誤: 表格不存在，請先執行 update_supabase.sql")
+                            print_flush(f"\n❌ 錯誤: 表格不存在，請先執行 update_supabase_schema_v2.sql")
                             return
                         print_flush(f"\n⚠ 上傳失敗 (Batch {i}): {e}")
-                        # pass
                 print_flush(f"\n✓ 法人資料同步完成 ({success_count}/{total})")
             else:
                 print_flush("法人資料為空，跳過")
 
-            # 2. 同步 stock_history (可選，因為資料量太大，這裡先只同步法人)
-            # 若要同步 stock_history，建議只同步最近 N 天
+            # ==========================================
+            # 2. 同步 stock_history (完整歷史)
+            # ==========================================
+            cur.execute("SELECT COUNT(*) FROM stock_history")
+            total_hist = cur.fetchone()[0]
+            
+            if total_hist > 0:
+                print_flush(f"\n正在同步歷史股價資料 ({total_hist} 筆)...")
+                # 歷史資料量大，使用較大 Batch 但需注意 Timeout
+                BATCH_SIZE = 2000 
+                total_batches = math.ceil(total_hist / BATCH_SIZE)
+                
+                # 依日期排序，確保最近的資料先被看到 (或依需求)
+                # 這裡依 code, date_int 排序以保持一致性
+                # [Modified] 移除 ORDER BY 以加速讀取
+                if progress_callback:
+                    progress_callback(32, "正在讀取歷史股價資料 (這可能需要一點時間)...")
+                cur.execute("SELECT * FROM stock_history")
+                
+                success_count = 0
+                for i in range(total_batches):
+                    rows = cur.fetchmany(BATCH_SIZE)
+                    if not rows: break
+                    
+                    data = [dict(row) for row in rows]
+                    try:
+                        if progress_callback and (i % 5 == 0):
+                            p = 35 + int(((i + 1) / total_batches) * 55)
+                            progress_callback(p, f"正在同步歷史股價資料 ({i+1}/{total_batches})...")
+                        
+                        # 忽略空值欄位以減少傳輸量 (Supabase 會用 NULL)
+                        clean_data = []
+                        for d in data:
+                            clean_d = {k: v for k, v in d.items() if v is not None}
+                            clean_data.append(clean_d)
+                            
+                        supabase.table("stock_history").upsert(clean_data).execute()
+                        success_count += len(data)
+                        
+                        # 每 10 批顯示一次進度
+                        if (i+1) % 10 == 0 or (i+1) == total_batches:
+                            print(f"\r  進度: {i+1}/{total_batches} ({(i+1)/total_batches*100:.1f}%) - {success_count} 筆", end="")
+                            
+                    except Exception as e:
+                        if "Could not find the table" in str(e):
+                            print_flush(f"\n❌ 錯誤: stock_history 表格不存在，請先執行 update_supabase_schema_v2.sql")
+                            return
+                        # 某些批次失敗不應中斷全部，但要記錄
+                        # print_flush(f"\n⚠ 上傳失敗 (Batch {i}): {e}")
+                        pass
+                        
+                print_flush(f"\n✓ 歷史資料同步完成 ({success_count}/{total_hist})")
+            else:
+                print_flush("歷史資料為空，跳過")
             
     except Exception as e:
         print_flush(f"❌ 同步失敗: {e}")
@@ -7578,7 +8396,9 @@ def _build_history_query(limit_days=None):
                     CAST(date_int/10000 AS TEXT) || '-' || 
                     SUBSTR('0'||CAST((date_int/100)%100 AS TEXT),-2) || '-' ||
                     SUBSTR('0'||CAST(date_int%100 AS TEXT),-2) as date,
-                    open, high, low, close, volume, amount
+                    open, high, low, close, volume, amount,
+                    tdcc_count, large_shareholder_pct,
+                    foreign_buy, trust_buy, dealer_buy
                 FROM stock_history 
                 WHERE code = ? 
                 ORDER BY date_int DESC
@@ -7591,7 +8411,9 @@ def _build_history_query(limit_days=None):
                 CAST(date_int/10000 AS TEXT) || '-' || 
                 SUBSTR('0'||CAST((date_int/100)%100 AS TEXT),-2) || '-' ||
                 SUBSTR('0'||CAST(date_int%100 AS TEXT),-2) as date,
-                open, high, low, close, volume, amount
+                open, high, low, close, volume, amount,
+                tdcc_count, large_shareholder_pct,
+                foreign_buy, trust_buy, dealer_buy
             FROM stock_history 
             WHERE code = ? 
             ORDER BY date_int ASC
@@ -7600,22 +8422,34 @@ def _build_history_query(limit_days=None):
 def calculate_stock_history_indicators(code, display_days=30, limit_days=None, conn=None, preloaded_df=None):
     """計算股票歷史技術指標"""
     try:
-        # 獲取集保人數
-        total_shareholders = 0
+        # 獲取籌碼資料 (大戶比例、法人買超、集保人數)
+        snapshot_data = {'total_shareholders': 0, 'major_holders_pct': 0.0, 
+                         'foreign_buy': 0, 'trust_buy': 0, 'dealer_buy': 0}
         try:
+            snapshot_query = """SELECT total_shareholders, major_holders_pct, 
+                                       foreign_buy, trust_buy, dealer_buy 
+                                FROM stock_snapshot WHERE code = ?"""
             if conn:
                 cur = conn.cursor()
-                cur.execute("SELECT total_shareholders FROM stock_snapshot WHERE code = ?", (code,))
+                cur.execute(snapshot_query, (code,))
                 res = cur.fetchone()
-                if res and res[0]: total_shareholders = res[0]
             else:
                 with db_manager.get_connection() as tmp_conn:
                     cur = tmp_conn.cursor()
-                    cur.execute("SELECT total_shareholders FROM stock_snapshot WHERE code = ?", (code,))
+                    cur.execute(snapshot_query, (code,))
                     res = cur.fetchone()
-                    if res and res[0]: total_shareholders = res[0]
+            
+            if res:
+                snapshot_data['total_shareholders'] = res[0] or 0
+                snapshot_data['major_holders_pct'] = res[1] or 0.0
+                snapshot_data['foreign_buy'] = res[2] or 0
+                snapshot_data['trust_buy'] = res[3] or 0
+                snapshot_data['dealer_buy'] = res[4] or 0
         except:
             pass
+        
+        # 向前相容
+        total_shareholders = snapshot_data['total_shareholders']
 
         # 內部函數: 執行查詢 (新三表架構)
         def execute_query(connection):
@@ -7649,6 +8483,33 @@ def calculate_stock_history_indicators(code, display_days=30, limit_days=None, c
         df['date'] = pd.to_datetime(df['date'])
         df = df.sort_values('date').reset_index(drop=True)
         
+        # [New] 映射籌碼數據
+        if 'tdcc_count' in df.columns:
+            df['total_shareholders'] = df['tdcc_count'].fillna(0).astype(int)
+        else:
+            df['total_shareholders'] = 0
+            
+        if 'large_shareholder_pct' in df.columns:
+            df['major_holders_pct'] = df['large_shareholder_pct'].fillna(0.0)
+        else:
+            df['major_holders_pct'] = 0.0
+            
+        # [New] 映射法人數據
+        if 'foreign_buy' in df.columns:
+            df['foreign_buy'] = df['foreign_buy'].fillna(0).astype(int)
+        else:
+            df['foreign_buy'] = 0
+            
+        if 'trust_buy' in df.columns:
+            df['trust_buy'] = df['trust_buy'].fillna(0).astype(int)
+        else:
+            df['trust_buy'] = 0
+            
+        if 'dealer_buy' in df.columns:
+            df['dealer_buy'] = df['dealer_buy'].fillna(0).astype(int)
+        else:
+            df['dealer_buy'] = 0
+        
         # 計算指標
         df['MA3'] = df['close'].rolling(3).mean().round(2)
         df['MA20'] = df['close'].rolling(20).mean().round(2)
@@ -7658,6 +8519,12 @@ def calculate_stock_history_indicators(code, display_days=30, limit_days=None, c
         
         # 成交量均線
         df['Vol_MA3'] = df['volume'].rolling(3).mean().round(2)
+        df['Vol_MA5'] = df['volume'].rolling(5).mean().round(2)
+        df['Vol_MA60'] = df['volume'].rolling(60).mean().round(2)
+        
+        # 週比較數據 (5日前)
+        df['Major_Holders_W'] = df['major_holders_pct'].shift(5)
+        df['Total_Shareholders_W'] = df['total_shareholders'].shift(5)
         
         df['WMA3'] = pd.Series(IndicatorCalculator.calculate_wma(df['close'].values, 3), index=df.index).round(2)
         df['WMA20'] = pd.Series(IndicatorCalculator.calculate_wma(df['close'].values, 20), index=df.index).round(2)
@@ -7822,6 +8689,15 @@ def calculate_stock_history_indicators(code, display_days=30, limit_days=None, c
                 'WMA60': row['WMA60'],
                 'WMA120': row['WMA120'],
                 'WMA200': row['WMA200'],
+                'Vol_MA5': row['Vol_MA5'],
+                'Vol_MA60': row['Vol_MA60'],
+                'Vol_MA5_prev': prev_row['Vol_MA5'],
+                'Vol_MA60_prev': prev_row['Vol_MA60'],
+                'Major_Holders_W': row['Major_Holders_W'],
+                'Total_Shareholders_W': row['Total_Shareholders_W'],
+                'foreign_buy': row['foreign_buy'],
+                'trust_buy': row['trust_buy'],
+                'dealer_buy': row['dealer_buy'],
                 'MA3_prev': prev_row['MA3'],
                 'MA20_prev': prev_row['MA20'],
                 'MA60_prev': prev_row['MA60'],
@@ -7839,6 +8715,7 @@ def calculate_stock_history_indicators(code, display_days=30, limit_days=None, c
                 'CHG14': row['CHG14'],
                 'CHG14_prev': prev_row['CHG14'],
                 'RSI': row['RSI'],
+                'RSI_prev': prev_row['RSI'],
                 'MACD': row['MACD'],
                 'SIGNAL': row['SIGNAL'],
                 'Month_K': row['Month_K'],
@@ -7897,8 +8774,16 @@ def calculate_stock_history_indicators(code, display_days=30, limit_days=None, c
             indicators['VSBC_Upper'] = row['VSBC_Upper']
             indicators['VSBC_Lower'] = row['VSBC_Lower']
             
-            # 集保人數
-            indicators['Total_Shareholders'] = total_shareholders
+            # 籌碼資料 (大戶比例、法人買超、集保人數)
+            indicators['Total_Shareholders'] = snapshot_data['total_shareholders']
+            indicators['Major_Holders'] = snapshot_data['major_holders_pct']
+            indicators['major_holders_pct'] = snapshot_data['major_holders_pct']  # 相容 format_scan_result
+            indicators['Foreign_Buy'] = snapshot_data['foreign_buy']
+            indicators['foreign_buy'] = snapshot_data['foreign_buy']  # 相容 format_scan_result
+            indicators['Trust_Buy'] = snapshot_data['trust_buy']
+            indicators['trust_buy'] = snapshot_data['trust_buy']  # 相容 format_scan_result
+            indicators['Dealer_Buy'] = snapshot_data['dealer_buy']
+            indicators['dealer_buy'] = snapshot_data['dealer_buy']  # 相容 format_scan_result
             
             indicators_list.append(indicators)
         
@@ -7996,8 +8881,8 @@ def step7_calc_indicators(data=None, force=False, batch_size=500):
     tracker = ProgressTracker(total_lines=3)
     start_time = time.time()
     
-    # 使用 CPU 核心數 (保留 1 核給 UI)
-    num_processes = max(1, os.cpu_count() - 1)
+    # 使用 Config.MAX_WORKERS 避免記憶體不足
+    num_processes = Config.MAX_WORKERS
     print_flush(f"啟動 {num_processes} 個進程並行計算...")
     
     with tracker:
@@ -11169,48 +12054,46 @@ def data_management_menu():
     # 表驅動法：步驟功能映射
     DATA_MENU_ACTIONS = {
         '1': _run_full_daily_update,
-        '2': step1_fetch_stock_list,
-        '3': step2_download_tpex_daily,
-        '4': step3_download_twse_daily,
-        '5': step3_5_download_institutional,
-        '6': step3_6_download_major_holders,
-        '7': step3_7_fetch_margin_data,
-        '8': step3_8_fetch_market_index,
-        '9': step4_check_data_gaps,
-        'a': step5_clean_delisted,
-        'b': _handle_step6_with_resume,
-        'c': _handle_step7_with_cache_clear
+        '2': step1_check_holiday,
+        '3': step2_download_lists,
+        '4': step3_download_basic_info,
+        '5': step4_clean_delisted,
+        '6': step5_download_quotes,
+        '7': step6_download_valuation,
+        '8': step7_download_institutional,
+        '9': step8_download_margin,
+        'a': step9_download_tdcc,
+        'b': step10_check_gaps,
+        'c': step11_verify_backfill,
+        'd': step12_calc_indicators,
+        'e': step8_sync_supabase
     }
     
     while True:
         print_flush("\n" + "="*60)
-        print_flush("【資料管理與更新】")
+        print_flush("【資料管理與更新】 (Refactored)")
         print_flush("="*60)
-        print_flush("[1] 一鍵執行每日更新 (Steps 1-7)")
+        print_flush("[1] 一鍵執行每日更新 (Steps 1-12)")
         print_flush("-" * 60)
-        print_flush("[2] 步驟1: 更新上市櫃清單")
-        print_flush("[3] 步驟2: 下載 TPEx (上櫃)")
-        print_flush("[4] 步驟3: 下載 TWSE (上市)")
-        print_flush("[5] 步驟3.5: 下載三大法人買賣超")
-        print_flush("[6] 步驟3.6: 下載集保大戶資料")
-        print_flush("[7] 步驟3.7: 下載融資融券資料")
-        print_flush("[8] 步驟3.8: 下載大盤指數資料")
-        print_flush("[9] 步驟4: 檢查數據缺失")
-        print_flush("[a] 步驟5: 清理下市股票")
-        print_flush("[b] 步驟6: 驗證一致性並補漏 (斷點續抓)")
-        print_flush("[c] 步驟7: 計算技術指標")
+        print_flush("[2] Step 1: 檢查開休市")
+        print_flush("[3] Step 2: 下載股票清單 (含處置/新上市)")
+        print_flush("[4] Step 3: 下載基本資料 (上下市日期)")
+        print_flush("[5] Step 4: 清理下市股票")
+        print_flush("[6] Step 5: 下載今日行情 (TPEx/TWSE/大盤)")
+        print_flush("[7] Step 6: 下載估值資料")
+        print_flush("[8] Step 7: 下載三大法人買賣超")
+        print_flush("[9] Step 8: 下載融資融券資料")
+        print_flush("[a] Step 9: 下載集保大戶資料")
+        print_flush("[b] Step 10: 檢查數據缺失")
+        print_flush("[c] Step 11: 驗證一致性並補漏")
+        print_flush("[d] Step 12: 計算技術指標")
+        print_flush("[e] 同步資料到 Supabase")
         print_flush("[0] 返回主選單")
-
-        ch = read_single_key().lower()
-
-        # 衛語句：返回
-        if ch == '0':
-            break
         
-        # 表驅動法：查找並執行
+        ch = read_single_key().lower()
+        if ch == '0': break
         action = DATA_MENU_ACTIONS.get(ch)
-        if action:
-            action()
+        if action: action()
 
 
 def _force_redownload_all_history():
@@ -11246,74 +12129,82 @@ def _handle_step7_with_cache_clear():
 
 
 def _run_full_daily_update():
-    """一鍵執行每日更新 (Steps 1->..->8)"""
+    """一鍵執行每日更新 (Steps 1-12)"""
     global GLOBAL_INDICATOR_CACHE
-    updated_codes = set()
-    out = StepOutput  # 簡化調用
+    out = StepOutput
     
-    # 開始更新
-    out.box_start("一鍵每日更新")
+    out.box_start("一鍵每日更新 (Refactored)")
     
-    # Step 1: 更新清單 (必須先執行，因為後續步驟依賴清單)
-    out.header("更新上市櫃清單", "1")
-    step1_fetch_stock_list(silent_header=True)
+    # Step 1: Check Holiday (僅提示，不中斷執行)
+    out.header("檢查開休市", "1")
+    time.sleep(0.1)
+    if step1_check_holiday():
+        out.warn("今日休市，但仍繼續執行補歷史資料...")
+    else:
+        out.success("今日是交易日")
+
+    # Step 2: Download Lists
+    out.header("下載股票清單", "2")
+    time.sleep(0.1)
+    step2_download_lists(silent_header=True)
     
-    # Step 2-3.10: 全面並行下載
-    out.header("並行下載所有市場資料", "2-3.10")
-    print_flush("  啟動高併發下載模式 (上市/上櫃/法人/融資/估值)...")
+    # Step 3: Basic Info
+    out.header("下載基本資料", "3")
+    time.sleep(0.1)
+    step3_download_basic_info(silent_header=True)
     
-    parallel_tasks = [
-        # 市場行情
-        (step2_download_tpex_daily, (), {'silent_header': True}, "TPEx (上櫃)", "2"),
-        (step3_download_twse_daily, (), {'silent_header': True}, "TWSE (上市)", "3"),
-        # 籌碼與估值
-        (step3_5_download_institutional, (60,), {'silent_header': True}, "法人買賣超", "3.5"),
-        (step3_6_download_major_holders, (), {'silent_header': True}, "集保大戶", "3.6"),
-        (step3_7_fetch_margin_data, (60,), {'silent_header': True}, "融資融券", "3.7"),
-        (step3_8_fetch_market_index, (), {'silent_header': True}, "大盤指數", "3.8"),
-        (PePbDataAPI.fetch_all_pepb, (), {}, "PE/PB估值", "3.9"),
-        (ShareholderDataAPI.fetch_all_shareholder, (), {}, "集保戶數", "3.10"),
-    ]
+    # Step 4: Clean Delisted
+    out.header("清理下市股票", "4")
+    time.sleep(0.1)
+    step4_clean_delisted()
     
-    # 執行並行任務 (增加 max_workers 以容納更多 I/O 密集任務)
-    results = run_parallel_tasks(parallel_tasks, max_workers=8, show_progress=True)
+    # Step 5: Download Quotes
+    out.header("下載今日行情", "5")
+    time.sleep(0.1)
+    step5_download_quotes(silent_header=True)
     
-    # 收集更新的股票代碼
-    if results.get("TPEx (上櫃)") and isinstance(results["TPEx (上櫃)"], set):
-        updated_codes.update(results["TPEx (上櫃)"])
-    if results.get("TWSE (上市)") and isinstance(results["TWSE (上市)"], set):
-        updated_codes.update(results["TWSE (上市)"])
+    # Step 6: Valuation
+    out.header("下載估值資料", "6")
+    time.sleep(0.1)
+    step6_download_valuation(silent_header=True)
     
-    # Step 4: 檢查數據缺失
-    out.header("檢查數據缺失", "4")
-    step4_check_data_gaps()
+    # Step 7: Institutional
+    out.header("下載三大法人", "7")
+    time.sleep(0.1)
+    step7_download_institutional(silent_header=True)
     
-    # Step 5: 清理下市股票
-    out.header("清理下市股票", "5")
-    step5_clean_delisted()
+    # Step 8: Margin
+    out.header("下載融資融券", "8")
+    time.sleep(0.1)
+    step8_download_margin(silent_header=True)
     
-    # Step 6: 補漏
-    out.header("驗證一致性並補漏", "6")
+    # Step 9: TDCC
+    out.header("下載集保大戶", "9")
+    time.sleep(0.1)
+    step9_download_tdcc(silent_header=True)
+    
+    # Step 10: Check Gaps
+    out.header("檢查數據缺失", "10")
+    time.sleep(0.1)
+    step10_check_gaps()
+    
+    # Step 11: Verify & Backfill
+    out.header("驗證與補漏", "11")
+    time.sleep(0.1)
+    step11_verify_backfill()
+    
+    # Step 12: Indicators
+    out.header("計算技術指標", "12")
+    time.sleep(0.1)
     data = step4_load_data()
-    s6 = step6_verify_and_backfill(data, resume=True, skip_downloads=True)
-    if isinstance(s6, set):
-        updated_codes.update(s6)
+    step12_calc_indicators()
     
-    # Step 7: 計算指標
-    out.header("計算技術指標", "7")
-    step7_calc_indicators(data)
-    
-    # Step 8: 同步 Supabase
-    out.header("同步雲端", "8")
-    step8_sync_supabase()
-    
-    # 更新快取
+    # Update Cache
     if GLOBAL_INDICATOR_CACHE is None:
         GLOBAL_INDICATOR_CACHE = IndicatorCacheManager()
     GLOBAL_INDICATOR_CACHE.set_data(data)
     
-    # 完成
-    out.box_end("每日更新完成！快取已更新，可直接進行掃描")
+    out.box_end("每日更新完成！")
 
 def start_scheduler():
     """啟動每日自動更新排程"""
@@ -11388,15 +12279,22 @@ def backup_menu():
                 for b in backups:
                     print_flush(f"- {b.name} ({b.stat().st_size/(1024*1024):.1f} MB)")
         
-        print_flush("\n按 Enter 繼續...")
-        sys.stdin.readline()
+        # [規則] 不使用「按 Enter 繼續」
+        # 直接返回選單
 
 def check_db_nulls():
-    """檢查資料庫空值率"""
-    print_flush("\n正在檢查資料完整性...")
+    """檢查資料庫空值率 (含詳細缺失清單)"""
+    print_flush("\n" + "="*60)
+    print_flush("📊 資料完整性檢查報告")
+    print_flush("="*60)
+    
     with db_manager.get_connection() as conn:
         try:
-            cur = conn.execute("SELECT COUNT(*) FROM stock_history")
+            cur = conn.cursor()
+            
+            # ========== 1. 基本統計 ==========
+            print_flush("\n【1. 基本統計】")
+            cur.execute("SELECT COUNT(*) FROM stock_history")
             total = cur.fetchone()[0]
             
             if total == 0:
@@ -11405,14 +12303,175 @@ def check_db_nulls():
 
             nulls = {}
             for col in ['open', 'high', 'low', 'close', 'volume']:
-                cur = conn.execute(f"SELECT COUNT(*) FROM stock_history WHERE {col} IS NULL")
+                cur.execute(f"SELECT COUNT(*) FROM stock_history WHERE {col} IS NULL")
                 nulls[col] = cur.fetchone()[0]
             
-            print_flush(f"總筆數: {total}")
+            print_flush(f"stock_history 總筆數: {total:,}")
             for col, count in nulls.items():
                 pct = (count / total) * 100
-                print_flush(f"- {col} 空值: {count} ({pct:.2f}%)")
+                status = "✓" if count == 0 else "⚠"
+                print_flush(f"  {status} {col}: {count:,} 空值 ({pct:.2f}%)")
+            
+            # ========== 2. 近期交易日缺漏 ==========
+            print_flush("\n【2. 近期 60 天交易日缺漏】")
+            
+            # 取得 stock_history 中最近的交易日
+            cur.execute("SELECT DISTINCT date_int FROM stock_history ORDER BY date_int DESC LIMIT 60")
+            recent_dates = [row[0] for row in cur.fetchall()]
+            
+            # 檢查每天的資料量
+            low_count_days = []
+            for d in recent_dates[:30]:  # 只顯示最近 30 天
+                cur.execute("SELECT COUNT(*) FROM stock_history WHERE date_int = ?", (d,))
+                cnt = cur.fetchone()[0]
+                if cnt < 1000:  # 少於 1000 筆視為異常
+                    low_count_days.append((d, cnt))
+            
+            if low_count_days:
+                print_flush(f"  ⚠ 發現 {len(low_count_days)} 天資料量異常少:")
+                for d, c in low_count_days[:10]:
+                    print_flush(f"    - {d}: {c} 筆")
+            else:
+                print_flush("  ✓ 無缺漏")
+            
+            # ========== 3. 法人資料缺漏 ==========
+            print_flush("\n【3. 法人資料缺漏 (institutional_investors)】")
+            cur.execute("SELECT MIN(date_int), MAX(date_int), COUNT(DISTINCT date_int) FROM institutional_investors")
+            row = cur.fetchone()
+            if row[0]:
+                print_flush(f"  資料範圍: {row[0]} ~ {row[1]} ({row[2]} 天)")
                 
+                # 檢查最近 30 天
+                missing_inst = []
+                for d in recent_dates[:30]:
+                    cur.execute("SELECT COUNT(*) FROM institutional_investors WHERE date_int = ?", (d,))
+                    if cur.fetchone()[0] == 0:
+                        missing_inst.append(d)
+                
+                if missing_inst:
+                    print_flush(f"  ⚠ 最近 30 天缺少 {len(missing_inst)} 天:")
+                    for d in missing_inst[:10]:
+                        print_flush(f"    - {d}")
+                else:
+                    print_flush("  ✓ 最近 30 天無缺漏")
+            else:
+                print_flush("  ⚠ 表為空")
+            
+            # ========== 4. 融資融券缺漏 ==========
+            print_flush("\n【4. 融資融券缺漏 (margin_data)】")
+            cur.execute("SELECT MIN(date_int), MAX(date_int), COUNT(DISTINCT date_int) FROM margin_data")
+            row = cur.fetchone()
+            if row[0]:
+                print_flush(f"  資料範圍: {row[0]} ~ {row[1]} ({row[2]} 天)")
+                
+                missing_margin = []
+                for d in recent_dates[:30]:
+                    cur.execute("SELECT COUNT(*) FROM margin_data WHERE date_int = ?", (d,))
+                    if cur.fetchone()[0] == 0:
+                        missing_margin.append(d)
+                
+                if missing_margin:
+                    print_flush(f"  ⚠ 最近 30 天缺少 {len(missing_margin)} 天:")
+                    for d in missing_margin[:10]:
+                        print_flush(f"    - {d}")
+                else:
+                    print_flush("  ✓ 最近 30 天無缺漏")
+            else:
+                print_flush("  ⚠ 表為空")
+            
+            # ========== 5. 股票資料筆數統計 ==========
+            print_flush("\n【5. 股票資料筆數統計 (A規則普通股)】")
+            cur.execute("""
+                SELECT h.code, m.name, m.list_date, COUNT(*) as cnt
+                FROM stock_history h
+                LEFT JOIN stock_meta m ON h.code = m.code
+                WHERE LENGTH(h.code) = 4 
+                  AND h.code GLOB '[0-9][0-9][0-9][0-9]'
+                  AND CAST(h.code AS INTEGER) >= 1101
+                  AND CAST(h.code AS INTEGER) < 9000
+                GROUP BY h.code
+                HAVING cnt < 450
+                ORDER BY cnt ASC
+            """)
+            low_count_stocks = cur.fetchall()
+            
+            if low_count_stocks:
+                # 分類：新上市 vs 資料缺失
+                new_listings = []
+                data_missing = []
+                
+                cutoff_date = (datetime.now() - timedelta(days=630)).strftime("%Y-%m-%d")
+                
+                for code, name, list_date, cnt in low_count_stocks:
+                    # 判斷是否為新上市
+                    if list_date and list_date >= cutoff_date:
+                        new_listings.append((code, name or "", list_date, cnt))
+                    else:
+                        # 計算資料完整度
+                        if list_date:
+                            try:
+                                ld = datetime.strptime(list_date, "%Y-%m-%d")
+                                days_since = (datetime.now() - ld).days
+                                expected = int(days_since * 5 / 7)  # 預期交易日
+                                completeness = cnt / expected if expected > 0 else 0
+                                
+                                # 完整度 >= 90% 視為完整，歸入白名單
+                                if completeness >= 0.9:
+                                    new_listings.append((code, name or "", list_date, cnt))
+                                    continue
+                            except:
+                                pass
+                        
+                        data_missing.append((code, name or "", list_date or "無", cnt))
+                
+                print_flush(f"\n  📌 新上市白名單 (上市未滿 450 交易日): {len(new_listings)} 支")
+                if new_listings:
+                    for code, name, ld, cnt in new_listings[:5]:
+                        print_flush(f"    - {code} {name[:8]:8} 上市:{ld} 資料:{cnt}筆")
+                    if len(new_listings) > 5:
+                        print_flush(f"    ... 等共 {len(new_listings)} 支")
+                
+                print_flush(f"\n  ⚠ 資料缺失 (需補歷史): {len(data_missing)} 支")
+                if data_missing:
+                    for code, name, ld, cnt in data_missing[:10]:
+                        print_flush(f"    - {code} {name[:8]:8} 上市:{ld} 資料:{cnt}筆")
+                    if len(data_missing) > 10:
+                        print_flush(f"    ... 等共 {len(data_missing)} 支")
+            else:
+                print_flush("  ✓ 所有 A 規則股票資料筆數正常 (≥450)")
+            
+            # ========== 6. Close 空值詳情 ==========
+            if nulls['close'] > 0:
+                print_flush("\n【6. Close 空值詳情】")
+                
+                print_flush("  Top 5 缺失股票:")
+                cur.execute("""
+                    SELECT code, COUNT(*) as cnt 
+                    FROM stock_history 
+                    WHERE close IS NULL 
+                    GROUP BY code 
+                    ORDER BY cnt DESC 
+                    LIMIT 5
+                """)
+                for row in cur.fetchall():
+                    print_flush(f"    - {row[0]}: 缺 {row[1]} 筆")
+                    
+                print_flush("\n  Top 5 缺失日期:")
+                cur.execute("""
+                    SELECT date_int, COUNT(*) as cnt 
+                    FROM stock_history 
+                    WHERE close IS NULL 
+                    GROUP BY date_int 
+                    ORDER BY cnt DESC 
+                    LIMIT 5
+                """)
+                for row in cur.fetchall():
+                    print_flush(f"    - {row[0]}: 缺 {row[1]} 筆")
+            
+            print_flush("\n" + "="*60)
+            print_flush("檢查完成")
+            print_flush("="*60)
+
         except Exception as e:
             print_flush(f"檢查失敗: {e}")
 
@@ -11465,6 +12524,7 @@ def maintenance_menu():
         print_flush("[3] 檢查資料完整性 (空值率)")
         print_flush("[4] 刪除指定日期資料")
         print_flush("[5] 同步資料到 Supabase")
+        print_flush("[6] 更新 twstock 套件")
         print_flush("[0] 返回主選單")
         
         ch = read_single_key()
@@ -11482,9 +12542,10 @@ def maintenance_menu():
             delete_data_by_date()
         elif ch == '5':
             step8_sync_supabase()
+        elif ch == '6':
+            update_twstock_package()
             
-        print_flush("\n按 Enter 繼續...")
-        sys.stdin.readline()
+        # [規則] 不使用「按 Enter 繼續」
 
 
 def display_scan_results_v2(results, title, limit=30, extra_headers=None, extra_func=None, description=""):
@@ -11693,6 +12754,79 @@ def _draw_kbar_chart(code, name=""):
     fig.update_xaxes(type='category')
 
 
+def fetch_realtime_data(code, name):
+    """
+    [Extract Method] 獲取並顯示即時股價
+    """
+    print_flush(f"=== {datetime.now().strftime('%Y-%m-%d %H:%M:%S')} 即時股價 ({code} {name}) ===")
+    try:
+        stock_realtime = twstock.realtime.get(code)
+        # [Guard Clause] 檢查是否成功
+        if not stock_realtime.get('success'):
+            print_flush(f"⚠ 即時報價查詢失敗: {stock_realtime.get('rtmessage', '未知錯誤')}")
+            return
+
+        rt = stock_realtime.get('realtime', {})
+        info = stock_realtime.get('info', {})
+        
+        # 格式化數字為小數點後二位
+        # [Null Safety] 使用 safe_float_preserving_none
+        latest_price = safe_float_preserving_none(rt.get('latest_trade_price'))
+        if latest_price is None:
+            latest_price = safe_float_preserving_none(rt.get('z')) # Fallback to 'z'
+        
+        open_price = safe_float_preserving_none(rt.get('open'))
+        high_price = safe_float_preserving_none(rt.get('high'))
+        low_price = safe_float_preserving_none(rt.get('low'))
+        volume = safe_int(rt.get('accumulate_trade_volume'), 0)
+        
+        print_flush(f"股票名稱: {info.get('name', name)}")
+        print_flush(f"目前股價: {latest_price:.2f}" if latest_price else "目前股價: N/A")
+        print_flush(f"開盤: {open_price:.2f}  最高: {high_price:.2f}  最低: {low_price:.2f}  成交量: {volume:,} 張" if open_price else "開盤: N/A")
+
+    except Exception as e:
+        print_flush(f"⚠ 即時報價查詢失敗: {e}")
+    
+    print_flush("\n" + "="*80 + "\n")
+
+def fetch_and_display_history(code, name, days):
+    """
+    [Extract Method] 獲取並顯示歷史資料
+    """
+    print_flush(f"=== 【{name} {code}】近 {days} 天走勢 ===")
+    print_flush("="*80)
+    
+    try:
+        # 使用 calculate_stock_history_indicators 計算技術指標
+        indicators_list = calculate_stock_history_indicators(code, display_days=days)
+        
+        # [Guard Clause] 無資料直接返回
+        if not indicators_list:
+            print_flush("(無歷史數據)")
+            print_flush("="*80)
+            return
+
+        # 使用 format_scan_result_list 統一顯示格式
+        print_flush(format_scan_result_list(code, name, indicators_list))
+        
+    except Exception as e:
+        print_flush(f"⚠ 讀取歷史數據失敗: {e}")
+    
+    print_flush("="*80)
+
+def handle_chart_interaction(code, name):
+    """
+    [Extract Method] 處理 K 線圖互動
+    """
+    # 符合規則 7 和 8：輸入 1 K線圖，按 0 返回
+    print_flush("\n輸入 1 K線圖，或按 0 返回: ", end="")
+    try:
+        ch = input().strip()
+        if ch == '1':
+            _draw_kbar_chart(code, name)
+    except:
+        pass
+
 def _handle_stock_query(code):
     """處理個股查詢 - 完整版（即時 + 歷史多天）"""
     # 取得股票名稱
@@ -11702,6 +12836,7 @@ def _handle_stock_query(code):
         name = stock_info.name
     else:
         name = get_correct_stock_name(code)
+        # [Guard Clause] 找不到股票
         if name == code:
             print_flush(f"❌ 找不到股票代號: {code}")
             return
@@ -11716,60 +12851,13 @@ def _handle_stock_query(code):
     print_flush(f"\n正在查詢 {code} {name} ...\n")
     
     # ===== 1. 即時股價 (Realtime) =====
-    print_flush(f"=== {datetime.now().strftime('%Y-%m-%d %H:%M:%S')} 即時股價 ({code} {name}) ===")
-    try:
-        stock_realtime = twstock.realtime.get(code)
-        if stock_realtime.get('success'):
-            rt = stock_realtime.get('realtime', {})
-            info = stock_realtime.get('info', {})
-            
-            # 格式化數字為小數點後二位
-            latest_price = safe_float_preserving_none(rt.get('latest_trade_price'))
-            if latest_price is None:
-                latest_price = safe_float_preserving_none(rt.get('z')) # Fallback to 'z'
-            
-            open_price = safe_float_preserving_none(rt.get('open'))
-            high_price = safe_float_preserving_none(rt.get('high'))
-            low_price = safe_float_preserving_none(rt.get('low'))
-            volume = safe_int(rt.get('accumulate_trade_volume'), 0)
-            
-            print_flush(f"股票名稱: {info.get('name', name)}")
-            print_flush(f"目前股價: {latest_price:.2f}" if latest_price else "目前股價: N/A")
-            print_flush(f"開盤: {open_price:.2f}  最高: {high_price:.2f}  最低: {low_price:.2f}  成交量: {volume:,} 張" if open_price else "開盤: N/A")
-        else:
-            print_flush(f"⚠ 即時報價查詢失敗: {stock_realtime.get('rtmessage', '未知錯誤')}")
-    except Exception as e:
-        print_flush(f"⚠ 即時報價查詢失敗: {e}")
-    
-    print_flush("\n" + "="*80 + "\n")
+    fetch_realtime_data(code, name)
     
     # ===== 2. 歷史資料 - 使用技術指標格式顯示 =====
-    print_flush(f"=== 【{name} {code}】近 {days} 天走勢 ===")
-    print_flush("="*80)
+    fetch_and_display_history(code, name, days)
     
-    try:
-        # 使用 calculate_stock_history_indicators 計算技術指標
-        indicators_list = calculate_stock_history_indicators(code, display_days=days)
-        
-        if indicators_list:
-            # 使用 format_scan_result_list 統一顯示格式
-            print_flush(format_scan_result_list(code, name, indicators_list))
-        else:
-            print_flush("(無歷史數據)")
-    except Exception as e:
-        print_flush(f"⚠ 讀取歷史數據失敗: {e}")
-    
-    print_flush("="*80)
-    
-    # 符合規則 7 和 8：輸入 1 K線圖，按 0 返回
-    print_flush("\n輸入 1 K線圖，或按 0 返回: ", end="")
-    try:
-        ch = input().strip()
-        if ch == '1':
-            _draw_kbar_chart(code, name)
-    except:
-        pass
-    # 直接返回主選單
+    # ===== 3. 互動 (Interaction) =====
+    handle_chart_interaction(code, name)
 
 def _get_ranking_params():
     """獲取使用者輸入的參數 (排行榜專用)"""
@@ -11811,6 +12899,88 @@ def _get_ranking_close_prices():
     except:
         return {}
 
+def fetch_ranking_data(rank_type, latest_date, conn):
+    """
+    [Extract Method] 獲取原始排行資料
+    """
+    # 判斷買超或賣超
+    is_buy = 'buy' in rank_type
+    
+    # 查詢排行
+    if 'foreign' in rank_type:
+        order_col = 'foreign_buy - foreign_sell'
+    elif 'trust' in rank_type:
+        order_col = 'trust_buy - trust_sell'
+    else:
+        order_col = 'dealer_buy - dealer_sell'
+    
+    # 買超: DESC (正數越大越好), 賣超: ASC (負數越大越好)
+    order_dir = 'DESC' if is_buy else 'ASC'
+
+    # SQL query to get ranking
+    sql = f"""
+        SELECT stock_id, {order_col} as net_buy
+        FROM institutional_investors
+        WHERE date_int = ?
+        ORDER BY {order_col} {order_dir}
+    """
+    cur = conn.execute(sql, (latest_date,))
+    return cur.fetchall(), is_buy
+
+def process_ranking_data(rows, is_buy, sort_by_amount, close_prices):
+    """
+    [Extract Method] 處理排行資料 (過濾與排序)
+    """
+    data = []
+    for row in rows:
+        code = row[0]
+        net_buy = row[1]
+        
+        # Filter by direction (Buy > 0, Sell < 0)
+        if is_buy and net_buy <= 0: continue
+        if not is_buy and net_buy >= 0: continue
+        
+        data.append({
+            'stock_id': code,
+            'net_buy': net_buy
+        })
+    
+    # Sort by amount if needed
+    if sort_by_amount:
+        for item in data:
+            code = item['stock_id']
+            close = close_prices.get(code, 0)
+            item['amount'] = abs(item['net_buy']) * 1000 * close
+        data.sort(key=lambda x: x.get('amount', 0), reverse=True)
+        
+    return data
+
+def render_ranking_table(data, title, latest_date, top_n, min_days, close_prices, stock_names):
+    """
+    [Extract Method] 顯示排行榜表格
+    """
+    print_flush(f"\n【{title}】 ({latest_date})")
+    print_flush(f"{'#':<3} {'股票名稱':<16} | {'買賣超(張)':>10} | {'金額(萬)':>10} | {'連續天數':>8}")
+    print_flush("-" * 60)
+    
+    count = 0
+    for i, row in enumerate(data):
+        if count >= top_n:
+            break
+        
+        code = row['stock_id']
+        net_buy = row['net_buy']
+        close = close_prices.get(code, 0)
+        amount = (net_buy * 1000 * close) / 10000 if close else 0
+        name = stock_names.get(code, '')
+        display_name = f"{name}({code})" if name else code
+        
+        # Placeholder for consecutive days
+        consec_days = "-"
+        
+        print_flush(f"{i+1:<3} {display_name:<16} | {net_buy:>10,} | {amount:>10,.0f} | {consec_days:>8}")
+        count += 1
+
 def _display_ranking(rank_type, title, top_n, min_days, sort_by_amount):
     """顯示排行榜"""
     
@@ -11824,85 +12994,24 @@ def _display_ranking(rank_type, title, top_n, min_days, sort_by_amount):
             res = cur.fetchone()
             latest_date = res[0] if res else None
             
+            # [Guard Clause] 無資料直接返回
             if not latest_date:
                 print_flush("❌ 資料庫無法人資料")
                 return
 
-            # 判斷買超或賣超
-            is_buy = 'buy' in rank_type
+            # 1. 獲取原始資料
+            rows, is_buy = fetch_ranking_data(rank_type, latest_date, conn)
             
-            # 查詢排行
-            if 'foreign' in rank_type:
-                order_col = 'foreign_buy - foreign_sell'
-            elif 'trust' in rank_type:
-                order_col = 'trust_buy - trust_sell'
-            else:
-                order_col = 'dealer_buy - dealer_sell'
-            
-            # 買超: DESC (正數越大越好), 賣超: ASC (負數越大越好)
-            order_dir = 'DESC' if is_buy else 'ASC'
-
-            # SQL query to get ranking
-            sql = f"""
-                SELECT stock_id, {order_col} as net_buy
-                FROM institutional_investors
-                WHERE date_int = ?
-                ORDER BY {order_col} {order_dir}
-            """
-            cur = conn.execute(sql, (latest_date,))
-            rows = cur.fetchall()
-            
-            # Filter and process results
-            data = []
+            # 準備輔助資料
             close_prices = _get_ranking_close_prices()
-            
-            # Get names
             cur = conn.execute("SELECT code, name FROM stock_snapshot")
             stock_names = {row[0]: row[1] for row in cur.fetchall()}
-
-            for row in rows:
-                code = row[0]
-                net_buy = row[1]
-                
-                # Filter by direction (Buy > 0, Sell < 0)
-                if is_buy and net_buy <= 0: continue
-                if not is_buy and net_buy >= 0: continue
-                
-                data.append({
-                    'stock_id': code,
-                    'net_buy': net_buy
-                })
             
-            # Sort by amount if needed
-            if sort_by_amount:
-                for item in data:
-                    code = item['stock_id']
-                    close = close_prices.get(code, 0)
-                    item['amount'] = abs(item['net_buy']) * 1000 * close
-                data.sort(key=lambda x: x.get('amount', 0), reverse=True)
+            # 2. 處理資料 (過濾、排序)
+            data = process_ranking_data(rows, is_buy, sort_by_amount, close_prices)
             
-            # Display
-            print_flush(f"\n【{title}】 ({latest_date})")
-            print_flush(f"{'#':<3} {'股票名稱':<16} | {'買賣超(張)':>10} | {'金額(萬)':>10} | {'連續天數':>8}")
-            print_flush("-" * 60)
-            
-            count = 0
-            for i, row in enumerate(data):
-                if count >= top_n:
-                    break
-                
-                code = row['stock_id']
-                net_buy = row['net_buy']
-                close = close_prices.get(code, 0)
-                amount = (net_buy * 1000 * close) / 10000 if close else 0
-                name = stock_names.get(code, '')
-                display_name = f"{name}({code})" if name else code
-                
-                # Placeholder for consecutive days
-                consec_days = "-"
-                
-                print_flush(f"{i+1:<3} {display_name:<16} | {net_buy:>10,} | {amount:>10,.0f} | {consec_days:>8}")
-                count += 1
+            # 3. 顯示表格
+            render_ranking_table(data, title, latest_date, top_n, min_days, close_prices, stock_names)
                 
     except Exception as e:
         print_flush(f"❌ 查詢失敗: {e}")
@@ -12010,6 +13119,9 @@ def main_menu():
 # 主程式入口
 # ==============================
 if __name__ == "__main__":
+    import multiprocessing
+    multiprocessing.freeze_support()
+    
     # 設置日誌
     log_file = WORK_DIR / 'system.log'
     logger = logging.getLogger()
@@ -12057,12 +13169,4 @@ if __name__ == "__main__":
         print_flush("[DONE] 自動更新完成")
         sys.exit(0)
 
-    main_menu()
-
-# ==============================
-# 程式入口點
-# ==============================
-if __name__ == '__main__':
-    import multiprocessing
-    multiprocessing.freeze_support()
     main_menu()

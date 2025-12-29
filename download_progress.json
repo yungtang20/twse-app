@@ -1,0 +1,22 @@
+{
+  "last_code_index": 10,
+  "missing_stocks": [],
+  "new_stocks": [],
+  "failed_stocks": [
+    "1586",
+    "1565",
+    "1259",
+    "1295",
+    "1268",
+    "1240",
+    "1584",
+    "1294",
+    "1336",
+    "1570"
+  ],
+  "in_progress": null,
+  "stock_list_last_idx": 0,
+  "stock_list_processed": [],
+  "calc_last_idx": 0,
+  "timestamp": "2025-12-29T14:47:45.908173"
+}

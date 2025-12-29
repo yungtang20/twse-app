@@ -1,312 +1,107 @@
-# 台灣股市分析系統 v5.0 Web - 網頁版開發規格書
+# 執行目標
+1. 實作市場掃描的詳細篩選過程記錄 (Screening Log)。
+2. 讓側邊欄 (Sidebar) 可調整寬度。
 
-> **專案名稱**: TWSE Stock Analysis Web App
-> **版本**: v5.0 Web (網頁應用架構版)
-> **更新日期**: 2025-12-21
-> **核心架構**: React (Frontend) + FastAPI (Backend) + SQLite (Database)
+# 修改內容
+1.  **Backend (`backend/routers/scan.py`)**:
+    *   新增 `ScanResponse` 模型中的 `process_log` 欄位。
+    *   實作 `execute_step_scan` 函數，支援分步執行 SQL 查詢並計算每一步的剩餘檔數。
+    *   修改 `scan_2560` 端點以使用 `execute_step_scan`，並定義了具體的篩選步驟 (趨勢條件、股價支撐、動能確認)。
+    *   修復了 `scan.py` 中的語法錯誤。
 
----
+2.  **Frontend (`frontend/src/pages/Scan.jsx`)**:
+    *   新增 `processLog` 狀態變數。
+    *   修改 `fetchScanResults` 以接收後端回傳的 `process_log`。
+    *   在篩選面板中新增顯示篩選步驟與剩餘檔數的區塊 (Step -> Count)。
+    *   修復了 `Scan.jsx` 中的語法錯誤。
 
-## 📋 目錄
+3.  **Frontend (`frontend/src/components/layout/Sidebar.jsx`)**:
+    *   新增 `width` 狀態與拖曳調整寬度的邏輯 (Resize Handle)。
+    *   使用 `useRef` 和滑鼠事件 (`mousemove`, `mouseup`) 實作側邊欄寬度調整。
 
-1. [系統架構與設計原則](#系統架構與設計原則)
-2. [網頁介面結構 (UI/UX)](#網頁介面結構-uiux)
-3. [功能模組規格](#功能模組規格)
-    - [Dashboard (儀表板)](#1-dashboard-儀表板)
-    - [Data Management (資料管理)](#2-data-management-資料管理)
-    - [Market Scan (市場掃描)](#3-market-scan-市場掃描)
-    - [Institutional Ranking (法人排行)](#4-institutional-ranking-法人排行)
-    - [Stock Analysis (個股分析)](#5-stock-analysis-個股分析)
-    - [System Settings (系統設定)](#6-system-settings-系統設定)
-4. [API 規格概覽](#api-規格概覽)
-5. [開發規範與規則](#開發規範與規則)
+# 修改原因
+*   使用者希望看到篩選過程的詳細漏斗數據，了解每一層過濾掉了多少股票。
+*   使用者希望可以調整區塊大小 (側邊欄)。
 
----
+# 修改進度
+*   [x] Backend: `execute_step_scan` 實作完成。
+*   [x] Backend: `scan_2560` 整合完成。
+*   [x] Frontend: `Sidebar` 可調整寬度完成。
+*   [x] Frontend: `Scan.jsx` 顯示篩選過程完成。
+*   [x] Debug: 修復語法錯誤完成。
 
-## 系統架構與設計原則
+# 2025-12-26 優化任務
+## 執行目標
+1.  依據 `optimization.md` 與 `rule.md` 優化 `最終修正.py` 代碼結構。
+2.  提升代碼可讀性與維護性 (Extract Method, Guard Clauses, Table-Driven)。
 
-### 技術堆疊 (Tech Stack)
--   **Frontend**: React 18, Vite, TailwindCSS, Recharts/Plotly.js (圖表), Framer Motion (動畫)
--   **Backend**: Python FastAPI, Pydantic, SQLAlchemy/Raw SQL
--   **Database**: SQLite (單一寫入員模式 Single Writer Pattern)
--   **Task Queue**: BackgroundTasks (FastAPI原生) 或簡易 ThreadPool
+## 修改內容
+1.  **Backend (`最終修正.py`)**:
+    *   重構 `_handle_stock_query`: 拆分為 `fetch_realtime_data`, `fetch_and_display_history`, `handle_chart_interaction`。
+    *   重構 `_display_ranking`: 拆分為 `fetch_ranking_data`, `process_ranking_data`, `render_ranking_table`。
+    *   優化 `_worker_calc_indicators`: 使用衛語句簡化邏輯。
+    *   應用表驅動法優化部分邏輯。
 
-### 資料庫策略 (Database Strategy)
-> **核心原則**: 直接沿用現有 `taiwan_stock.db`，無需遷移資料。
+## 修改原因
+*   使用者要求參考 `optimization.md` 進行代碼優化。
+*   提升系統穩定性與開發效率。
 
-1.  **共用資料庫**: Web Backend 直接連接現有的 SQLite 檔案。
-2.  **併發控制 (Concurrency)**:
-    -   採用 **Single Writer Pattern (單一寫入員模式)**。
-    -   所有「寫入」操作 (更新股價、計算指標) 統一由一個背景執行緒處理，避免 `Database Locked` 錯誤。
-    -   所有「讀取」操作 (API 查詢) 可多執行緒並行，確保網頁回應速度。
-3.  **資料表擴充 (Future)**:
-    -   初期沿用既有 Schema。
-    -   **新增資料表**:
-        -   `web_watchlists`: 儲存使用者自選股清單 (id, name, stock_codes)。
-        -   `web_settings`: 儲存使用者偏好設定 (theme, default_strategy, notifications)。
+## 修改進度
+*   [x] 重構 `_handle_stock_query`
+*   [x] 重構 `_display_ranking`
+*   [x] 優化 `_worker_calc_indicators`
 
-### 雲端同步與自動化 (Cloud & Automation)
-1.  **雲端資料庫 (Supabase)**:
-    -   **角色**: 異地備份與遠端存取 (Read-Only Replica)。
-    -   **同步機制**: 每日更新完成後，自動觸發 `step8_sync_supabase` 將差異資料上傳。
-    -   **優勢**: 讓手機 App 或其他裝置可直接讀取最新數據，不需連回本地電腦。
+# 2025-12-26 假日跳過修復
+## 執行目標
+修復法人資料回補嘗試抓取休市日資料的問題。
 
-2.  **排程自動化 (Scheduler)**:
-    -   **工具**: 使用 `APScheduler` (Advanced Python Scheduler) 整合於 FastAPI 中。
-    -   **任務**: 每日 15:30 (台股收盤後) 自動執行全量更新 (Steps 1-8)。
-    -   **失敗重試**: 若更新失敗，自動重試 3 次並發送通知 (Line/Discord Webhook)。
+## 修改內容
+*   修改 `is_market_holiday` 函數，新增週末檢查邏輯。
+*   整合 TWSE 官方 API (`/holidaySchedule/holidaySchedule`) 動態取得休市日。
+*   新增 `_fetch_holidays_from_twse` 函數，支援快取機制 (24小時)。
+*   静態備援表 `MARKET_HOLIDAYS_FALLBACK` 作為 API 失敗時的後備。
 
-### 設計風格 (Design Aesthetics)
--   **主題**: 深色模式 (Dark Mode) 為主，營造專業金融終端機質感。
--   **配色**:
-    -   **漲 (Up)**: 紅色 (#EF4444 / Red-500)
-    -   **跌 (Down)**: 綠色 (#10B981 / Green-500) - *符合台股習慣*
-    -   **背景**: 深灰/黑 (#0F172A / Slate-900)
-    -   **卡片**: 半透明玻璃質感 (Glassmorphism)
--   **互動**:
-    -   Hover 效果明顯
-    -   數據載入使用 Skeleton Loading
-    -   即時搜尋 (Instant Search)
+## 修改原因
+*   使用者回報回補功能嘗試抓取 12-25 等無資料日期。
+*   使用者指出 TWSE 有提供休市日 API。
 
----
+## 修改進度
+*   [x] 修復 `is_market_holiday` 函數
+*   [x] 新增 12-25 到休市表
+*   [x] 整合 TWSE 休市日 API
 
-## 網頁介面結構 (UI/UX)
+# 2025-12-29 資料庫損毀自動修復
+## 執行目標
+解決 `sqlite3.DatabaseError: database disk image is malformed` 導致程式崩潰的問題。
 
-### 全域導航 (Global Navigation)
-採用 **左側側邊欄 (Sidebar)** 設計，包含以下項目：
+## 修改內容
+1.  **Backend (`最終修正.py`)**:
+    *   新增 `check_and_repair_db` 函數：
+        *   在程式啟動時執行 `PRAGMA integrity_check`。
+        *   若檢測到損毀，自動將壞檔重新命名為 `*.corrupted_YYYYMMDD_HHMMSS`。
+        *   允許系統重新建立全新的資料庫檔案。
+    *   強化 `SingleWriterDBManager` 的 `_writer_loop`：
+        *   在建立連線與設定 PRAGMA 時加入 `try-except` 保護，避免線程崩潰。
 
-| 圖示 | 名稱 | 路由 | 說明 |
-|-----|------|------|------|
-| 🏠 | **總覽 (Dashboard)** | `/` | 市場概況、自選股快照 |
-| 📊 | **市場掃描 (Scanner)** | `/scan` | 各類技術指標篩選器 (VP, MFI, MA...) |
-| 🏆 | **法人排行 (Ranking)** | `/ranking` | 外資/投信/自營商買賣超排行 |
-| 📈 | **個股分析 (Analysis)** | `/stock/:id` | K線圖、詳細指標、籌碼分析 |
-| ⚙️ | **資料管理 (Data)** | `/admin` | 數據更新、API 狀態、系統維護 |
+## 修改原因
+*   使用者回報資料庫磁碟映像損毀，導致 `DBWriter` 線程崩潰且無法啟動系統。
 
-### 頂部導航 (Top Bar)
--   **全域搜尋框**: 輸入代號或名稱 (如 "2330", "台積電")，下拉選單即時顯示結果，點擊跳轉至個股分析頁。
--   **系統狀態燈**: 顯示後端 API 連線狀態 (綠燈/紅燈)。
+## 修改進度
+*   [x] 實作啟動時自動檢查與修復機制
+*   [x] 強化 DBWriter 錯誤處理
 
----
+# 2025-12-29 啟動效能優化
+## 執行目標
+解決程式啟動緩慢的問題。
 
-## 功能模組規格
+## 修改內容
+1.  **Backend (`最終修正.py`)**:
+    *   修改 `_should_update_twstock` 函數，暫時關閉自動檢查更新 (pip install check)，改為直接返回 False。
 
-### [1] Dashboard (儀表板)
-**路由**: `/`
+## 修改原因
+*   使用者回報啟動變好慢。
+*   經查發現 `pip install` 檢查為阻塞式操作，嚴重影響啟動速度。
 
-#### UI 示意圖
-![Dashboard Mockup](./openspec/changes/init-web-app/dashboard_mockup.png)
-
-#### 功能區塊
-1.  **大盤指數卡片**:
-    -   加權指數 (TSE)、櫃買指數 (OTC)、恐慌指數 的即時點數、漲跌幅。
-    -   顯示昨日數值供比對。
-2.  **K線走勢圖**:
-    -   **K線週期切換**: 日 | 週 | 月
-    -   **指標開關按鈕**: MA5, MA20, MA60, MA200, VWAP, BBW, VP, VSBC, Fib
-    -   **成交量圖**: 柱狀圖 + Vol_MA5 + Vol_MA60
-    -   **副圖指標下拉選單**: 日KD, 週KD, 月KD, RSI, MACD, MFI, NVI, PVI, Smart Score, ADL, SMI, SVI
-3.  **自選股觀察 (Watchlist)**:
-    -   顯示欄位: 代號、名稱、現價、漲跌幅、成交量。
-    -   點擊跳轉個股分析頁。
-
----
-
-### [2] Data Management (資料管理)
-**路由**: `/admin`
-**對應原 CLI**: `[1] 資料管理與更新`
-
-#### 介面設計
--   **一鍵更新面板**:
-    -   巨大按鈕「執行每日全量更新」。
-    -   **進度條 (Progress Bar)**: 顯示目前步驟 (Step 1-7) 與詳細百分比。
-    -   **即時日誌視窗 (Log Console)**: 顯示後端回傳的執行細節 (WebSocket 或 Polling)。
--   **分項維護工具**:
-    -   卡片式佈局，每個步驟獨立一個卡片 (Step 1 更新清單, Step 2 下載 TPEx...)。
-    -   每個卡片上有「執行」按鈕與「上次更新時間」。
--   **資料庫狀態**:
-    -   顯示 DB 大小、總筆數、最後備份時間。
-    -   **雲端同步狀態**: 顯示 Supabase 連線狀態與最後同步時間。
-    -   功能按鈕: 「備份資料庫」、「清理下市股票」、「手動同步雲端」。
-
-#### API 需求
--   `POST /api/update/full`: 觸發全量更新。
--   `POST /api/update/step/{step_id}`: 觸發單一步驟。
--   `GET /api/system/status`: 取得目前任務狀態與進度。
-
----
-
-### [3] Market Scan (市場掃描)
-**路由**: `/scan`
-**對應原 CLI**: `[2] 市場掃描`
-
-#### 介面設計
--   **策略選擇器 (Tabs/Sidebar)**:
-    -   VP 籌碼分布 (支撐/壓力)
-    -   MFI 資金流向
-    -   均線策略 (多頭/乖離)
-    -   KD/MACD 指標
-    -   VSBC 籌碼策略
-    -   聰明錢 (Smart Money)
-    -   2560 戰法
-    -   五階篩選 (Five Filters)
--   **互動式資料表格 (Data Grid)**:
-    -   **排序**: 點擊標題排序 (如依「量能比」由大到小)。
-    -   **篩選**: 欄位過濾器 (如「收盤價 > 100」)。
-    -   **操作**: 點擊列 (Row) 跳轉至個股分析頁。
-    -   **視覺化欄位**:
-        -   漲跌幅: 紅/綠顏色標示。
-        -   VP位置: 進度條顯示 (接近下緣/上緣)。
-        -   量能比: 數字 + 顏色 (大於 1.5x 亮紅)。
-
-#### API 需求
--   `GET /api/scan/vp`: 取得 VP 掃描結果。
--   `GET /api/scan/mfi`: 取得 MFI 掃描結果。
--   `GET /api/scan/strategies/{strategy_name}`: 通用策略端點。
-
----
-
-### [4] Institutional Ranking (法人排行)
-**路由**: `/ranking`
-**對應原 CLI**: `[3] 法人買賣超排行`
-
-#### 介面設計
--   **篩選控制列**:
-    -   **對象**: 外資 / 投信 / 自營商 (Toggle Button)。
-    -   **方向**: 買超 / 賣超。
-    -   **排序依據**: 張數 / 金額。
-    -   **期間**: 1日 / 3日 / 5日 / 10日 / 連續 N 日。
--   **排行榜表格**:
-    -   顯示排名 (1, 2, 3...)。
-    -   包含「佔股本比重」或「佔成交量比重」等進階欄位。
-
-#### API 需求
--   `GET /api/ranking/institutional`: 參數 `type=foreign`, `days=1`, `sort=amount`。
-
----
-
-### [5] Stock Analysis (個股分析)
-**路由**: `/stock/{symbol}` (如 `/stock/2330`)
-**對應原 CLI**: `個股查詢`
-
-#### 介面設計
--   **股票頭部資訊 (Header)**:
-    -   代號/名稱 (2330 台積電)。
-    -   即時報價 (大字體)、漲跌幅、成交量。
-    -   產業類別、本益比、股價淨值比。
--   **K線圖表 (Interactive Chart)**:
-    -   使用 Plotly.js 或 TradingView Lightweight Charts。
-    -   功能: 縮放、平移、切換週期 (日/周/月)。
-    -   疊加指標: MA, Bollinger Bands, SAR。
-    -   副圖指標: Volume, KD, MACD, RSI, MFI。
--   **詳細數據卡片 (Grid Layout)**:
-    -   **籌碼分析**: 三大法人近 10 日買賣超長條圖。
-    -   **主力動向**: 集保戶數變化趨勢圖。
-    -   **融資融券**: 資券餘額變化圖。
-    -   **關鍵價位**: VP 籌碼大量區、近期高低點。
-    -   **基本面**: 營收、EPS (若有資料)。
-
-#### API 需求
--   `GET /api/stock/{symbol}/quote`: 即時報價。
--   `GET /api/stock/{symbol}/history`: 歷史 K 線資料 (OHLCV)。
--   `GET /api/stock/{symbol}/indicators`: 技術指標數據。
--   `GET /api/stock/{symbol}/chips`: 籌碼數據 (法人/資券/集保)。
-
----
-
-### [6] System Settings (系統設定)
-**路由**: `/settings` (或合併於 `/admin`)
-**對應原 CLI**: `[4] 系統維護`
-
-#### 功能
--   **API 連線檢查**: 測試 TWSE, TPEx, Supabase 連線。
--   **使用者偏好 (User Preferences)**:
-    -   **主題設定**: 切換 深色 (Dark) / 淺色 (Light) / 系統跟隨。
-    -   **預設首頁**: 設定登入後進入 Dashboard 或 Market Scan。
-    -   **通知設定**: 設定是否開啟漲跌幅警示 (Browser Notification)。
-    -   **雲端設定**: 設定 Supabase URL 與 Key。
-    -   **排程設定**: 設定每日自動更新時間 (預設 15:30)。
--   **參數設定 (Advanced)**:
-    -   調整 `HISTORY_DAYS_LOOKBACK` (預設 3年)。
-    -   調整 `MIN_VOLUME` (預設 500張)。
--   **日誌檢視**: 查看 `system.log`。
-
----
-
-## API 規格概覽
-
-所有 API 回傳格式應統一為 JSON：
-
-```json
-{
-  "status": "success", // or "error"
-  "data": { ... },     // 實際數據
-  "message": "..."     // 提示訊息
-}
-```
-
-### [7] Deployment Strategy (部署策略)
-> **核心問題**: 如何確保每日 15:30 自動更新不中斷？
-
-#### 選項 A: 本地電腦 (Local Machine)
--   **適用**: 測試階段或有 24/7 開機且網路穩定的電腦。
--   **缺點**: 電腦關機、休眠或斷網時，排程會失敗。
--   **需求**: 必須保持開機 + 連網。
-
-#### 選項 B: 雲端主機 (VPS - Virtual Private Server)
--   **定義**: 一台位於網際網路上、24小時運作的虛擬電腦 (如 Google Cloud, AWS, Linode)。
--   **優點**:
-    -   **永不斷線**: 即使您家裡停電或沒網路，它仍在運作。
-    -   **自動化**: 適合放置 `APScheduler` 排程任務。
-    -   **遠端存取**: 您可以用任何電腦或手機連進去操作。
--   **成本**: 每月約 $5-10 USD (也有免費方案，詳見下文)。
-
-#### 選項 C: 免費雲端方案 (Free Tier)
-如果您不想花錢，可以嘗試以下「永久免費」或「試用免費」的方案：
-1.  **Google Cloud (GCP) Free Tier**: 提供 `e2-micro` 機器 (美國地區)，每月免費。需綁信用卡驗證。
-2.  **Oracle Cloud Always Free**: 提供 2台 AMD VM 或 4核 ARM VM，資源給得很大方，但註冊審核較嚴。
-3.  **AWS Free Tier**: 新戶首年免費使用 `t2.micro` 或 `t3.micro`。
-4.  **GitHub Actions (進階)**: 雖然不是 VPS，但可以設定排程 (Cron) 每天跑一次 Script，完全免費。適合不需要存大量檔案的輕量任務。
-
----
-
-### 主要 Endpoints
-
-| Method | Endpoint | 描述 |
-|--------|----------|------|
-| GET | `/api/health` | 系統健康檢查 |
-| GET | `/api/stocks/list` | 取得所有股票清單 (供搜尋用) |
-| GET | `/api/stock/{id}/details` | 個股綜合資訊 |
-| GET | `/api/watchlist` | 取得自選股清單 |
-| POST | `/api/watchlist` | 新增/修改自選股 |
-| GET | `/api/settings` | 取得使用者設定 |
-| POST | `/api/settings` | 更新使用者設定 |
-| POST | `/api/tasks/update` | 啟動更新任務 |
-| GET | `/api/tasks/status` | 查詢任務進度 |
-| GET | `/api/scan/{strategy}` | 執行特定策略掃描 |
-
----
-
-## 開發規範與規則
-
-### 1. 股票篩選規則 (A規則)
-> **嚴格執行**: 所有「掃描」與「排行」功能，後端必須預先過濾資料。
--   **僅包含**: 普通股 (TWSE 上市 + TPEx 上櫃 + KY 公司)。
--   **排除**: ETF (00開頭)、權證、DR (91開頭)、ETN、債券、指數、創新板、特別股。
--   **實作**: 在 Backend 的 `StockRepository` 層級統一實作 `filter_a_rule()` 方法。
-
-### 2. 數值與格式
--   **金額**: 顯示時加上千分位 (如 `1,234,567`)。
--   **小數點**: 價格保留 2 位，漲跌幅保留 2 位 (如 `+1.23%`)。
--   **空值處理**: 前端顯示 `-` 或 `N/A`，不可顯示 `null` 或 `undefined`。
-
-### 3. 效能優化
--   **分頁 (Pagination)**: 掃描結果與排行榜若資料過多，需支援分頁或無限捲動 (Infinite Scroll)。
--   **快照 (Caching)**: 每日更新後，後端應將掃描結果計算並快取 (Cache)，避免使用者請求時才即時運算。
-
-### 4. 錯誤處理
--   前端需優雅處理 API 錯誤 (如網路斷線、後端忙碌)，顯示友善的 Toast 通知或 Error Boundary，不可白屏。
-
----
-
-*本規格書取代原 CLI 版本計畫書，作為 Web 版開發的唯一依據。*
+## 修改進度
+*   [x] 關閉自動更新檢查
+*   [x] (2025-12-29) 依使用者要求重新開啟自動更新檢查

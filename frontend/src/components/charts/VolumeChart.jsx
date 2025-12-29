@@ -1,5 +1,5 @@
 import React, { useEffect, useRef } from 'react';
-import { createChart } from 'lightweight-charts';
+import { createChart, HistogramSeries } from 'lightweight-charts';
 
 export function VolumeChart({ data, height = 100 }) {
     const chartContainerRef = useRef(null);
@@ -7,6 +7,8 @@ export function VolumeChart({ data, height = 100 }) {
 
     useEffect(() => {
         if (!chartContainerRef.current) return;
+
+        let rafId = null;
 
         const initChart = () => {
             if (!chartContainerRef.current) return;
@@ -31,7 +33,8 @@ export function VolumeChart({ data, height = 100 }) {
                 },
             });
 
-            const volumeSeries = chart.addHistogramSeries({
+            // v5 API: addSeries(HistogramSeries, options)
+            const volumeSeries = chart.addSeries(HistogramSeries, {
                 priceFormat: { type: 'volume' },
                 priceScaleId: '',
             });
@@ -49,11 +52,16 @@ export function VolumeChart({ data, height = 100 }) {
                 { time: '2024-12-12', value: 3250, color: '#ef4444' },
             ];
 
-            volumeSeries.setData(data || sampleVolume);
+            const hasData = Array.isArray(data) && data.length > 0;
+            const source = hasData ? data : sampleVolume;
+
+            volumeSeries.setData(source);
             chartRef.current = chart;
+
+            chart.timeScale().fitContent();
         };
 
-        requestAnimationFrame(initChart);
+        rafId = requestAnimationFrame(initChart);
 
         const handleResize = () => {
             if (chartRef.current && chartContainerRef.current) {
@@ -66,6 +74,7 @@ export function VolumeChart({ data, height = 100 }) {
 
         return () => {
             window.removeEventListener('resize', handleResize);
+            if (rafId) cancelAnimationFrame(rafId);
             if (chartRef.current) {
                 chartRef.current.remove();
                 chartRef.current = null;

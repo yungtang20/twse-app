@@ -1,9 +1,6 @@
-requests
+selenium
 pandas
-numpy
-twstock
+beautifulsoup4
+webdriver-manager
 lxml
-colorama
-supabase
-apscheduler
-pytz
+html5lib

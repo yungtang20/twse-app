@@ -1,27 +1,33 @@
-import requests
-from datetime import datetime
+from FinMind.data import DataLoader
+import pandas as pd
 
-today = datetime.now().strftime("%Y-%m-%d")
-yesterday = "2025-12-17"  # 嘗試昨天
+def test_finmind():
+    dl = DataLoader()
+    print("正在從 FinMind 抓取 1626 集保資料...")
+    
+    # TaiwanStockHoldingSharesPer: 個股股權分散表
+    df = dl.taiwan_stock_holding_shares_per(
+        stock_id='1626',
+        start_date='2023-12-01',
+        end_date='2025-12-19'
+    )
+    
+    if df is not None and not df.empty:
+        print(f"成功取得 {len(df)} 筆資料")
+        print(df.head())
+        print(df.tail())
+        
+        # 檢查是否有我們需要的欄位
+        # 通常需要: date, HoldingSharesLevel, people, percent
+        print("\n欄位:", df.columns.tolist())
+        
+        # 檢查是否有大戶資料 (>1000張, level 15)
+        # FinMind 的 level 定義可能不同，需確認
+        # 通常 15 代表 >1000張 (或是最大等級)
+        print("\n等級分佈:", df['HoldingSharesLevel'].unique())
+        
+    else:
+        print("未取得資料 (可能需要 Token 或資料源問題)")
 
-# 使用 FINMIND_TOKEN
-TOKEN = "eyJ0eXAiOiJKV1QiLCJhbGciOiJIUzI1NiJ9.eyJkYXRlIjoiMjAyNS0xMi0xNyAyMjowMzowMiIsInVzZXJfaWQiOiJ5dW5ndGFuZyAiLCJpcCI6IjExMS43MS4yMTIuMjUifQ.fYv38gHAin0IZu5GZZyFFjj5tPU8BCCORDTUTandpDg"
-
-for test_date in [today, yesterday]:
-    print(f"\n測試日期: {test_date}")
-    params = {
-        "dataset": "TaiwanStockInstitutionalInvestorsBuySell",
-        "start_date": test_date,
-        "end_date": test_date,
-        "token": TOKEN
-    }
-    
-    resp = requests.get("https://api.finmindtrade.com/api/v4/data", params=params, verify=False)
-    data = resp.json()
-    
-    print(f"  Status: {data.get('status')}")
-    print(f"  Message: {data.get('msg', 'N/A')}")
-    print(f"  Records: {len(data.get('data', []))}")
-    
-    if data.get('data'):
-        print(f"  Sample: {data['data'][0]}")
+if __name__ == "__main__":
+    test_finmind()

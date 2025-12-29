@@ -3,3 +3,4 @@ export { IndicatorToggle, PeriodSelector, SubChartSelector } from './ChartContro
 export { CandlestickChart } from './CandlestickChart';
 export { VolumeChart } from './VolumeChart';
 export { WatchlistTable } from './WatchlistTable';
+export { SyncedCharts } from './SyncedCharts';

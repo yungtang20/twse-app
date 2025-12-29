@@ -1,5 +1,5 @@
 import React, { useEffect, useRef } from 'react';
-import { createChart } from 'lightweight-charts';
+import { createChart, CandlestickSeries, LineSeries } from 'lightweight-charts';
 
 export function CandlestickChart({ data, activeIndicators = [], height = 400 }) {
     const chartContainerRef = useRef(null);
@@ -8,6 +8,8 @@ export function CandlestickChart({ data, activeIndicators = [], height = 400 }) 
 
     useEffect(() => {
         if (!chartContainerRef.current) return;
+
+        let rafId = null;
 
         const initChart = () => {
             if (!chartContainerRef.current) return;
@@ -36,7 +38,8 @@ export function CandlestickChart({ data, activeIndicators = [], height = 400 }) 
                 },
             });
 
-            const candlestickSeries = chart.addCandlestickSeries({
+            // v5 API: addSeries(CandlestickSeries, options)
+            const candlestickSeries = chart.addSeries(CandlestickSeries, {
                 upColor: '#ef4444',
                 downColor: '#22c55e',
                 borderUpColor: '#ef4444',
@@ -63,9 +66,15 @@ export function CandlestickChart({ data, activeIndicators = [], height = 400 }) 
                 { time: '2024-12-19', open: 17900, high: 17950, low: 17800, close: 17850 },
             ];
 
-            candlestickSeries.setData(data || sampleData);
+            const hasData = Array.isArray(data) && data.length > 0;
+            const source = hasData ? data : sampleData;
+
+            candlestickSeries.setData(source);
             seriesRef.current.candle = candlestickSeries;
             chartRef.current = chart;
+
+            // Ensure chart fits content
+            chart.timeScale().fitContent();
 
             const colors = {
                 MA5: '#3b82f6',
@@ -79,27 +88,32 @@ export function CandlestickChart({ data, activeIndicators = [], height = 400 }) 
                 Fib: '#84cc16',
             };
 
-            activeIndicators.forEach(ind => {
-                if (['MA5', 'MA20', 'MA60', 'MA200', 'VWAP'].includes(ind)) {
-                    const lineSeries = chart.addLineSeries({
-                        color: colors[ind],
-                        lineWidth: 2,
-                        title: ind,
-                    });
+            try {
+                activeIndicators.forEach(ind => {
+                    if (['MA5', 'MA20', 'MA60', 'MA200', 'VWAP'].includes(ind)) {
+                        // v5 API: addSeries(LineSeries, options)
+                        const lineSeries = chart.addSeries(LineSeries, {
+                            color: colors[ind],
+                            lineWidth: 2,
+                            title: ind,
+                        });
 
-                    const source = data || sampleData;
-                    const lineData = source.map((d) => ({
-                        time: d.time,
-                        value: d.close * (1 + (Math.random() * 0.02 - 0.01))
-                    }));
+                        const source = hasData ? data : sampleData;
+                        const lineData = source.map((d) => ({
+                            time: d.time,
+                            value: Number(d.close) * (1 + (Math.random() * 0.02 - 0.01))
+                        }));
 
-                    lineSeries.setData(lineData);
-                    seriesRef.current[ind] = lineSeries;
-                }
-            });
+                        lineSeries.setData(lineData);
+                        seriesRef.current[ind] = lineSeries;
+                    }
+                });
+            } catch (e) {
+                console.error("Error rendering indicators:", e);
+            }
         };
 
-        requestAnimationFrame(initChart);
+        rafId = requestAnimationFrame(initChart);
 
         const handleResize = () => {
             if (chartRef.current && chartContainerRef.current) {
@@ -112,6 +126,7 @@ export function CandlestickChart({ data, activeIndicators = [], height = 400 }) 
 
         return () => {
             window.removeEventListener('resize', handleResize);
+            if (rafId) cancelAnimationFrame(rafId);
             if (chartRef.current) {
                 chartRef.current.remove();
                 chartRef.current = null;

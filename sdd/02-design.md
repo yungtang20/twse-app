@@ -6,10 +6,11 @@
 ![Dashboard Mockup](./dashboard_mockup.png)
 
 **功能規格：**
+- **頂部搜尋框**: 支援輸入代號或名稱即時搜尋 (Autocomplete)
 - **K線週期切換**: 日 | 週 | 月
 - **指標開關按鈕**: MA5, MA20, MA60, MA200, VWAP, BBW, VP, VSBC, Fib
 - **成交量圖**: 柱狀圖 + Vol_MA5 + Vol_MA60
-- **副圖指標選單**: 日KD, 週KD, 月KD, RSI, MACD, MFI, NVI, PVI, Smart Score, ADL, SMI, SVI
+- **副圖指標選單**: 日KD, 週KD, 月KD, RSI, MACD, MFI, NVI/PVI, SMI/SVI, Smart Score, ADL, 外資, 投信, 自營
 
 ---
 

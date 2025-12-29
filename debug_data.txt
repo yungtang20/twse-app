@@ -1,0 +1,50 @@
+--- 0000 DATA ---
+{
+  "success": true,
+  "data": {
+    "code": "0000",
+    "history": [
+      {
+        "date_int": 20251217,
+        "open": 27596.18,
+        "high": 27780.69,
+        "low": 27469.6,
+        "close": 27525.17,
+        "volume": 5499500,
+        "amount": 0,
+        "foreign_buy": -35433545584.0,
+        "trust_buy": 797557087.0,
+        "dealer_buy": 2270319074.0
+      },
+      {
+        "date_int": 20251218,
+        "open": 27447.45,
+        "high": 27569.44,
+        "low": 27350.77,
+        "close": 27468.53,
+        "volume": 4799900,
+        "amount": 0,
+        "foreign_buy": -26841406358.0,
+        "trust_buy": 3746563648.0,
+        "dealer_buy": -3012804537.0
+      },
+      {
+        "date_int": 20251219,
+        "open": 27685.74,
+        "high": 27869.78,
+        "low": 27672.05,
+        "close": 27696.35,
+        "volume": 5627700,
+        "amount": 0,
+        "foreign_buy": -124354784.0,
+        "trust_buy": 4348688134.0,
+        "dealer_buy": 3112521038.0
+      }
+    ],
+    "count": 3
+  },
+  "message": null
+}
+
+--- SCHEMA ---
+['code', 'date_int', 'open', 'high', 'low', 'close', 'volume', 'amount', 'foreign_buy', 'trust_buy', 'dealer_buy']

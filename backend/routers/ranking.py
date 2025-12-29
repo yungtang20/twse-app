@@ -5,7 +5,7 @@ from fastapi import APIRouter, HTTPException, Query
 from typing import Optional, List, Dict
 from pydantic import BaseModel
 
-from services.db import db_manager
+from backend.services.db import db_manager
 
 router = APIRouter()
 

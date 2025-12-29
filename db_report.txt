@@ -1,0 +1,13 @@
+Checking database: d:\twse\taiwan_stock.db
+Tables found: ['stock_meta', 'stock_history', 'stock_snapshot', 'margin_data', 'market_index', 'institutional_investors', 'stock_data', 'stock_shareholding_all']
+Total A-Rule Stocks target: 1930
+
+[TDCC Data] Stocks with data: 3883
+Missing TDCC Stocks (Coverage): 0
+
+[TDCC Depth Analysis]
+Stocks with < 10 records: 0
+Overall Date Range: 221 to 20251219
+
+[Price History] Stocks with data: 1938
+Missing Price History Stocks: 0

@@ -1,0 +1,40 @@
+/* Force reset for rankings table to prevent grid/column layout issues */
+.rankings-fix-container table {
+    display: table !important;
+    width: 100% !important;
+    border-collapse: collapse !important;
+    table-layout: fixed !important;
+    grid-template-columns: none !important;
+    columns: auto !important;
+}
+
+.rankings-fix-container thead {
+    display: table-header-group !important;
+    width: 100% !important;
+}
+
+.rankings-fix-container tbody {
+    display: table-row-group !important;
+    width: 100% !important;
+    grid-template-columns: none !important;
+    columns: auto !important;
+    column-count: auto !important;
+    flex-direction: column !important;
+    float: none !important;
+}
+
+.rankings-fix-container tr {
+    display: table-row !important;
+    width: 100% !important;
+    float: none !important;
+    columns: auto !important;
+    grid-template-columns: none !important;
+}
+
+.rankings-fix-container th,
+.rankings-fix-container td {
+    display: table-cell !important;
+    float: none !important;
+    width: auto;
+    /* Allow colgroup to control width */
+}
