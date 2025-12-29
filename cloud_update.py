@@ -96,8 +96,7 @@ def download_twse_stocks() -> List[Dict]:
                 stocks.append({
                     "code": code,
                     "name": name,
-                    "market": "TWSE",
-                    "industry": ""
+                    "market": "TWSE"
                 })
         
         print_flush(f"  ✓ 上市股票: {len(stocks)} 檔")
@@ -109,37 +108,34 @@ def download_twse_stocks() -> List[Dict]:
 def download_tpex_stocks() -> List[Dict]:
     """下載 TPEX 上櫃股票清單"""
     print_flush("📥 下載上櫃股票清單...")
-    url = "https://www.tpex.org.tw/web/stock/aftertrading/otc_quotes_no1430/stk_wn1430_result.php"
-    params = {"l": "zh-tw", "o": "json"}
+    # 使用基本資料 API
+    url = "https://www.tpex.org.tw/openapi/v1/tpex_mainboard_quotes"
     
     try:
-        r = requests.get(url, params=params, headers=HEADERS, timeout=30)
+        r = requests.get(url, headers=HEADERS, timeout=30)
         data = r.json()
         
         stocks = []
-        if data.get("aaData"):
-            for row in data["aaData"]:
-                code = str(row[0]).strip()
-                name = str(row[1]).strip()
+        for item in data:
+            code = str(item.get("SecuritiesCompanyCode", "")).strip()
+            name = str(item.get("CompanyName", "")).strip()
+            
+            # A規則
+            if not code.isdigit():
+                continue
+            if len(code) != 4:
+                continue
                 
-                # A規則
-                if not code.isdigit():
-                    continue
-                if len(code) != 4:
-                    continue
-                    
-                stocks.append({
-                    "code": code,
-                    "name": name,
-                    "market": "TPEX",
-                    "industry": ""
-                })
+            stocks.append({
+                "code": code,
+                "name": name,
+                "market": "TPEX"
+            })
         
         print_flush(f"  ✓ 上櫃股票: {len(stocks)} 檔")
         return stocks
     except Exception as e:
         print_flush(f"  ❌ 下載失敗: {e}")
-        return []
 
 def download_twse_quotes(date_str: str) -> List[Dict]:
     """下載 TWSE 今日行情"""
