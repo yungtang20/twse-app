@@ -190,49 +190,58 @@ def download_twse_quotes(date_str: str) -> List[Dict]:
         return []
 
 def download_tpex_quotes(date_str: str) -> List[Dict]:
-    """下載 TPEX 今日行情"""
-    # 轉換日期格式 YYYYMMDD -> YYY/MM/DD (民國年)
-    year = int(date_str[:4]) - 1911
-    month = date_str[4:6]
-    day = date_str[6:8]
-    roc_date = f"{year}/{month}/{day}"
-    
+    """下載 TPEX 今日行情 (使用 OpenAPI)"""
     print_flush(f"📥 下載上櫃行情 ({date_str})...")
-    url = "https://www.tpex.org.tw/web/stock/aftertrading/otc_quotes_no1430/stk_wn1430_result.php"
-    params = {"l": "zh-tw", "d": roc_date, "o": "json"}
+    url = "https://www.tpex.org.tw/openapi/v1/tpex_mainboard_daily_close_quotes"
     
     try:
-        time.sleep(3)
-        r = requests.get(url, params=params, headers=HEADERS, timeout=60)
+        time.sleep(2)
+        r = requests.get(url, headers=HEADERS, timeout=60)
         data = r.json()
         
         quotes = []
-        if data.get("aaData"):
-            date_int = int(date_str)
-            for row in data["aaData"]:
-                code = str(row[0]).strip()
-                if not code.isdigit() or len(code) != 4:
-                    continue
-                
-                close = safe_float(row[2])
-                change = safe_float(row[3])
-                open_price = safe_float(row[4])
-                high = safe_float(row[5])
-                low = safe_float(row[6])
-                volume = safe_int(row[7])
-                
-                if close <= 0:
-                    continue
+        date_int = int(date_str)
+        # OpenAPI 通常回傳最新資料，我們檢查日期是否匹配
+        # 格式可能是 "112/12/29" 或 "2025/12/29"
+        
+        for item in data:
+            code = str(item.get("SecuritiesCompanyCode", "")).strip()
+            if not code.isdigit() or len(code) != 4:
+                continue
+            
+            # 檢查日期 (有些 OpenAPI 會包含日期欄位)
+            # 如果沒有日期欄位，我們假設它是最新的
+            item_date = item.get("Date", "")
+            if item_date:
+                # 處理 112/12/29 格式
+                if "/" in item_date:
+                    parts = item_date.split("/")
+                    if len(parts[0]) == 3: # 民國年
+                        item_date_int = (int(parts[0]) + 1911) * 10000 + int(parts[1]) * 100 + int(parts[2])
+                    else:
+                        item_date_int = int(parts[0]) * 10000 + int(parts[1]) * 100 + int(parts[2])
                     
-                quotes.append({
-                    "code": code,
-                    "date_int": date_int,
-                    "open": open_price,
-                    "high": high,
-                    "low": low,
-                    "close": close,
-                    "volume": volume * 1000  # TPEX 單位是張
-                })
+                    if item_date_int != date_int:
+                        continue
+
+            close = safe_float(item.get("Close", 0))
+            open_price = safe_float(item.get("Open", 0))
+            high = safe_float(item.get("High", 0))
+            low = safe_float(item.get("Low", 0))
+            volume = safe_int(item.get("TradingVolume", 0))
+            
+            if close <= 0:
+                continue
+                
+            quotes.append({
+                "code": code,
+                "date_int": date_int,
+                "open": open_price,
+                "high": high,
+                "low": low,
+                "close": close,
+                "volume": volume
+            })
         
         print_flush(f"  ✓ 上櫃行情: {len(quotes)} 筆")
         return quotes
@@ -241,53 +250,70 @@ def download_tpex_quotes(date_str: str) -> List[Dict]:
         return []
 
 def download_institutional(date_str: str) -> List[Dict]:
-    """下載三大法人買賣超"""
+    """下載三大法人買賣超 (使用 OpenAPI)"""
     print_flush(f"📥 下載法人買賣超 ({date_str})...")
-    
-    # TWSE
-    url = "https://www.twse.com.tw/fund/T86"
-    params = {"response": "json", "date": date_str, "selectType": "ALLBUT0999"}
-    
-    data_list = []
+    date_int = int(date_str)
+    combined_data = []
+
+    # 1. TWSE
+    twse_url = "https://openapi.twse.com.tw/v1/fund/T86_ALL"
     try:
-        time.sleep(3)
-        r = requests.get(url, params=params, headers=HEADERS, timeout=60)
+        print_flush("  📥 下載上市法人資料...")
+        r = requests.get(twse_url, headers=HEADERS, timeout=60)
         data = r.json()
-        
-        if data.get("stat") == "OK" and data.get("data"):
-            date_int = int(date_str)
-            for row in data["data"]:
-                code = str(row[0]).strip()
-                if not code.isdigit() or len(code) != 4:
-                    continue
-                
-                # 外資、投信、自營商
-                foreign_buy = safe_int(row[2])
-                foreign_sell = safe_int(row[3])
-                foreign_net = safe_int(row[4])
-                trust_buy = safe_int(row[5])
-                trust_sell = safe_int(row[6])
-                trust_net = safe_int(row[7])
-                dealer_net = safe_int(row[8])
-                total_net = safe_int(row[11])
-                
-                data_list.append({
-                    "code": code,
-                    "date_int": date_int,
-                    "foreign_buy": foreign_buy,
-                    "foreign_sell": foreign_sell,
-                    "foreign_net": foreign_net,
-                    "trust_buy": trust_buy,
-                    "trust_sell": trust_sell,
-                    "trust_net": trust_net,
-                    "dealer_net": dealer_net,
-                    "total_net": total_net
-                })
+        for item in data:
+            code = str(item.get("Code", "")).strip()
+            if not code.isdigit() or len(code) != 4:
+                continue
+            
+            # 外資、投信、自營商
+            # OpenAPI 欄位名稱通常是中文或特定英文
+            f_net = safe_int(item.get("ForeignInvestorsBuySellNet", 0))
+            t_net = safe_int(item.get("InvestmentTrustBuySellNet", 0))
+            d_net = safe_int(item.get("DealerBuySellNet", 0))
+            total_net = safe_int(item.get("TotalBuySellNet", 0))
+            
+            combined_data.append({
+                "code": code,
+                "date_int": date_int,
+                "foreign_net": f_net,
+                "trust_net": t_net,
+                "dealer_net": d_net,
+                "total_net": total_net
+            })
     except Exception as e:
         print_flush(f"  ⚠ TWSE 法人資料下載失敗: {e}")
+
+    # 2. TPEX
+    tpex_url = "https://www.tpex.org.tw/openapi/v1/tpex_3insti_daily_trading"
+    try:
+        print_flush("  📥 下載上櫃法人資料...")
+        time.sleep(2)
+        r = requests.get(tpex_url, headers=HEADERS, timeout=60)
+        data = r.json()
+        for item in data:
+            code = str(item.get("SecuritiesCompanyCode", "")).strip()
+            if not code.isdigit() or len(code) != 4:
+                continue
+            
+            f_net = safe_int(item.get("ForeignInvestorsBuySellNet", 0))
+            t_net = safe_int(item.get("InvestmentTrustBuySellNet", 0))
+            d_net = safe_int(item.get("DealerBuySellNet", 0))
+            total_net = safe_int(item.get("ThreeInstitutionsBuySellNet", 0))
+            
+            combined_data.append({
+                "code": code,
+                "date_int": date_int,
+                "foreign_net": f_net,
+                "trust_net": t_net,
+                "dealer_net": d_net,
+                "total_net": total_net
+            })
+    except Exception as e:
+        print_flush(f"  ⚠ TPEX 法人資料下載失敗: {e}")
     
-    print_flush(f"  ✓ 法人買賣超: {len(data_list)} 筆")
-    return data_list
+    print_flush(f"  ✓ 法人買賣超: {len(combined_data)} 筆")
+    return combined_data
 
 # ==============================
 # Supabase 上傳
