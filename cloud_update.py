@@ -362,11 +362,7 @@ def main():
     twse_stocks = download_twse_stocks()
     tpex_stocks = download_tpex_stocks()
     all_stocks = twse_stocks + tpex_stocks
-    
-    # 暫時跳過 stock_data 上傳 (表格結構不相容)
-    # if all_stocks:
-    #     upload_to_supabase(supabase, "stock_data", all_stocks)
-    print_flush(f"  ⚠ 跳過 stock_data 上傳 (表格結構不相容)")
+    stock_names = {s["code"]: s["name"] for s in all_stocks}
     
     # Step 2: 下載今日行情
     print_flush("\n[Step 2] 下載今日行情")
@@ -374,8 +370,27 @@ def main():
     tpex_quotes = download_tpex_quotes(date_str)
     all_quotes = twse_quotes + tpex_quotes
     
+    # 上傳到 stock_history
     if all_quotes:
         upload_to_supabase(supabase, "stock_history", all_quotes)
+    
+    # 上傳到 stock_data (合併股票名稱和行情)
+    stock_data_records = []
+    for q in all_quotes:
+        record = {
+            "code": q["code"],
+            "name": stock_names.get(q["code"], ""),
+            "date": f"{date_str[:4]}-{date_str[4:6]}-{date_str[6:8]}",  # YYYY-MM-DD format
+            "open": q["open"],
+            "high": q["high"],
+            "low": q["low"],
+            "close": q["close"],
+            "volume": q["volume"]
+        }
+        stock_data_records.append(record)
+    
+    if stock_data_records:
+        upload_to_supabase(supabase, "stock_data", stock_data_records)
     
     # Step 3: 下載法人買賣超
     print_flush("\n[Step 3] 下載法人買賣超")
