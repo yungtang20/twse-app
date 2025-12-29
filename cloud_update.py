@@ -224,10 +224,126 @@ def download_tpex_quotes(date_str: str) -> List[Dict]:
                     if item_date_int != date_int:
                         continue
 
-            close = safe_float(item.get("Close", 0))
-            open_price = safe_float(item.get("Open", 0))
-            high = safe_float(item.get("High", 0))
-            low = safe_float(item.get("Low", 0))
+            if close <= 0:
+                continue
+                
+            quotes.append({
+                "code": code,
+                "date_int": date_int,
+                "open": open_price,
+                "high": high,
+                "low": low,
+                "close": close,
+                "volume": volume
+            })
+        
+        print_flush(f"  ✓ 上櫃行情: {len(quotes)} 筆")
+        return quotes
+    except Exception as e:
+        print_flush(f"  ❌ 下載失敗: {e}")
+        return []
+
+def upload_to_supabase(supabase: Client, table: str, data: List[Dict], batch_size: int = 1000):
+    """批次上傳到 Supabase"""
+    if not data:
+        print_flush(f"  ⚠ {table}: 無資料")
+        return 0
+    
+    print_flush(f"📤 上傳 {table} ({len(data)} 筆)...")
+    
+    total_batches = math.ceil(len(data) / batch_size)
+    success_count = 0
+    
+    for i in range(total_batches):
+        start = i * batch_size
+        end = min((i + 1) * batch_size, len(data))
+        batch = data[start:end]
+        
+        try:
+            # 使用 upsert 並指定衝突時忽略 (ignore_duplicates=False 會更新)
+            # 對於 stock_data，我們希望更新現有資料
+            # 對於 stock_history 和 institutional_investors，我們也希望更新
+            if table == "stock_data":
+                supabase.table(table).upsert(batch, on_conflict="code,date").execute()
+            else:
+                supabase.table(table).upsert(batch).execute()
+                
+            success_count += len(batch)
+            
+            if (i + 1) % 5 == 0 or (i + 1) == total_batches:
+                print_flush(f"  進度: {i + 1}/{total_batches} ({success_count}/{len(data)})")
+        except Exception as e:
+            print_flush(f"  ❌ Batch {i + 1} 失敗: {e}")
+    
+    print_flush(f"  ✓ {table}: {success_count}/{len(data)} 筆")
+    return success_count
+
+def download_institutional(date_str: str) -> List[Dict]:
+    """下載三大法人買賣超 (使用 OpenAPI)"""
+    print_flush(f"📥 下載法人買賣超 ({date_str})...")
+    date_int = int(date_str)
+    date_fmt = f"{date_str[:4]}-{date_str[4:6]}-{date_str[6:8]}"
+    combined_data = []
+
+    # 1. TWSE
+    # 修正：使用正確的 OpenAPI URL (T86_ALL)
+    twse_url = "https://openapi.twse.com.tw/v1/fund/T86_ALL"
+    try:
+        print_flush("  📥 下載上市法人資料...")
+        r = requests.get(twse_url, headers=HEADERS, timeout=60)
+        # 檢查回應是否為 JSON
+        try:
+            data = r.json()
+        except json.JSONDecodeError:
+            print_flush(f"  ⚠ TWSE 回應非 JSON: {r.text[:100]}")
+            data = []
+
+        for item in data:
+            code = str(item.get("Code", "")).strip()
+            if not code.isdigit() or len(code) != 4:
+                continue
+            
+            f_net = safe_int(item.get("ForeignInvestorsBuySellNet", 0))
+            t_net = safe_int(item.get("InvestmentTrustBuySellNet", 0))
+            d_net = safe_int(item.get("DealerBuySellNet", 0))
+            
+            combined_data.append({
+                "code": code,
+                "date_int": date_int,
+                "date": date_fmt,
+                "foreign_net": f_net,
+                "trust_net": t_net,
+                "dealer_net": d_net
+            })
+    except Exception as e:
+        print_flush(f"  ⚠ TWSE 法人資料下載失敗: {e}")
+
+    # 2. TPEX
+    tpex_url = "https://www.tpex.org.tw/openapi/v1/tpex_3insti_daily_trading"
+    try:
+        print_flush("  📥 下載上櫃法人資料...")
+        time.sleep(2)
+        r = requests.get(tpex_url, headers=HEADERS, timeout=60)
+        data = r.json()
+        for item in data:
+            code = str(item.get("SecuritiesCompanyCode", "")).strip()
+            if not code.isdigit() or len(code) != 4:
+                continue
+            
+            f_net = safe_int(item.get("ForeignInvestorsBuySellNet", 0))
+            t_net = safe_int(item.get("InvestmentTrustBuySellNet", 0))
+            d_net = safe_int(item.get("DealerBuySellNet", 0))
+            
+            combined_data.append({
+                "code": code,
+                "date_int": date_int,
+                "date": date_fmt,
+                "foreign_net": f_net,
+                "trust_net": t_net,
+                "dealer_net": d_net
+            })
+    except Exception as e:
+        print_flush(f"  ⚠ TPEX 法人資料下載失敗: {e}")
     
     print_flush(f"  ✓ 法人買賣超: {len(combined_data)} 筆")
     return combined_data
