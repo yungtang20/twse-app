@@ -95,8 +95,7 @@ def download_twse_stocks() -> List[Dict]:
                     
                 stocks.append({
                     "code": code,
-                    "name": name,
-                    "market": "TWSE"
+                    "name": name
                 })
         
         print_flush(f"  ✓ 上市股票: {len(stocks)} 檔")
@@ -128,8 +127,7 @@ def download_tpex_stocks() -> List[Dict]:
                 
             stocks.append({
                 "code": code,
-                "name": name,
-                "market": "TPEX"
+                "name": name
             })
         
         print_flush(f"  ✓ 上櫃股票: {len(stocks)} 檔")
