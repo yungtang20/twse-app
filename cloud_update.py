@@ -186,8 +186,7 @@ def download_twse_quotes(date_str: str) -> List[Dict]:
                             "high": high,
                             "low": low,
                             "close": close,
-                            "volume": volume,
-                            "change": change
+                            "volume": volume
                         })
         
         print_flush(f"  ✓ 上市行情: {len(quotes)} 筆")
@@ -238,8 +237,7 @@ def download_tpex_quotes(date_str: str) -> List[Dict]:
                     "high": high,
                     "low": low,
                     "close": close,
-                    "volume": volume * 1000,  # TPEX 單位是張
-                    "change": change
+                    "volume": volume * 1000  # TPEX 單位是張
                 })
         
         print_flush(f"  ✓ 上櫃行情: {len(quotes)} 筆")
@@ -372,7 +370,7 @@ def main():
     all_stocks = twse_stocks + tpex_stocks
     
     if all_stocks:
-        upload_to_supabase(supabase, "stock_meta", all_stocks)
+        upload_to_supabase(supabase, "stock_data", all_stocks)
     
     # Step 2: 下載今日行情
     print_flush("\n[Step 2] 下載今日行情")
