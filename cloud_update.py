@@ -363,8 +363,10 @@ def main():
     tpex_stocks = download_tpex_stocks()
     all_stocks = twse_stocks + tpex_stocks
     
-    if all_stocks:
-        upload_to_supabase(supabase, "stock_data", all_stocks)
+    # 暫時跳過 stock_data 上傳 (表格結構不相容)
+    # if all_stocks:
+    #     upload_to_supabase(supabase, "stock_data", all_stocks)
+    print_flush(f"  ⚠ 跳過 stock_data 上傳 (表格結構不相容)")
     
     # Step 2: 下載今日行情
     print_flush("\n[Step 2] 下載今日行情")
