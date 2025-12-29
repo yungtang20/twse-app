@@ -224,6 +224,12 @@ def download_tpex_quotes(date_str: str) -> List[Dict]:
                     if item_date_int != date_int:
                         continue
 
+            close = safe_float(item.get("Close", 0))
+            open_price = safe_float(item.get("Open", 0))
+            high = safe_float(item.get("High", 0))
+            low = safe_float(item.get("Low", 0))
+            volume = safe_int(item.get("TradingVolume", 0))
+            
             if close <= 0:
                 continue
                 
@@ -282,7 +288,7 @@ def download_institutional(date_str: str) -> List[Dict]:
     """下載三大法人買賣超 (使用 OpenAPI)"""
     print_flush(f"📥 下載法人買賣超 ({date_str})...")
     date_int = int(date_str)
-    date_fmt = f"{date_str[:4]}-{date_str[4:6]}-{date_str[6:8]}"
+    # date_fmt = f"{date_str[:4]}-{date_str[4:6]}-{date_str[6:8]}" # Remove date_fmt
     combined_data = []
 
     # 1. TWSE
@@ -310,7 +316,7 @@ def download_institutional(date_str: str) -> List[Dict]:
             combined_data.append({
                 "code": code,
                 "date_int": date_int,
-                "date": date_fmt,
+                # "date": date_fmt, # Remove date field
                 "foreign_net": f_net,
                 "trust_net": t_net,
                 "dealer_net": d_net
@@ -337,7 +343,7 @@ def download_institutional(date_str: str) -> List[Dict]:
             combined_data.append({
                 "code": code,
                 "date_int": date_int,
-                "date": date_fmt,
+                # "date": date_fmt, # Remove date field
                 "foreign_net": f_net,
                 "trust_net": t_net,
                 "dealer_net": d_net
