@@ -29,9 +29,12 @@ def get_configured_db_path() -> Path:
 
 DB_PATH = get_configured_db_path()
 
-# Supabase 設定
-SUPABASE_URL = "https://bshxromrtsetlfjdeggv.supabase.co"
-SUPABASE_KEY = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImJzaHhyb21ydHNldGxmamRlZ2d2Iiwicm9sZSI6InNlcnZpY2Vfcm9sZSIsImlhdCI6MTc2Njk5NzI1NywiZXhwIjoyMDgyNTczMjU3fQ.8i4GD8rOQtpISgEd2ZX-wzR4xq2FCuKC99NyKqjmHi0"
+# Supabase 設定 (優先使用環境變數)
+SUPABASE_URL = os.environ.get("SUPABASE_URL", "https://bshxromrtsetlfjdeggv.supabase.co")
+SUPABASE_KEY = os.environ.get("SUPABASE_KEY", "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImJzaHhyb21ydHNldGxmamRlZ2d2Iiwicm9sZSI6InNlcnZpY2Vfcm9sZSIsImlhdCI6MTc2Njk5NzI1NywiZXhwIjoyMDgyNTczMjU3fQ.8i4GD8rOQtpISgEd2ZX-wzR4xq2FCuKC99NyKqjmHi0")
+
+# 自動偵測雲端模式: 如果 SQLite 檔案不存在，就是雲端模式
+IS_CLOUD_MODE = not DB_PATH.exists()
 
 class DBManager:
     """資料庫管理器"""
@@ -40,6 +43,12 @@ class DBManager:
         self.db_path = db_path or get_configured_db_path()
         self._supabase = None
         self._supabase_initialized = False
+        self.is_cloud_mode = IS_CLOUD_MODE
+        
+        # 雲端模式: 自動連線 Supabase
+        if IS_CLOUD_MODE:
+            print("☁️ 偵測到雲端模式 (SQLite 不存在)，自動連線 Supabase...")
+            self.connect_supabase()
     
     def set_db_path(self, new_path: str) -> bool:
         """動態切換資料庫路徑"""
@@ -106,7 +115,21 @@ db_manager = DBManager()
 # ========================================
 
 def get_all_stocks() -> List[Dict]:
-    """取得所有股票清單 (SQLite)"""
+    """取得所有股票清單 (支援雲端模式)"""
+    # 雲端模式: 從 Supabase 讀取
+    if db_manager.is_cloud_mode and db_manager.supabase:
+        try:
+            response = db_manager.supabase.table('stock_meta').select('code, name, market_type').execute()
+            if response.data:
+                return [{'code': r['code'], 'name': r['name'], 'market': r.get('market_type', '')} for r in response.data]
+        except Exception as e:
+            print(f"⚠️ 雲端讀取股票清單失敗: {e}")
+            return []
+    
+    # 本地模式: SQLite
+    if db_manager.is_cloud_mode:
+        return []  # 雲端模式下沒有 SQLite
+        
     query = """
         SELECT code, name, market_type as market
         FROM stock_meta
@@ -134,15 +157,17 @@ def get_stock_by_code(code: str) -> Optional[Dict]:
 
 def get_stock_history(code: str, limit: int = 60) -> List[Dict]:
     """取得股票歷史 K 線 (支援本地/雲端切換)"""
-    # 1. 檢查讀取來源設定
-    read_source = "local"
+    # 1. 雲端模式優先 (自動偵測或設定檔指定)
+    read_source = "cloud" if db_manager.is_cloud_mode else "local"
+    
+    # 檢查 config.json 是否有覆蓋設定
     try:
         import json
         config_path = Path("config.json")
         if config_path.exists():
             with open(config_path, 'r', encoding='utf-8') as f:
                 config = json.load(f)
-                read_source = config.get("read_source", "local")
+                read_source = config.get("read_source", read_source)
     except:
         pass
 
@@ -151,10 +176,17 @@ def get_stock_history(code: str, limit: int = 60) -> List[Dict]:
         try:
             return get_stock_history_from_cloud(code, limit)
         except Exception as e:
-            print(f"⚠️ 雲端讀取失敗，降級回本地: {e}")
-            # 失敗則降級回本地
+            print(f"⚠️ 雲端讀取失敗: {e}")
+            if db_manager.is_cloud_mode:
+                # 雲端模式下無法降級，返回空資料
+                return []
+            # 否則降級回本地
 
     # 3. 本地讀取 (SQLite)
+    if db_manager.is_cloud_mode:
+        # 雲端模式下沒有 SQLite，返回空資料
+        return []
+    
     query = """
         SELECT date_int, open, high, low, close, volume, amount,
                foreign_buy, trust_buy, dealer_buy,
