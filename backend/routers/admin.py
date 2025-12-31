@@ -95,25 +95,62 @@ from pathlib import Path
 # Setup logger
 logger = logging.getLogger(__name__)
 
-# Add root directory to path to import 最終修正
+# Add root directory to path to import main_script
 sys.path.append(os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__)))))
 
-from main_script import (
-    step1_check_holiday,
-    step2_download_lists,
-    step3_download_basic_info,
-    step4_clean_delisted,
-    step5_download_quotes,
-    step6_download_valuation,
-    step7_download_institutional,
-    step8_download_margin,
-    step9_download_tdcc,
-    step10_check_gaps,
-    step11_verify_backfill,
-    step12_calc_indicators,
-    step8_sync_supabase
-)
-from update_institutional_streaks import update_streaks
+# Lazy imports - will be loaded when needed to avoid import-time failures in cloud
+_main_script_loaded = False
+_main_script_functions = {}
+
+def _load_main_script():
+    """Lazy load main_script functions"""
+    global _main_script_loaded, _main_script_functions
+    if _main_script_loaded:
+        return _main_script_functions
+    try:
+        from main_script import (
+            step1_check_holiday,
+            step2_download_lists,
+            step3_download_basic_info,
+            step4_clean_delisted,
+            step5_download_quotes,
+            step6_download_valuation,
+            step7_download_institutional,
+            step8_download_margin,
+            step9_download_tdcc,
+            step10_check_gaps,
+            step11_verify_backfill,
+            step12_calc_indicators,
+            step8_sync_supabase
+        )
+        _main_script_functions = {
+            'step1_check_holiday': step1_check_holiday,
+            'step2_download_lists': step2_download_lists,
+            'step3_download_basic_info': step3_download_basic_info,
+            'step4_clean_delisted': step4_clean_delisted,
+            'step5_download_quotes': step5_download_quotes,
+            'step6_download_valuation': step6_download_valuation,
+            'step7_download_institutional': step7_download_institutional,
+            'step8_download_margin': step8_download_margin,
+            'step9_download_tdcc': step9_download_tdcc,
+            'step10_check_gaps': step10_check_gaps,
+            'step11_verify_backfill': step11_verify_backfill,
+            'step12_calc_indicators': step12_calc_indicators,
+            'step8_sync_supabase': step8_sync_supabase,
+        }
+        _main_script_loaded = True
+    except Exception as e:
+        logger.warning(f"無法載入 main_script: {e}")
+    return _main_script_functions
+
+def _load_update_streaks():
+    """Lazy load update_streaks function"""
+    try:
+        from update_institutional_streaks import update_streaks
+        return update_streaks
+    except Exception as e:
+        logger.warning(f"無法載入 update_institutional_streaks: {e}")
+        return None
 
 @router.post("/admin/update/streaks", response_model=AdminResponse)
 async def trigger_streaks_update(background_tasks: BackgroundTasks):
@@ -160,7 +197,11 @@ def run_streaks_update(task_id: str):
         # 由於 update_streaks 是一次性函數，我們無法細分進度，只能設為 50% -> 100%
         _task_status[task_id]["progress"] = 10
         
-        update_streaks()
+        update_streaks_fn = _load_update_streaks()
+        if update_streaks_fn:
+            update_streaks_fn()
+        else:
+            raise Exception("無法載入 update_streaks 模組")
         
         _task_status[task_id] = {
             "status": "completed",
