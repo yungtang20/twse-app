@@ -1,43 +1,7 @@
 from fastapi import APIRouter, Query
-from backend.services.db import db_manager
-from typing import List, Optional
-from pydantic import BaseModel
-import sys
+from backend.services.db import db_manager, get_system_status
 
-router = APIRouter(prefix="/api/rankings", tags=["rankings"])
-
-class RankingItem(BaseModel):
-    code: str
-    name: str
-    close: Optional[float]
-    change_pct: Optional[float]
-    volume: Optional[int]
-    foreign_buy: Optional[int]
-    trust_buy: Optional[int]
-    dealer_buy: Optional[int]
-    total_buy: Optional[int]
-    foreign_streak: Optional[int]
-    trust_streak: Optional[int]
-    dealer_streak: Optional[int]
-    foreign_cumulative: Optional[int] = 0
-    trust_cumulative: Optional[int] = 0
-    dealer_cumulative: Optional[int] = 0
-    foreign_cumulative_pct: Optional[float] = 0.0
-    trust_cumulative_pct: Optional[float] = 0.0
-    dealer_cumulative_pct: Optional[float] = 0.0
-    # Holding (Stock)
-    foreign_holding_shares: Optional[int] = 0
-    foreign_holding_pct: Optional[float] = 0.0
-    trust_holding_shares: Optional[int] = 0
-    trust_holding_pct: Optional[float] = 0.0
-
-class RankingResponse(BaseModel):
-    success: bool
-    data: List[RankingItem]
-    total_count: int
-    total_pages: int
-    current_page: int
-    data_date: Optional[str] = None
+# ... (existing imports)
 
 @router.get("/institutional", response_model=RankingResponse)
 async def get_institutional_rankings(
@@ -55,15 +19,26 @@ async def get_institutional_rankings(
     """
     Get institutional investor rankings.
     """
-    # 雲端模式: 返回空資料 (此功能需要本地 SQLite)
+    # 雲端模式: 返回空資料 (此功能需要本地 SQLite)，但嘗試返回日期
     if db_manager.is_cloud_mode:
+        date_str = None
+        try:
+            status = get_system_status()
+            latest_date = status.get('latest_date')
+            if latest_date:
+                d = str(latest_date)
+                if len(d) == 8:
+                    date_str = f"{d[:4]}-{d[4:6]}-{d[6:8]}"
+        except Exception as e:
+            print(f"Cloud mode date fetch error: {e}")
+
         return {
             "success": True, 
             "data": [],
             "total_count": 0,
             "total_pages": 0,
             "current_page": 1,
-            "data_date": None
+            "data_date": date_str
         }
     
     sys.stdout.flush()
