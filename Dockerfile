@@ -23,6 +23,11 @@ RUN pip install --no-cache-dir -r backend/requirements.txt
 # Copy backend code
 COPY backend/ ./backend/
 
+# Copy necessary root scripts
+COPY 最終修正.py .
+COPY cloud_update.py .
+COPY update_institutional_streaks.py .
+
 # Copy built frontend assets from Stage 1
 COPY --from=frontend-builder /app/frontend/dist ./frontend/dist
 
