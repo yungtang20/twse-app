@@ -23,40 +23,41 @@ apis = [
     ("OpenAPI 融資", "https://www.tpex.org.tw/openapi/v1/tpex_mainboard_margin_balance"),
 ]
 
-print("=" * 70)
-print("櫃買中心 (TPEx) 開放資料 API 資料日期測試")
-print("=" * 70)
-print(f"{'API 名稱':<30} {'日期':<15} {'筆數':<8} {'狀態'}")
-print("-" * 70)
+with open("test_results.txt", "w", encoding="utf-8") as f:
+    f.write("=" * 70 + "\n")
+    f.write("櫃買中心 (TPEx) 開放資料 API 資料日期測試\n")
+    f.write("=" * 70 + "\n")
+    f.write(f"{'API 名稱':<30} {'日期':<15} {'筆數':<8} {'狀態'}\n")
+    f.write("-" * 70 + "\n")
 
-for name, url in apis:
-    try:
-        r = requests.get(url, timeout=15, verify=False)
-        data = r.json()
-        
-        # 網頁版 API
-        if isinstance(data, dict):
-            if 'aaData' in data:
-                count = len(data['aaData'])
-                date = data.get('reportTitle', '-')[:15] if data.get('reportTitle') else data.get('date', '-')
-                print(f"{name:<30} {date:<15} {count:<8} ✓")
-            elif 'iTotalRecords' in data:
-                count = data.get('iTotalRecords', 0)
-                date = '-'
-                print(f"{name:<30} {date:<15} {count:<8} ✓")
-            else:
-                print(f"{name:<30} {'-':<15} {0:<8} ⚠")
-        
-        # OpenAPI (list 格式)
-        elif isinstance(data, list) and data:
-            # 嘗試找日期欄位
-            date = data[0].get('Date', data[0].get('日期', 'N/A'))
-            count = len(data)
-            print(f"{name:<30} {date:<15} {count:<8} ✓")
-        else:
-            print(f"{name:<30} {'-':<15} {0:<8} ⚠ 無資料")
+    for name, url in apis:
+        try:
+            r = requests.get(url, timeout=15, verify=False)
+            data = r.json()
             
-    except Exception as e:
-        print(f"{name:<30} {'-':<15} {0:<8} ✗ {str(e)[:20]}")
+            # 網頁版 API
+            if isinstance(data, dict):
+                if 'aaData' in data:
+                    count = len(data['aaData'])
+                    date = data.get('reportTitle', '-')[:15] if data.get('reportTitle') else data.get('date', '-')
+                    f.write(f"{name:<30} {date:<15} {count:<8} ✓\n")
+                elif 'iTotalRecords' in data:
+                    count = data.get('iTotalRecords', 0)
+                    date = '-'
+                    f.write(f"{name:<30} {date:<15} {count:<8} ✓\n")
+                else:
+                    f.write(f"{name:<30} {'-':<15} {0:<8} ⚠\n")
+            
+            # OpenAPI (list 格式)
+            elif isinstance(data, list) and data:
+                # 嘗試找日期欄位
+                date = data[0].get('Date', data[0].get('日期', 'N/A'))
+                count = len(data)
+                f.write(f"{name:<30} {date:<15} {count:<8} ✓\n")
+            else:
+                f.write(f"{name:<30} {'-':<15} {0:<8} ⚠ 無資料\n")
+                
+        except Exception as e:
+            f.write(f"{name:<30} {'-':<15} {0:<8} ✗ {str(e)[:20]}\n")
 
-print("=" * 70)
+    f.write("=" * 70 + "\n")

@@ -37,6 +37,7 @@ class RankingResponse(BaseModel):
     total_count: int
     total_pages: int
     current_page: int
+    data_date: Optional[str] = None
 
 @router.get("/institutional", response_model=RankingResponse)
 async def get_institutional_rankings(
@@ -77,13 +78,9 @@ async def get_institutional_rankings(
     }
     streak_col = streak_map.get(type, "0")
 
-    # Base Filter (Buy vs Sell Universe)
-    if sort == "buy":
-        base_where = f"{target_col} > 0"
-    else: # sell
-        base_where = f"{target_col} < 0"
-
-    where_clauses = [base_where]
+    # No base filter - always show all stocks sorted by value
+    # (previously filtered by > 0 for buy, < 0 for sell, causing limited results)
+    where_clauses = []
 
     # Filters
     if min_foreign_streak != 0:
@@ -98,7 +95,10 @@ async def get_institutional_rankings(
         op = ">=" if min_dealer_streak > 0 else "<="
         where_clauses.append(f"s.dealer_streak {op} {min_dealer_streak}")
 
-    where_clause = " AND ".join(where_clauses)
+    if where_clauses:
+        where_clause = " AND ".join(where_clauses)
+    else:
+        where_clause = "1=1"  # No filter, always true
 
     # Sorting Logic
     default_order = "DESC" if sort == "buy" else "ASC"
@@ -208,8 +208,11 @@ async def get_institutional_rankings(
         """
     else:
         # Standard 1-day query (from snapshot)
-        # We need to get the latest date from institutional_investors to join correctly
-        date_sql = "SELECT MAX(date_int) as max_date FROM institutional_investors"
+        # Get latest date that has holding data (may be different from latest net buy/sell date)
+        date_sql = """
+            SELECT MAX(date_int) as max_date FROM institutional_investors 
+            WHERE foreign_holding_shares IS NOT NULL AND foreign_holding_shares != 0
+        """
         date_res = db_manager.execute_query(date_sql)
         latest_date = date_res[0]['max_date'] if date_res else 0
 
@@ -218,14 +221,13 @@ async def get_institutional_rankings(
         SELECT COUNT(*) as count
         FROM stock_snapshot s
         JOIN stock_meta m ON s.code = m.code
-        LEFT JOIN institutional_investors i ON s.code = i.code AND i.date_int = {latest_date}
         WHERE m.market_type IN ('TWSE', 'TPEx') 
           AND {where_clause}
         """
         count_res = db_manager.execute_query(count_sql)
         total_count = count_res[0]['count'] if count_res else 0
 
-        # Data Query
+        # Data Query with institutional_investors join for holding data
         sql = f"""
         SELECT 
             s.code, s.name, s.close, 
@@ -258,12 +260,21 @@ async def get_institutional_rankings(
         results = db_manager.execute_query(sql)
         total_pages = (total_count + limit - 1) // limit
         # print(f"Query returned {len(results)} results")
+        
+        # Format date for display (20251229 -> 2025-12-29)
+        date_str = None
+        if 'latest_date' in dir() and latest_date:
+            d = str(latest_date)
+            if len(d) == 8:
+                date_str = f"{d[:4]}-{d[4:6]}-{d[6:8]}"
+        
         return {
             "success": True, 
             "data": results,
             "total_count": total_count,
             "total_pages": total_pages,
-            "current_page": page
+            "current_page": page,
+            "data_date": date_str
         }
     except Exception as e:
         print(f"Ranking query error: {e}")

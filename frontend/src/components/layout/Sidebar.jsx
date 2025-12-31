@@ -1,7 +1,8 @@
 import { Link, useLocation } from "react-router-dom";
-import { LayoutDashboard, BarChart2, TrendingUp, LineChart, Settings } from "lucide-react";
+import { LayoutDashboard, BarChart2, TrendingUp, LineChart, Settings, Smartphone } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { useState, useEffect, useRef } from "react";
+import { useMobileView } from "@/context/MobileViewContext";
 
 const sidebarItems = [
     { icon: LayoutDashboard, label: "儀表板", path: "/" },
@@ -15,6 +16,7 @@ export function Sidebar() {
     const [width, setWidth] = useState(256);
     const [isResizing, setIsResizing] = useState(false);
     const sidebarRef = useRef(null);
+    const { isMobileView, setIsMobileView } = useMobileView();
 
     const startResizing = (mouseDownEvent) => {
         setIsResizing(true);
@@ -61,19 +63,20 @@ export function Sidebar() {
                     const isActive = location.pathname === item.path;
 
                     return (
-                        <Link
-                            key={item.path}
-                            to={item.path}
-                            className={cn(
-                                "flex items-center gap-3 px-4 py-3 rounded-lg transition-colors whitespace-nowrap",
-                                isActive
-                                    ? "bg-slate-800 text-white font-medium"
-                                    : "hover:bg-slate-800/50 hover:text-white"
-                            )}
-                        >
-                            <Icon className="w-5 h-5 shrink-0" />
-                            {item.label}
-                        </Link>
+                        <div key={item.path}>
+                            <Link
+                                to={item.path}
+                                className={cn(
+                                    "flex items-center gap-3 px-4 py-3 rounded-lg transition-colors whitespace-nowrap",
+                                    isActive
+                                        ? "bg-slate-800 text-white font-medium"
+                                        : "hover:bg-slate-800/50 hover:text-white"
+                                )}
+                            >
+                                <Icon className="w-5 h-5 shrink-0" />
+                                {item.label}
+                            </Link>
+                        </div>
                     );
                 })}
             </nav>

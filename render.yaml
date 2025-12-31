@@ -1,0 +1,14 @@
+services:
+  - type: web
+    name: twse-analysis
+    env: docker
+    plan: free
+    branch: main
+    repo: https://github.com/yungtang20/twse-app # Replace with your actual repo URL if different
+    envVars:
+      - key: PYTHON_VERSION
+        value: 3.10.0
+    disk:
+      name: sqlite-data
+      mountPath: /data
+      sizeGB: 1

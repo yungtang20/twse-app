@@ -18,20 +18,37 @@ from supabase import create_client
 DB_PATH = Path(os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))) / "taiwan_stock.db"
 
 # Supabase 設定
-SUPABASE_URL = "https://gqiyvefcldxslrqpqlri.supabase.co"
-SUPABASE_KEY = "sb_secret_XSeaHx_76CRxA6j8nZ3qDg_nzgFgTAN"
+SUPABASE_URL = "https://bshxromrtsetlfjdeggv.supabase.co"
+SUPABASE_KEY = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImJzaHhyb21ydHNldGxmamRlZ2d2Iiwicm9sZSI6InNlcnZpY2Vfcm9sZSIsImlhdCI6MTc2Njk5NzI1NywiZXhwIjoyMDgyNTczMjU3fQ.8i4GD8rOQtpISgEd2ZX-wzR4xq2FCuKC99NyKqjmHi0"
 
 class DBManager:
     """資料庫管理器"""
     
     def __init__(self, db_path: Path = DB_PATH):
         self.db_path = db_path
-        self.supabase = None
+        self._supabase = None
+        self._supabase_initialized = False
+
+    @property
+    def supabase(self):
+        """Get Supabase client (returns None if not connected)"""
+        return self._supabase
+
+    def connect_supabase(self):
+        """Explicitly connect to Supabase"""
         try:
-            self.supabase = create_client(SUPABASE_URL, SUPABASE_KEY)
+            print(f"🔄 初始化 Supabase 連線... URL: {SUPABASE_URL[:20]}...")
+            self._supabase = create_client(SUPABASE_URL, SUPABASE_KEY)
+            self._supabase_initialized = True
             print("✅ Supabase 連線初始化成功")
+            return True
         except Exception as e:
+            import traceback
             print(f"⚠️ Supabase 連線初始化失敗: {e}")
+            traceback.print_exc()
+            self._supabase = None
+            self._supabase_initialized = False
+            return False
     
     @contextmanager
     def get_connection(self, timeout: int = 30):
@@ -82,9 +99,11 @@ def get_stock_by_code(code: str) -> Optional[Dict]:
     """取得單一股票資料 (SQLite)"""
     query = """
         SELECT m.code, m.name, m.market_type as market,
-               s.close, s.change_pct, s.volume, s.amount,
+               s.close, 
+               CASE WHEN s.close_prev > 0 THEN (s.close - s.close_prev) / s.close_prev * 100 ELSE 0 END as change_pct,
+               s.volume, s.amount,
                s.ma5, s.ma20, s.ma60, s.ma120, s.ma200,
-               s.rsi, s.mfi, s.k, s.d,
+               s.rsi, s.mfi14 as mfi, s.daily_k as k, s.daily_d as d,
                s.vp_poc, s.vp_high, s.vp_low,
                s.foreign_buy, s.trust_buy, s.dealer_buy
         FROM stock_meta m
@@ -94,7 +113,28 @@ def get_stock_by_code(code: str) -> Optional[Dict]:
     return db_manager.execute_single(query, (code,))
 
 def get_stock_history(code: str, limit: int = 60) -> List[Dict]:
-    """取得股票歷史 K 線 (SQLite)"""
+    """取得股票歷史 K 線 (支援本地/雲端切換)"""
+    # 1. 檢查讀取來源設定
+    read_source = "local"
+    try:
+        import json
+        config_path = Path("config.json")
+        if config_path.exists():
+            with open(config_path, 'r', encoding='utf-8') as f:
+                config = json.load(f)
+                read_source = config.get("read_source", "local")
+    except:
+        pass
+
+    # 2. 如果是雲端模式，且 Supabase 已連線
+    if read_source == "cloud" and db_manager.supabase:
+        try:
+            return get_stock_history_from_cloud(code, limit)
+        except Exception as e:
+            print(f"⚠️ 雲端讀取失敗，降級回本地: {e}")
+            # 失敗則降級回本地
+
+    # 3. 本地讀取 (SQLite)
     query = """
         SELECT date_int, open, high, low, close, volume, amount,
                foreign_buy, trust_buy, dealer_buy,
@@ -106,6 +146,45 @@ def get_stock_history(code: str, limit: int = 60) -> List[Dict]:
     """
     results = db_manager.execute_query(query, (code, limit))
     return list(reversed(results))
+
+def get_stock_history_from_cloud(code: str, limit: int = 60) -> List[Dict]:
+    """從 Supabase 取得股票歷史"""
+    if not db_manager.supabase:
+        return []
+    
+    # 查詢 stock_history
+    res = db_manager.supabase.table("stock_history") \
+        .select("*") \
+        .eq("code", code) \
+        .order("date_int", desc=True) \
+        .limit(limit) \
+        .execute()
+    
+    data = res.data
+    if not data:
+        return []
+        
+    # 轉換格式以符合前端需求
+    formatted = []
+    for row in data:
+        # Supabase 欄位可能略有不同，確保對應
+        item = {
+            "date_int": row.get("date_int"),
+            "open": row.get("open"),
+            "high": row.get("high"),
+            "low": row.get("low"),
+            "close": row.get("close"),
+            "volume": row.get("volume"),
+            "amount": row.get("amount", 0),
+            "foreign_buy": row.get("foreign_buy", 0),
+            "trust_buy": row.get("trust_buy", 0),
+            "dealer_buy": row.get("dealer_buy", 0),
+            "tdcc_count": row.get("tdcc_count", 0),
+            "large_shareholder_pct": row.get("large_shareholder_pct", 0)
+        }
+        formatted.append(item)
+        
+    return list(reversed(formatted))
 
 def get_stock_shareholding_history(code: str, min_level: int = 15) -> List[Dict]:
     """獲取股票分級持股歷史 (大戶持股)"""

@@ -17,6 +17,7 @@ export const Rankings = () => {
     const [loading, setLoading] = useState(false);
     const [page, setPage] = useState(1);
     const [totalPages, setTotalPages] = useState(1);
+    const [dataDate, setDataDate] = useState('');
 
     // Column Widths - Optimized for "One Page" view
     const colWidths = [
@@ -41,7 +42,7 @@ export const Rankings = () => {
             const params = {
                 type: 'foreign',
                 sort: sortType,
-                limit: 30,
+                limit: 10,
                 page: page,
                 min_foreign_streak: fStreak,
                 min_trust_streak: tStreak,
@@ -59,6 +60,9 @@ export const Rankings = () => {
             if (data.success) {
                 setRankings(data.data);
                 setTotalPages(data.total_pages);
+                if (data.data_date) {
+                    setDataDate(data.data_date);
+                }
             } else {
                 setRankings([]);
                 setTotalPages(1);
@@ -74,6 +78,28 @@ export const Rankings = () => {
     useEffect(() => {
         fetchRankings();
     }, [sortType, filterForeign, filterTrust, sortColumn, sortDirection, page]);
+
+    // Fetch data date on mount
+    useEffect(() => {
+        const fetchDataDate = async () => {
+            try {
+                const res = await fetch('http://localhost:8000/api/admin/sync/status');
+                const data = await res.json();
+                if (data.success && data.data?.local) {
+                    const dateStr = data.data.local.latest_date || data.data.local.last_update;
+                    if (dateStr) {
+                        // Format: 2025-12-29 or 20251229
+                        const formatted = dateStr.includes('-') ? dateStr.split(' ')[0] :
+                            `${dateStr.slice(0, 4)}-${dateStr.slice(4, 6)}-${dateStr.slice(6, 8)}`;
+                        setDataDate(formatted);
+                    }
+                }
+            } catch (err) {
+                console.error('Failed to fetch data date:', err);
+            }
+        };
+        fetchDataDate();
+    }, []);
 
     const handleSort = (column) => {
         if (sortColumn === column) {
@@ -135,174 +161,154 @@ export const Rankings = () => {
     return (
         <div className={`bg-slate-900 min-h-screen p-4 text-slate-300 font-sans ${isMobileView ? 'max-w-md mx-auto' : ''}`}>
             {/* Header */}
-            <div className="bg-gradient-to-r from-teal-600 to-teal-700 text-white px-4 py-2 mb-4 rounded font-bold text-center text-lg">
-                📊 法人買賣超統計
+            <div className="bg-gradient-to-r from-teal-600 to-teal-700 text-white px-4 py-2 mb-4 rounded font-bold text-lg flex justify-between items-center">
+                <span>📊 法人買賣超統計</span>
+                {dataDate && <span className="text-sm font-normal opacity-80">資料日期：{dataDate}</span>}
             </div>
 
             {/* Controls */}
-            <div className="flex gap-2 flex-wrap items-center mb-4 bg-slate-800/50 p-2 rounded border border-slate-700">
-                <button onClick={() => setSortType('buy')}
-                    className={`px-3 py-1 text-sm font-bold rounded ${sortType === 'buy' ? 'bg-red-500/20 text-red-400 border border-red-500/50' : 'bg-slate-800 text-slate-400 border border-slate-600'}`}>
-                    買超排行
-                </button>
-                <button onClick={() => setSortType('sell')}
-                    className={`px-3 py-1 text-sm font-bold rounded ${sortType === 'sell' ? 'bg-green-500/20 text-green-400 border border-green-500/50' : 'bg-slate-800 text-slate-400 border border-slate-600'}`}>
-                    賣超排行
-                </button>
+            <div className="flex flex-col gap-2 mb-4 bg-slate-800/50 p-2 rounded border border-slate-700">
+                <div className="flex gap-2">
+                    <button onClick={() => setSortType('buy')}
+                        className={`flex-1 px-3 py-1 text-sm font-bold rounded ${sortType === 'buy' ? 'bg-red-500/20 text-red-400 border border-red-500/50' : 'bg-slate-800 text-slate-400 border border-slate-600'}`}>
+                        買超排行
+                    </button>
+                    <button onClick={() => setSortType('sell')}
+                        className={`flex-1 px-3 py-1 text-sm font-bold rounded ${sortType === 'sell' ? 'bg-green-500/20 text-green-400 border border-green-500/50' : 'bg-slate-800 text-slate-400 border border-slate-600'}`}>
+                        賣超排行
+                    </button>
+                </div>
 
-                <span className="text-xs text-slate-400">連買/賣：外資</span>
-                <input type="number" value={filterForeign} onChange={(e) => setFilterForeign(e.target.value)}
-                    className="bg-slate-800 border border-slate-600 rounded px-1 py-0.5 w-8 text-center text-white text-xs" />
-                <span className="text-xs text-slate-400">天</span>
-
-                <span className="text-xs text-slate-400 ml-2">投信</span>
-                <input type="number" value={filterTrust} onChange={(e) => setFilterTrust(e.target.value)}
-                    className="bg-slate-800 border border-slate-600 rounded px-1 py-0.5 w-8 text-center text-white text-xs" />
-                <span className="text-xs text-slate-400">天</span>
+                <div className="flex items-center gap-2 bg-slate-900/30 p-1.5 rounded">
+                    <span className="text-xs text-slate-400 whitespace-nowrap">連買/賣：</span>
+                    <div className="flex items-center gap-1">
+                        <span className="text-xs text-slate-500">外資</span>
+                        <input type="number" value={filterForeign} onChange={(e) => setFilterForeign(e.target.value)}
+                            className="bg-slate-800 border border-slate-600 rounded px-1 py-0.5 w-8 text-center text-white text-xs" />
+                        <span className="text-xs text-slate-500">天</span>
+                    </div>
+                    <div className="flex items-center gap-1 ml-2">
+                        <span className="text-xs text-slate-500">投信</span>
+                        <input type="number" value={filterTrust} onChange={(e) => setFilterTrust(e.target.value)}
+                            className="bg-slate-800 border border-slate-600 rounded px-1 py-0.5 w-8 text-center text-white text-xs" />
+                        <span className="text-xs text-slate-500">天</span>
+                    </div>
+                </div>
             </div>
 
             {/* Table */}
-            <style>{`
-                #rankings-table-container,
-                #rankings-table-container * {
-                    box-sizing: border-box;
-                }
-                #rankings-table {
-                    width: 100% !important;
-                    table-layout: fixed !important;
-                }
-                #rankings-table tbody {
-                    display: table-row-group !important;
-                }
-                #rankings-table tr {
-                    display: table-row !important;
-                }
-                #rankings-table th,
-                #rankings-table td {
-                    display: table-cell !important;
-                    padding: 4px 2px !important;
-                    font-size: 11px !important;
-                    vertical-align: middle !important;
-                }
-            `}</style>
-            <div id="rankings-table-container" className="bg-slate-800/50 border border-slate-700 rounded overflow-x-auto rankings-fix-container">
+            <div className="bg-slate-800/50 border border-slate-700 rounded overflow-x-auto relative min-h-[400px]">
                 {loading ? (
                     <div className="flex items-center justify-center h-64 text-slate-500">載入中...</div>
                 ) : (
-                    <table id="rankings-table" className="w-full text-xs border-collapse table-fixed">
-                        <colgroup>
-                            {colWidths.map((w, i) => <col key={i} style={{ width: w }} />)}
-                        </colgroup>
-                        <thead style={{ display: 'table-header-group' }}>
-                            <tr className="bg-slate-800" style={{ display: 'table-row' }}>
-                                <th rowSpan="2" className="border border-slate-700 px-2 py-1 font-bold text-slate-300 sticky left-0 bg-slate-800 z-10 relative" style={{ display: 'table-cell', width: colWidths[0] }}>
+                    <table className="w-full text-xs border-collapse whitespace-nowrap text-left">
+                        <thead>
+                            <tr className="bg-slate-800 text-slate-400 border-b border-slate-700">
+                                <th rowSpan="2" className="p-2 font-bold text-slate-300 sticky left-0 z-20 bg-slate-800 shadow-[2px_0_5px_-2px_rgba(0,0,0,0.5)]">
                                     股票
                                 </th>
-                                <th rowSpan="2" className="border border-slate-700 px-2 py-1 font-bold text-slate-300 cursor-pointer hover:text-white relative" onClick={() => handleSort('close')} style={{ display: 'table-cell', width: colWidths[1] }}>
+                                <th rowSpan="2" className="p-2 font-bold text-slate-300 cursor-pointer hover:text-white text-right" onClick={() => handleSort('close')}>
                                     現價%<SortIcon column="close" />
                                 </th>
-                                <th rowSpan="2" className="border border-slate-700 px-2 py-1 font-bold text-slate-300 cursor-pointer hover:text-white relative" onClick={() => handleSort('volume')} style={{ display: 'table-cell', width: colWidths[2] }}>
+                                <th rowSpan="2" className="p-2 font-bold text-slate-300 cursor-pointer hover:text-white text-right" onClick={() => handleSort('volume')}>
                                     成交量<SortIcon column="volume" />
                                 </th>
-                                <th colSpan="2" className="border border-slate-700 px-2 py-1 font-bold text-slate-300 cursor-pointer hover:text-white" onClick={() => handleSort('streak')} style={{ display: 'table-cell' }}>
+                                <th colSpan="2" className="p-2 font-bold text-slate-300 cursor-pointer hover:text-white text-center" onClick={() => handleSort('streak')}>
                                     連買連賣<SortIcon column="streak" />
                                 </th>
-                                <th colSpan="2" className="border border-slate-700 px-2 py-1 font-bold text-orange-400 bg-orange-500/10 cursor-pointer hover:text-orange-300 relative" onClick={() => handleSort('foreign_holding')} style={{ display: 'table-cell' }}>
+                                <th colSpan="2" className="p-2 font-bold text-orange-400 bg-orange-500/10 cursor-pointer hover:text-orange-300 text-center" onClick={() => handleSort('foreign_holding')}>
                                     外資持股<SortIcon column="foreign_holding" />
                                 </th>
-                                <th colSpan="2" className="border border-slate-700 px-2 py-1 font-bold text-yellow-400 bg-yellow-500/10 cursor-pointer hover:text-yellow-300 relative" onClick={() => handleSort('trust_holding')} style={{ display: 'table-cell' }}>
-                                    投信累計<SortIcon column="trust_holding" />
+                                <th colSpan="2" className="p-2 font-bold text-yellow-400 bg-yellow-500/10 cursor-pointer hover:text-yellow-300 text-center" onClick={() => handleSort('trust_holding')}>
+                                    投信持股(估)<SortIcon column="trust_holding" />
                                 </th>
                             </tr>
-                            <tr className="bg-slate-800/80 text-slate-400" style={{ display: 'table-row' }}>
-                                <th className="border border-slate-700 px-1 py-0.5 text-red-400 relative" style={{ display: 'table-cell', width: colWidths[3] }}>
+                            <tr className="bg-slate-800/80 text-slate-400 border-b border-slate-700">
+                                <th className="p-2 text-red-400 text-center">
                                     <div className="flex flex-col items-center">
                                         <span className="cursor-pointer hover:text-red-300" onClick={() => handleSort('foreign_streak')}>外資</span>
-                                        <div className="flex gap-1 mt-0.5">
-                                            <span onClick={() => handleSort('foreign_cumulative')} className="text-[9px] bg-slate-700 px-1 rounded cursor-pointer hover:bg-slate-600 text-slate-300" title="依累計張數排序">張</span>
-                                            <span onClick={() => handleSort('foreign_cumulative_amount')} className="text-[9px] bg-slate-700 px-1 rounded cursor-pointer hover:bg-slate-600 text-slate-300" title="依累計金額排序">金</span>
+                                        <div className="flex gap-0.5 mt-1 w-full">
+                                            <span onClick={() => handleSort('foreign_cumulative')} className="flex-1 text-xs bg-slate-700 py-1.5 rounded-sm cursor-pointer hover:bg-slate-600 text-slate-300 text-center transition-colors" title="依累計張數排序">張</span>
+                                            <span onClick={() => handleSort('foreign_cumulative_amount')} className="flex-1 text-xs bg-slate-700 py-1.5 rounded-sm cursor-pointer hover:bg-slate-600 text-slate-300 text-center transition-colors" title="依累計金額排序">金</span>
                                         </div>
                                     </div>
                                 </th>
-                                <th className="border border-slate-700 px-1 py-0.5 text-yellow-400 relative" style={{ display: 'table-cell', width: colWidths[4] }}>
+                                <th className="p-2 text-yellow-400 text-center">
                                     <div className="flex flex-col items-center">
                                         <span className="cursor-pointer hover:text-yellow-300" onClick={() => handleSort('trust_streak')}>投信</span>
-                                        <div className="flex gap-1 mt-0.5">
-                                            <span onClick={() => handleSort('trust_cumulative')} className="text-[9px] bg-slate-700 px-1 rounded cursor-pointer hover:bg-slate-600 text-slate-300" title="依累計張數排序">張</span>
-                                            <span onClick={() => handleSort('trust_cumulative_amount')} className="text-[9px] bg-slate-700 px-1 rounded cursor-pointer hover:bg-slate-600 text-slate-300" title="依累計金額排序">金</span>
+                                        <div className="flex gap-0.5 mt-1 w-full">
+                                            <span onClick={() => handleSort('trust_cumulative')} className="flex-1 text-xs bg-slate-700 py-1.5 rounded-sm cursor-pointer hover:bg-slate-600 text-slate-300 text-center transition-colors" title="依累計張數排序">張</span>
+                                            <span onClick={() => handleSort('trust_cumulative_amount')} className="flex-1 text-xs bg-slate-700 py-1.5 rounded-sm cursor-pointer hover:bg-slate-600 text-slate-300 text-center transition-colors" title="依累計金額排序">金</span>
                                         </div>
                                     </div>
                                 </th>
-                                <th className="border border-slate-700 px-1 py-0.5 text-orange-400 relative" style={{ display: 'table-cell', width: colWidths[5] }}>張數</th>
-                                <th className="border border-slate-700 px-1 py-0.5 text-orange-400 relative" style={{ display: 'table-cell', width: colWidths[6] }}>比率</th>
-                                <th className="border border-slate-700 px-1 py-0.5 text-yellow-400 relative" style={{ display: 'table-cell', width: colWidths[7] }}>張數</th>
-                                <th className="border border-slate-700 px-1 py-0.5 text-yellow-400 relative" style={{ display: 'table-cell', width: colWidths[8] }}>比率</th>
+                                <th className="p-2 text-orange-400 text-right">張數</th>
+                                <th className="p-2 text-orange-400 text-right">比率</th>
+                                <th className="p-2 text-yellow-400 text-right">張數</th>
+                                <th className="p-2 text-yellow-400 text-right">比率</th>
                             </tr>
                         </thead>
-                        <tbody style={{ display: 'table-row-group' }}>
+                        <tbody>
                             {rankings.map((stock) => (
-                                <React.Fragment key={stock.code}>
-                                    <tr onClick={() => navigate('/', { state: { code: stock.code } })}
-                                        className="hover:bg-slate-700/50 cursor-pointer border-t border-slate-700"
-                                        style={{ display: 'table-row' }}>
-                                        <td rowSpan="2" className="border border-slate-700 px-2 py-1 font-bold text-slate-200 sticky left-0 bg-slate-800 z-10 overflow-hidden text-ellipsis whitespace-nowrap" style={{ display: 'table-cell' }}>
-                                            <div className="flex flex-col">
-                                                <span className="text-sm text-white">{stock.name}</span>
-                                                <span className="text-xs text-slate-400">{stock.code}</span>
+                                <tr key={stock.code} onClick={() => navigate('/', { state: { code: stock.code } })}
+                                    className="group hover:bg-slate-700/50 cursor-pointer border-b border-slate-700/50 transition-colors">
+                                    <td className="p-2 font-bold text-slate-200 sticky left-0 z-10 bg-slate-900 group-hover:bg-slate-800 transition-colors shadow-[2px_0_5px_-2px_rgba(0,0,0,0.5)]">
+                                        <div className="flex flex-col">
+                                            <span className="text-sm text-white">{stock.name.substring(0, 4)}</span>
+                                            <span className="text-xs text-slate-400">{stock.code}</span>
+                                        </div>
+                                    </td>
+                                    <td className={`p-2 text-right font-mono font-bold ${getColor(stock.change_pct)}`}>
+                                        <div className="flex flex-col items-end">
+                                            <span>{stock.close}</span>
+                                            <span className="text-xs">{stock.change_pct > 0 ? '+' : ''}{stock.change_pct}%</span>
+                                        </div>
+                                    </td>
+                                    <td className="p-2 text-right font-mono text-slate-300">
+                                        {fmtVolume(stock.volume)}
+                                    </td>
+                                    <td className="p-2 text-center">
+                                        <div className="flex flex-col items-center justify-center gap-0.5">
+                                            <StreakBadge value={stock.foreign_streak} />
+                                            <div className={`text-[10px] ${getColor(stock.foreign_cumulative)}`}>
+                                                {fmtCumulative(stock.foreign_cumulative)}
                                             </div>
-                                        </td>
-                                        <td rowSpan="2" className={`border border-slate-700 px-2 py-1 text-right font-mono font-bold overflow-hidden text-ellipsis whitespace-nowrap ${getColor(stock.change_pct)}`} style={{ display: 'table-cell' }}>
-                                            <div className="flex flex-col">
-                                                <span>{stock.close}</span>
-                                                <span className="text-xs">{stock.change_pct > 0 ? '+' : ''}{stock.change_pct}%</span>
+                                            <div className={`text-[10px] ${getColor(stock.foreign_cumulative)}`}>
+                                                {fmtAmount(stock.foreign_cumulative, stock.close)}億
+                                                <span className="text-slate-500 ml-0.5">({stock.foreign_cumulative_pct}%)</span>
                                             </div>
-                                        </td>
-                                        <td rowSpan="2" className="border border-slate-700 px-1 py-1 text-right font-mono text-slate-300 overflow-hidden text-ellipsis whitespace-nowrap" style={{ display: 'table-cell' }}>
-                                            {fmtVolume(stock.volume)}
-                                        </td>
-                                        <td rowSpan="2" className="border border-slate-700 px-1 py-1 text-center overflow-hidden text-ellipsis whitespace-nowrap" style={{ display: 'table-cell' }}>
-                                            <div className="flex flex-col items-center justify-center gap-0.5">
-                                                <StreakBadge value={stock.foreign_streak} />
-                                                <div className={`text-[10px] ${getColor(stock.foreign_cumulative)}`}>
-                                                    {fmtCumulative(stock.foreign_cumulative)}
-                                                    <span className="text-slate-500 ml-0.5">({stock.foreign_cumulative_pct}%)</span>
-                                                </div>
-                                                <div className={`text-[10px] ${getColor(stock.foreign_cumulative)}`}>
-                                                    {fmtAmount(stock.foreign_cumulative, stock.close)}億
-                                                </div>
+                                        </div>
+                                    </td>
+                                    <td className="p-2 text-center">
+                                        <div className="flex flex-col items-center justify-center gap-0.5">
+                                            <StreakBadge value={stock.trust_streak} />
+                                            <div className={`text-[10px] ${getColor(stock.trust_cumulative)}`}>
+                                                {fmtCumulative(stock.trust_cumulative)}
                                             </div>
-                                        </td>
-                                        <td rowSpan="2" className="border border-slate-700 px-1 py-1 text-center overflow-hidden text-ellipsis whitespace-nowrap" style={{ display: 'table-cell' }}>
-                                            <div className="flex flex-col items-center justify-center gap-0.5">
-                                                <StreakBadge value={stock.trust_streak} />
-                                                <div className={`text-[10px] ${getColor(stock.trust_cumulative)}`}>
-                                                    {fmtCumulative(stock.trust_cumulative)}
-                                                    <span className="text-slate-500 ml-0.5">({stock.trust_cumulative_pct}%)</span>
-                                                </div>
-                                                <div className={`text-[10px] ${getColor(stock.trust_cumulative)}`}>
-                                                    {fmtAmount(stock.trust_cumulative, stock.close)}億
-                                                </div>
+                                            <div className={`text-[10px] ${getColor(stock.trust_cumulative)}`}>
+                                                {fmtAmount(stock.trust_cumulative, stock.close)}億
+                                                <span className="text-slate-500 ml-0.5">({stock.trust_cumulative_pct}%)</span>
                                             </div>
-                                        </td>
-                                        <td rowSpan="2" className="border border-slate-700 px-1 py-1 text-right font-mono text-orange-300 overflow-hidden text-ellipsis whitespace-nowrap" style={{ display: 'table-cell' }}>
-                                            {fmtCumulative(stock.foreign_holding_shares)}
-                                        </td>
-                                        <td rowSpan="2" className="border border-slate-700 px-1 py-1 text-right font-mono text-orange-300 overflow-hidden text-ellipsis whitespace-nowrap" style={{ display: 'table-cell' }}>
-                                            {stock.foreign_holding_pct}%
-                                        </td>
-                                        <td rowSpan="2" className="border border-slate-700 px-1 py-1 text-right font-mono text-yellow-300 overflow-hidden text-ellipsis whitespace-nowrap" style={{ display: 'table-cell' }}>
-                                            {fmtCumulative(stock.trust_holding_shares)}
-                                        </td>
-                                        <td rowSpan="2" className="border border-slate-700 px-1 py-1 text-right font-mono text-yellow-300 overflow-hidden text-ellipsis whitespace-nowrap" style={{ display: 'table-cell' }}>
-                                            {stock.trust_holding_pct}%
-                                        </td>
-                                    </tr>
-                                </React.Fragment>
+                                        </div>
+                                    </td>
+                                    <td className="p-2 text-right font-mono text-orange-300">
+                                        {fmtCumulative(stock.foreign_holding_shares)}
+                                    </td>
+                                    <td className="p-2 text-right font-mono text-orange-300">
+                                        {stock.foreign_holding_pct}%
+                                    </td>
+                                    <td className="p-2 text-right font-mono text-yellow-300">
+                                        {fmtCumulative(stock.trust_holding_shares || 0)}
+                                    </td>
+                                    <td className="p-2 text-right font-mono text-yellow-300">
+                                        {stock.trust_holding_pct || 0}%
+                                    </td>
+                                </tr>
                             ))}
 
                             {rankings.length === 0 && !loading && (
                                 <tr>
-                                    <td colSpan="9" className="text-center py-8 text-slate-500" style={{ display: 'table-cell' }}>
+                                    <td colSpan="9" className="text-center py-8 text-slate-500">
                                         無符合條件的資料
                                     </td>
                                 </tr>

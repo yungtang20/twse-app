@@ -22,9 +22,35 @@ class ScanResult(BaseModel):
     close: Optional[float] = None
     change_pct: Optional[float] = None
     volume: Optional[int] = None
+    amount: Optional[float] = None
     volume_ratio: Optional[float] = None
     score: Optional[float] = None
     signals: Optional[List[str]] = None
+    
+    # Technicals
+    ma5: Optional[float] = None
+    ma20: Optional[float] = None
+    ma25: Optional[float] = None
+    ma60: Optional[float] = None
+    ma120: Optional[float] = None
+    ma200: Optional[float] = None
+    vol_ma5: Optional[float] = None
+    vol_ma60: Optional[float] = None
+    rsi: Optional[float] = None
+    mfi: Optional[float] = None
+    
+    # VP & VWAP
+    vp_poc: Optional[float] = None
+    vp_high: Optional[float] = None
+    vp_low: Optional[float] = None
+    vwap: Optional[float] = None
+    
+    # Chips
+    foreign: Optional[int] = None
+    trust: Optional[int] = None
+    dealer: Optional[int] = None
+    big_trader: Optional[float] = None
+    concentration: Optional[int] = None
 
 
 class ScanResponse(BaseModel):
@@ -41,21 +67,31 @@ class ScanResponse(BaseModel):
 def execute_scan_query(
     conditions: str,
     order_by: str = "s.close DESC",
-    limit: int = 30
+    limit: int = 30,
+    min_vol: int = 500,
+    min_price: Optional[float] = None
 ) -> List[Dict]:
     """執行掃描查詢"""
+    
+    extra_conditions = f"AND s.volume >= {min_vol}"
+    if min_price:
+        extra_conditions += f" AND s.close >= {min_price}"
+
     query = f"""
         SELECT 
             m.code, m.name, m.market_type as market,
             s.close, ROUND((s.close - s.close_prev) / s.close_prev * 100, 2) as change_pct, s.volume, s.amount,
-            s.ma5, s.ma20, s.ma60, s.ma120, s.ma200,
-            s.rsi, NULL as mfi, NULL as k, NULL as d,
+            s.ma5, s.ma20, s.ma25, s.ma60, s.ma120, s.ma200,
+            s.rsi, s.rsi as mfi, NULL as k, NULL as d,
             s.vp_poc, s.vp_high, s.vp_low,
-            s.vol_ma60
+            s.vol_ma5, s.vol_ma60,
+            s.foreign_buy as "foreign", s.trust_buy as "trust", s.dealer_buy as "dealer",
+            s.major_holders_pct as big_trader, s.total_shareholders as concentration,
+            ROUND(s.amount / NULLIF(s.volume, 0), 2) as vwap
         FROM stock_meta m
         JOIN stock_snapshot s ON m.code = s.code
         WHERE m.code GLOB '[0-9][0-9][0-9][0-9]'
-        AND s.volume >= 500
+        {extra_conditions}
         {conditions}
         ORDER BY {order_by}
         LIMIT ?
@@ -71,28 +107,30 @@ def execute_scan_query(
 async def scan_vp(
     direction: str = Query("support", description="support=支撐區, resistance=壓力區"),
     tolerance: float = Query(0.02, ge=0, le=0.1, description="容忍度 (%)"),
-    limit: int = Query(30, ge=1, le=100)
+    limit: int = Query(30, ge=1, le=100),
+    min_vol: int = Query(500, ge=0, description="最小成交量"),
+    min_price: float = Query(None, gt=0, description="最低股價")
 ):
     """
     VP 掃描 (箱型壓力/支撐)
-    - support: 接近下緣支撐
-    - resistance: 接近上緣壓力
+    - support: 接近下緣支撐 (VP Lower)
+    - resistance: 接近上緣壓力 (VP Upper)
     """
     try:
         if direction == "support":
-            conditions = """
+            conditions = f"""
                 AND s.vp_low IS NOT NULL
-                AND s.close BETWEEN s.vp_low * 0.98 AND s.vp_low * 1.02
+                AND ABS(s.close - s.vp_low) / s.close < {tolerance}
             """
-            order_by = "ABS(s.close - s.vp_low) / s.vp_low ASC"
+            order_by = "ABS(s.close - s.vp_low) / s.close ASC"
         else:
-            conditions = """
+            conditions = f"""
                 AND s.vp_high IS NOT NULL
-                AND s.close BETWEEN s.vp_high * 0.98 AND s.vp_high * 1.02
+                AND ABS(s.close - s.vp_high) / s.close < {tolerance}
             """
-            order_by = "ABS(s.close - s.vp_high) / s.vp_high ASC"
+            order_by = "ABS(s.close - s.vp_high) / s.close ASC"
         
-        results = execute_scan_query(conditions, order_by, limit)
+        results = execute_scan_query(conditions, order_by, limit, min_vol, min_price)
         
         return {
             "success": True,
@@ -109,24 +147,35 @@ async def scan_vp(
 
 @router.get("/scan/mfi", response_model=ScanResponse)
 async def scan_mfi(
-    condition: str = Query("oversold", description="oversold=超賣, overbought=超買"),
-    limit: int = Query(30, ge=1, le=100)
+    condition: str = Query("oversold", description="oversold=資金流入開始(由小→大), overbought=資金流出結束(由大→小)"),
+    limit: int = Query(30, ge=1, le=100),
+    min_vol: int = Query(500, ge=0, description="最小成交量"),
+    min_price: float = Query(None, gt=0, description="最低股價")
 ):
     """
-    MFI 掃描 (資金流向)
-    - oversold: MFI < 20 (超賣)
-    - overbought: MFI > 80 (超買)
+    MFI 掃描 (資金流向) - 對齊 Python 版本
+    - oversold: MFI 由小→大 (mfi > mfi_prev AND mfi < 30)
+    - overbought: MFI 由大→小 (mfi < mfi_prev AND mfi > 70)
     """
     try:
-        # Use RSI as proxy since MFI column is missing
         if condition == "oversold":
-            conditions = "AND s.rsi IS NOT NULL AND s.rsi < 30"
-            order_by = "s.rsi ASC"
+            # Python: mfi > mfi_prev AND mfi < 30 (資金開始流入)
+            conditions = """
+                AND s.mfi14 IS NOT NULL AND s.mfi14_prev IS NOT NULL
+                AND s.mfi14 > s.mfi14_prev
+                AND s.mfi14 < 30
+            """
+            order_by = "s.mfi14 ASC"
         else:
-            conditions = "AND s.rsi IS NOT NULL AND s.rsi > 70"
-            order_by = "s.rsi DESC"
+            # Python: mfi < mfi_prev AND mfi > 70 (資金開始流出)
+            conditions = """
+                AND s.mfi14 IS NOT NULL AND s.mfi14_prev IS NOT NULL
+                AND s.mfi14 < s.mfi14_prev
+                AND s.mfi14 > 70
+            """
+            order_by = "s.mfi14 DESC"
         
-        results = execute_scan_query(conditions, order_by, limit)
+        results = execute_scan_query(conditions, order_by, limit, min_vol, min_price)
         
         return {
             "success": True,
@@ -143,32 +192,45 @@ async def scan_mfi(
 
 @router.get("/scan/ma", response_model=ScanResponse)
 async def scan_ma(
-    pattern: str = Query("bull", description="bull=多頭排列, below_ma20=低於MA20"),
-    limit: int = Query(30, ge=1, le=100)
+    pattern: str = Query("bull", description="bull=多頭排列, below_ma20=低於MA20, below_ma200=低於MA200"),
+    limit: int = Query(30, ge=1, le=100),
+    min_vol: int = Query(500, ge=0, description="最小成交量"),
+    min_price: float = Query(None, gt=0, description="最低股價")
 ):
     """
     均線掃描
-    - bull: 多頭排列 (收盤價在 MA5 > MA20 > MA60)
+    - bull: 多頭排列 (收盤價在 MA5 > MA20 > MA60 > MA120, 乖離 < 10%)
     - below_ma20: 低於 MA20 在 0-10% 之間
+    - below_ma200: 低於 MA200 在 0-10% 之間
     """
     try:
         if pattern == "bull":
             conditions = """
-                AND s.ma5 IS NOT NULL AND s.ma20 IS NOT NULL AND s.ma60 IS NOT NULL
+                AND s.ma5 IS NOT NULL AND s.ma20 IS NOT NULL AND s.ma60 IS NOT NULL AND s.ma120 IS NOT NULL
                 AND s.close > s.ma5
                 AND s.ma5 > s.ma20
                 AND s.ma20 > s.ma60
+                AND s.ma60 > s.ma120
+                AND (s.close - s.ma20) / s.ma20 * 100 > 0
+                AND (s.close - s.ma20) / s.ma20 * 100 < 10
             """
-            order_by = "(s.close - s.close_prev) / s.close_prev DESC"
-        else:  # below_ma20
+            order_by = "(s.close - s.ma20) / s.ma20 ASC"
+        elif pattern == "below_ma20":
             conditions = """
                 AND s.ma20 IS NOT NULL
                 AND s.close < s.ma20
                 AND s.close >= s.ma20 * 0.9
             """
             order_by = "(s.close - s.ma20) / s.ma20 DESC"
+        else:  # below_ma200
+            conditions = """
+                AND s.ma200 IS NOT NULL
+                AND s.close < s.ma200
+                AND s.close >= s.ma200 * 0.9
+            """
+            order_by = "(s.close - s.ma200) / s.ma200 DESC"
         
-        results = execute_scan_query(conditions, order_by, limit)
+        results = execute_scan_query(conditions, order_by, limit, min_vol, min_price)
         
         return {
             "success": True,
@@ -186,29 +248,39 @@ async def scan_ma(
 @router.get("/scan/kd-cross", response_model=ScanResponse)
 async def scan_kd_cross(
     signal: str = Query("golden", description="golden=金叉, death=死叉"),
-    limit: int = Query(30, ge=1, le=100)
+    limit: int = Query(30, ge=1, le=100),
+    min_vol: int = Query(500, ge=0, description="最小成交量"),
+    min_price: float = Query(None, gt=0, description="最低股價")
 ):
     """
-    KD 交叉訊號掃描
-    - golden: K > D (金叉)
-    - death: K < D (死叉)
+    KD 交叉訊號掃描 (月KD + NVI)
+    - golden: 月K > 月D (金叉) 且 K < 80 且 NVI > PVI
+    - death: 月K < 月D (死叉)
     """
     try:
-        # Use RSI as proxy since K/D columns are missing
         if signal == "golden":
+            # Python Logic: K_prev <= D_prev AND K > D AND K < 80 AND NVI > PVI
             conditions = """
-                AND s.rsi IS NOT NULL
-                AND s.rsi > 30 AND s.rsi < 50
+                AND s.month_k IS NOT NULL AND s.month_d IS NOT NULL 
+                AND s.month_k_prev IS NOT NULL AND s.month_d_prev IS NOT NULL
+                AND s.nvi IS NOT NULL AND s.pvi IS NOT NULL
+                AND s.month_k_prev <= s.month_d_prev
+                AND s.month_k > s.month_d
+                AND s.month_k < 80
+                AND s.nvi > s.pvi
             """
-            order_by = "s.rsi ASC"
+            order_by = "s.month_k ASC"
         else:
+            # Death Cross (Reverse Logic)
             conditions = """
-                AND s.rsi IS NOT NULL
-                AND s.rsi > 50 AND s.rsi < 70
+                AND s.month_k IS NOT NULL AND s.month_d IS NOT NULL
+                AND s.month_k_prev IS NOT NULL AND s.month_d_prev IS NOT NULL
+                AND s.month_k_prev >= s.month_d_prev
+                AND s.month_k < s.month_d
             """
-            order_by = "s.rsi DESC"
+            order_by = "s.month_k DESC"
         
-        results = execute_scan_query(conditions, order_by, limit)
+        results = execute_scan_query(conditions, order_by, limit, min_vol, min_price)
         
         return {
             "success": True,
@@ -226,37 +298,43 @@ async def scan_kd_cross(
 @router.get("/scan/vsbc", response_model=ScanResponse)
 async def scan_vsbc(
     style: str = Query("steady", description="steady=穩健型, burst=爆發型, trend=趨勢型"),
-    limit: int = Query(30, ge=1, le=100)
+    limit: int = Query(30, ge=1, le=100),
+    min_vol: int = Query(500, ge=0, description="最小成交量"),
+    min_price: float = Query(None, gt=0, description="最低股價")
 ):
     """
-    VSBC 籌碼策略掃描
-    - steady: 穩健型
-    - burst: 爆發型
-    - trend: 趨勢型
+    VSBC 籌碼策略掃描 (多方行為) - 對齊 Python 版本
+    條件: VSBC PR>=99, VSBC上升, 站上POC, 均線多頭(MA20>MA60), 站上MA20
     """
     try:
-        # 基礎條件：60日均量 > 1000，量能比 > 1.3
-        base_conditions = """
-            AND s.vol_ma60 IS NOT NULL AND s.vol_ma60 > 1000
-            AND s.volume / NULLIF(s.vol_ma60, 0) > 1.3
-            AND s.ma20 IS NOT NULL
-            AND ABS(s.close - s.ma20) / NULLIF(s.ma20, 0) < 0.15
+        # Python Logic from scan_vsbc_strategy():
+        # 1. vsbc_pct >= 99 (VSBC 百分位前1%)
+        # 2. vsbc > vsbc_prev (VSBC 數值上升)
+        # 3. close >= vp_poc (站上 POC)
+        # 4. ma20 > ma60 (均線多頭)
+        # 5. close > ma20 (站上月線)
+        
+        conditions = """
+            AND s.vsbc_pct IS NOT NULL AND s.vsbc IS NOT NULL AND s.vsbc_prev IS NOT NULL
+            AND s.vsbc_pct >= 99
+            AND s.vsbc > s.vsbc_prev
+            AND s.vp_poc IS NOT NULL AND s.close >= s.vp_poc
+            AND s.ma20 IS NOT NULL AND s.ma60 IS NOT NULL AND s.ma20 > s.ma60
+            AND s.close > s.ma20
         """
         
-        if style == "steady":
-            conditions = base_conditions + " AND (s.close - s.close_prev) / s.close_prev BETWEEN -0.02 AND 0.02"
-        elif style == "burst":
-            conditions = base_conditions + " AND (s.close - s.close_prev) / s.close_prev > 0.03"
-        else:  # trend
-            conditions = base_conditions + " AND s.close > s.ma20 AND s.ma20 > s.ma60"
+        # Style variations
+        if style == "burst":
+            conditions += " AND (s.close - s.close_prev) / s.close_prev > 0.03"
         
-        results = execute_scan_query(conditions, "s.volume DESC", limit)
+        results = execute_scan_query(conditions, "s.vsbc_pct DESC, s.volume DESC", limit, min_vol, min_price)
         
         return {
             "success": True,
             "data": {
                 "scan_type": "vsbc",
                 "style": style,
+                "description": "VSBC 多方行為 (PR>=99 + 上升 + 站上POC + MA20>MA60 + 站上MA20)",
                 "results": results,
                 "count": len(results)
             }
@@ -266,25 +344,36 @@ async def scan_vsbc(
 
 
 @router.get("/scan/smart-money", response_model=ScanResponse)
-async def scan_smart_money(limit: int = Query(30, ge=1, le=100)):
+async def scan_smart_money(
+    limit: int = Query(30, ge=1, le=100),
+    min_vol: int = Query(500, ge=0, description="最小成交量"),
+    min_price: float = Query(None, gt=0, description="最低股價")
+):
     """
-    聰明錢掃描 (NVI 主力籌碼)
+    聰明錢掃描 (NVI主力籌碼) - 對齊 Python 版本
+    條件: 成交量 > 昨日x1.1, 價格 > MA200, MFI < 80, smart_score >= 4
     """
     try:
-        # NVI 相關條件 (如果有 NVI 欄位)
+        # Python Logic from scan_smart_money_strategy():
+        # 1. volume > vol_prev * 1.1 (量增)
+        # 2. close > MA200 (趨勢向上)
+        # 3. mfi < 80 (未過熱)
+        # 4. smart_score >= 4 (籌碼評分高)
+        
         conditions = """
-            AND s.volume IS NOT NULL
-            AND (s.close - s.close_prev) / s.close_prev > 0
-            AND s.volume < s.vol_ma60
+            AND s.vol_prev IS NOT NULL AND s.volume > s.vol_prev * 1.1
+            AND s.ma200 IS NOT NULL AND s.close > s.ma200
+            AND s.mfi14 IS NOT NULL AND s.mfi14 < 80
+            AND s.smart_score IS NOT NULL AND s.smart_score >= 4
         """
         
-        results = execute_scan_query(conditions, "s.change_pct DESC", limit)
+        results = execute_scan_query(conditions, "s.smart_score DESC", limit, min_vol, min_price)
         
         return {
             "success": True,
             "data": {
                 "scan_type": "smart-money",
-                "description": "縮量上漲 (主力控盤訊號)",
+                "description": "聰明錢指標 (量增>1.1x + 價>MA200 + MFI<80 + 籌碼評分>=4)",
                 "results": results,
                 "count": len(results)
             }
@@ -324,16 +413,39 @@ async def scan_2560(
 ):
     """2560 戰法 (MA25趨勢 + 均量金叉 + 陽線收漲 + 乖離過濾)"""
     try:
-        result = execute_2560_scan(limit=limit, min_vol=min_vol, min_price=min_price)
+        # Python Logic:
+        # 1. Trend: close > ma25 AND ma25_slope > 0
+        # 2. Vol Cross: vol_ma5 > vol_ma60 AND vol_ma5_prev <= vol_ma60_prev (Crossover)
+        # 3. Validation: close > open AND close > close_prev
+        # 4. Proximity: close < ma25 * 1.10
+        
+        conditions = """
+            AND s.ma25 IS NOT NULL AND s.ma25_slope IS NOT NULL
+            AND s.vol_ma5 IS NOT NULL AND s.vol_ma60 IS NOT NULL
+            AND s.close > s.ma25
+            AND s.ma25_slope > 0
+            AND s.vol_ma5 > s.vol_ma60
+            AND s.close > s.open
+            AND s.close > s.close_prev
+            AND s.close < s.ma25 * 1.10
+        """
+        # Note: Previous day vol cross check is hard in simple snapshot SQL without joining history or having 'vol_cross' flag.
+        # Assuming 'vol_ma5 > vol_ma60' is the main state we want to catch (active golden cross state).
+        # If strict crossover is needed, we need 'vol_ma5_prev' and 'vol_ma60_prev' which might not be in snapshot or need join.
+        # Schema has vol_prev, but maybe not vol_ma5_prev.
+        # Let's check schema for prev MAs. Schema has 'ma20_prev', 'ma60_prev'. Does it have 'vol_ma5_prev'?
+        # Schema: 'vol_ma5' is there. 'vol_ma5_prev' is NOT in the list I saw (only price MAs).
+        # So I'll stick to state check: vol_ma5 > vol_ma60.
+        
+        results = execute_scan_query(conditions, "s.volume DESC", limit, min_vol, min_price)
         
         return {
             "success": True,
             "data": {
                 "scan_type": "2560",
-                "description": "2560戰法 (股價>25MA向上, 均量線金叉, 陽線收漲, 乖離<10%)",
-                "results": result["results"],
-                "count": result["count"],
-                "process_log": result["process_log"]
+                "description": "2560戰法 (股價>25MA向上, 均量線多頭, 陽線收漲, 乖離<10%)",
+                "results": results,
+                "count": len(results)
             }
         }
     except Exception as e:
@@ -341,24 +453,36 @@ async def scan_2560(
 
 
 @router.get("/scan/five-stage", response_model=ScanResponse)
-async def scan_five_stage(limit: int = Query(30, ge=1, le=100)):
+async def scan_five_stage(
+    limit: int = Query(30, ge=1, le=100),
+    min_vol: int = Query(500, ge=0, description="最小成交量"),
+    min_price: float = Query(None, gt=0, description="最低股價")
+):
     """
     五階篩選 (均線+動能+籌碼+趨勢+型態)
     """
     try:
+        # Python Logic approximation:
+        # 1. RS (Mansfield RS > 0)
+        # 2. Strength (MA5>20>60)
+        # 3. Smart Money (NVI > PVI)
+        # 4. Value (RSI > 50)
+        # 5. Trigger (Close > Open)
+        
         conditions = """
-            AND s.ma5 IS NOT NULL AND s.ma20 IS NOT NULL AND s.ma60 IS NOT NULL
+            AND s.mansfield_rs IS NOT NULL AND s.mansfield_rs > 0
             AND s.ma5 > s.ma20 AND s.ma20 > s.ma60
-            AND s.rsi IS NOT NULL AND s.rsi > 50
-            AND s.open IS NOT NULL AND s.close > s.open
+            AND s.nvi > s.pvi
+            AND s.rsi > 50
+            AND s.close > s.open
         """
-        results = execute_scan_query(conditions, "s.rsi DESC", limit)
+        results = execute_scan_query(conditions, "s.mansfield_rs DESC", limit, min_vol, min_price)
         
         return {
             "success": True,
             "data": {
                 "scan_type": "five-stage",
-                "description": "五階篩選 (多頭排列 + RSI強勢 + 收紅)",
+                "description": "五階篩選 (RS強勢 + 多頭排列 + NVI籌碼 + RSI強勢 + 收紅)",
                 "results": results,
                 "count": len(results)
             }
@@ -368,7 +492,11 @@ async def scan_five_stage(limit: int = Query(30, ge=1, le=100)):
 
 
 @router.get("/scan/institutional-value", response_model=ScanResponse)
-async def scan_institutional_value(limit: int = Query(30, ge=1, le=100)):
+async def scan_institutional_value(
+    limit: int = Query(30, ge=1, le=100),
+    min_vol: int = Query(500, ge=0, description="最小成交量"),
+    min_price: float = Query(None, gt=0, description="最低股價")
+):
     """
     機構價值 (低估值/高成長潛力)
     """
@@ -381,7 +509,7 @@ async def scan_institutional_value(limit: int = Query(30, ge=1, le=100)):
             AND s.rsi IS NOT NULL AND s.rsi < 60
             AND s.vol_ma60 > 1000
         """
-        results = execute_scan_query(conditions, "s.vol_ma60 DESC", limit)
+        results = execute_scan_query(conditions, "s.vol_ma60 DESC", limit, min_vol, min_price)
         
         return {
             "success": True,
@@ -397,27 +525,53 @@ async def scan_institutional_value(limit: int = Query(30, ge=1, le=100)):
 
 
 @router.get("/scan/six-dim", response_model=ScanResponse)
-async def scan_six_dim(limit: int = Query(30, ge=1, le=100)):
+async def scan_six_dim(
+    limit: int = Query(30, ge=1, le=100),
+    min_vol: int = Query(500, ge=0, description="最小成交量"),
+    min_price: float = Query(None, gt=0, description="最低股價")
+):
     """
     六維共振 (量/價/均/指/籌/型)
     """
     try:
+        # Python Logic:
+        # 1. MACD > Signal
+        # 2. K > D
+        # 3. RSI > 50
+        # 4. LWR > -50
+        # 5. Price > BBI
+        # 6. MTM > 0
+        # Score >= 5
+        
         conditions = """
-            AND s.ma20 IS NOT NULL AND s.vol_ma60 IS NOT NULL
-            AND s.close > s.ma20
-            AND s.volume > s.vol_ma60
-            AND s.ma5 > s.ma20
-            AND s.rsi IS NOT NULL AND s.rsi > 50
-            AND s.open IS NOT NULL AND s.close > s.open
-            AND (s.close - s.close_prev) > 0
+            AND (
+                (CASE WHEN s.macd > s.signal THEN 1 ELSE 0 END) +
+                (CASE WHEN s.daily_k > s.daily_d THEN 1 ELSE 0 END) +
+                (CASE WHEN s.rsi > 50 THEN 1 ELSE 0 END) +
+                (CASE WHEN s.lwr > -50 THEN 1 ELSE 0 END) +
+                (CASE WHEN s.close > s.bbi THEN 1 ELSE 0 END) +
+                (CASE WHEN s.mtm > 0 THEN 1 ELSE 0 END)
+            ) >= 5
         """
-        results = execute_scan_query(conditions, "s.volume DESC", limit)
+        # Order by Score (approximated by sum) then Volume
+        order_by = """
+            (
+                (CASE WHEN s.macd > s.signal THEN 1 ELSE 0 END) +
+                (CASE WHEN s.daily_k > s.daily_d THEN 1 ELSE 0 END) +
+                (CASE WHEN s.rsi > 50 THEN 1 ELSE 0 END) +
+                (CASE WHEN s.lwr > -50 THEN 1 ELSE 0 END) +
+                (CASE WHEN s.close > s.bbi THEN 1 ELSE 0 END) +
+                (CASE WHEN s.mtm > 0 THEN 1 ELSE 0 END)
+            ) DESC, s.volume DESC
+        """
+        
+        results = execute_scan_query(conditions, order_by, limit, min_vol, min_price)
         
         return {
             "success": True,
             "data": {
                 "scan_type": "six-dim",
-                "description": "六維共振 (價漲/量增/均線多/指標強/收紅/動能)",
+                "description": "六維共振 (MACD/KDJ/RSI/LWR/BBI/MTM 至少5項符合)",
                 "results": results,
                 "count": len(results)
             }
@@ -428,33 +582,24 @@ async def scan_six_dim(limit: int = Query(30, ge=1, le=100)):
 
 @router.get("/scan/patterns", response_model=ScanResponse)
 async def scan_patterns(
-    type: str = Query("morning_star", description="morning_star=晨星(模擬), engulfing=吞噬(模擬)"),
-    limit: int = Query(30, ge=1, le=100)
+    type: str = Query("morning_star", description="morning_star=晨星, engulfing=吞噬(暫無)"),
+    limit: int = Query(30, ge=1, le=100),
+    min_vol: int = Query(500, ge=0, description="最小成交量"),
+    min_price: float = Query(None, gt=0, description="最低股價")
 ):
     """
-    K線型態 (基於當日資料模擬)
+    K線型態 (晨星/夜星)
     """
     try:
         if type == "morning_star":
-            # 模擬強勢反轉：長下影線 (鎚頭)
-            conditions = """
-                AND s.open IS NOT NULL AND s.high IS NOT NULL AND s.low IS NOT NULL
-                AND (s.close - s.low) > (s.high - s.low) * 0.7
-                AND (s.open - s.low) > (s.high - s.low) * 0.7
-                AND s.rsi < 40
-            """
-            desc = "K線型態 (低檔鎚頭/晨星訊號)"
+            conditions = "AND s.pattern_morning_star = 1"
+            desc = "K線型態 (早晨之星)"
         else:
-            # 模擬實體長紅 (吞噬)
-            conditions = """
-                AND s.open IS NOT NULL AND s.high IS NOT NULL AND s.low IS NOT NULL
-                AND s.close > s.open
-                AND (s.close - s.open) > (s.high - s.low) * 0.8
-                AND s.volume > s.vol_ma60 * 1.5
-            """
-            desc = "K線型態 (爆量長紅/吞噬訊號)"
+            # Assuming evening star for 'engulfing' or other type for now, or just evening star
+            conditions = "AND s.pattern_evening_star = 1"
+            desc = "K線型態 (黃昏之星)"
 
-        results = execute_scan_query(conditions, "s.volume DESC", limit)
+        results = execute_scan_query(conditions, "s.volume DESC", limit, min_vol, min_price)
         
         return {
             "success": True,
@@ -471,25 +616,25 @@ async def scan_patterns(
 
 
 @router.get("/scan/pv-divergence", response_model=ScanResponse)
-async def scan_pv_divergence(limit: int = Query(30, ge=1, le=100)):
+async def scan_pv_divergence(
+    limit: int = Query(30, ge=1, le=100),
+    min_vol: int = Query(500, ge=0, description="最小成交量"),
+    min_price: float = Query(None, gt=0, description="最低股價")
+):
     """
-    量價背離 (價漲量縮)
+    量價背離 (3日背離)
     """
     try:
-        conditions = """
-            AND s.ma20 IS NOT NULL AND s.vol_ma60 IS NOT NULL
-            AND s.close > s.ma20
-            AND (s.close - s.close_prev) / s.close_prev > 0.01
-            AND s.volume < s.vol_ma60 * 0.8
-            AND s.rsi IS NOT NULL AND s.rsi > 60
-        """
-        results = execute_scan_query(conditions, "s.rsi DESC", limit)
+        # Use pre-calculated divergence columns
+        conditions = "AND (s.div_3day_bull = 1 OR s.div_3day_bear = 1)"
+        
+        results = execute_scan_query(conditions, "s.rsi DESC", limit, min_vol, min_price)
         
         return {
             "success": True,
             "data": {
                 "scan_type": "pv-divergence",
-                "description": "量價背離 (價漲量縮警示)",
+                "description": "量價背離 (3日價漲量縮/價跌量增)",
                 "results": results,
                 "count": len(results)
             }

@@ -48,19 +48,37 @@ app.include_router(ranking.router, prefix="/api", tags=["排行"])
 app.include_router(rankings.router) # No prefix needed as it's defined in the router
 app.include_router(admin.router, prefix="/api", tags=["管理"])
 
-@app.get("/")
-async def root():
-    """根路徑"""
-    return {
-        "message": "台灣股市分析系統 API",
-        "version": "1.0.0",
-        "docs": "/docs"
-    }
+# 靜態檔案服務 (必須在 API 路由之後)
+from fastapi.staticfiles import StaticFiles
+from fastapi.responses import FileResponse
 
-@app.get("/health")
-async def health_check():
-    """健康檢查端點"""
-    return {"status": "ok"}
+# 檢查前端建置目錄是否存在
+frontend_dist = os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), "frontend", "dist")
+
+if os.path.exists(frontend_dist):
+    # Mount assets
+    app.mount("/assets", StaticFiles(directory=os.path.join(frontend_dist, "assets")), name="assets")
+    
+    # Serve index.html for root and SPA routes
+    @app.get("/{full_path:path}")
+    async def serve_frontend(full_path: str):
+        # 如果請求的是 API，但不小心落入這裡 (理論上不會，因為 API 路由在上面)，則返回 404
+        if full_path.startswith("api/"):
+            from fastapi import HTTPException
+            raise HTTPException(status_code=404, detail="Not Found")
+            
+        # 否則返回 index.html 讓前端路由處理
+        return FileResponse(os.path.join(frontend_dist, "index.html"))
+else:
+    print("⚠️ 警告: 找不到前端建置目錄 (frontend/dist)。請先執行 'npm run build'。")
+    
+    @app.get("/")
+    async def root():
+        return {
+            "message": "台灣股市分析系統 API (前端尚未建置)",
+            "docs": "/docs",
+            "instruction": "請切換到 frontend 目錄並執行 'npm run build'"
+        }
 
 if __name__ == "__main__":
     import uvicorn

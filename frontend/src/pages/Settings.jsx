@@ -1,7 +1,9 @@
 import React, { useState, useEffect } from 'react';
-import { Database, RefreshCw, Server, AlertCircle, CheckCircle, Clock, Cloud, CloudOff, Wifi, Activity, Download } from 'lucide-react';
+import { Database, RefreshCw, Server, AlertCircle, CheckCircle, Clock, Cloud, CloudOff, Wifi, Activity, Download, Smartphone } from 'lucide-react';
+import { useMobileView } from "@/context/MobileViewContext";
 
 export const Settings = () => {
+    const { isMobileView, setIsMobileView } = useMobileView();
     const [status, setStatus] = useState(null);
     const [loading, setLoading] = useState(false);
     const [activeTask, setActiveTask] = useState(null);
@@ -233,6 +235,29 @@ export const Settings = () => {
                 </div>
             </div>
 
+            {/* Display Settings */}
+            <div className="bg-slate-800 p-4 rounded-lg border border-slate-700 mb-6 flex flex-col md:flex-row md:items-center justify-between gap-4">
+                <div className="flex items-center gap-2">
+                    <Smartphone className="w-5 h-5 text-green-500" />
+                    <span className="font-semibold text-white">顯示設定</span>
+                    <span className="text-xs text-slate-500 ml-2">Display Mode</span>
+                </div>
+                <div className="flex items-center gap-4">
+                    <span className="text-sm text-slate-400">
+                        {isMobileView ? '目前為手機版介面' : '目前為桌面版介面'}
+                    </span>
+                    <button
+                        onClick={() => setIsMobileView(!isMobileView)}
+                        className={`px-4 py-1.5 rounded text-sm transition-colors ${isMobileView
+                            ? 'bg-slate-700 text-slate-300 hover:bg-slate-600'
+                            : 'bg-green-600 text-white hover:bg-green-500'
+                            }`}
+                    >
+                        {isMobileView ? '切換至桌面版' : '切換至手機版'}
+                    </button>
+                </div>
+            </div>
+
             {/* Sync Settings */}
             <div className="bg-slate-800 rounded-lg border border-slate-700 mb-8 overflow-hidden">
                 {/* Header & Status */}
@@ -269,10 +294,23 @@ export const Settings = () => {
                             最後同步: <span className="font-mono text-slate-300">{lastSyncTime || "從未同步"}</span>
                         </p>
                     </div>
-                    <div className="flex items-center gap-3 bg-slate-900/50 px-4 py-2 rounded-full">
-                        <div className={`w-2 h-2 rounded-full ${supabaseConnected ? "bg-green-500 shadow-[0_0_8px_rgba(34,197,94,0.5)]" : "bg-red-500"}`}></div>
+                    <div
+                        onClick={async () => {
+                            setSupabaseConnected(false); // Reset to trigger visual feedback
+                            try {
+                                await fetch('/api/admin/connect-cloud', { method: 'POST' });
+                            } catch (e) {
+                                console.error(e);
+                            }
+                            fetchSyncMode();
+                            fetchSyncStatus();
+                        }}
+                        className="flex items-center gap-3 bg-slate-900/50 px-4 py-2 rounded-full cursor-pointer hover:bg-slate-800 transition-colors border border-transparent hover:border-slate-700"
+                        title="點擊重新連線"
+                    >
+                        <div className={`w-2 h-2 rounded-full ${supabaseConnected ? "bg-green-500 shadow-[0_0_8px_rgba(34,197,94,0.5)]" : "bg-red-500 animate-pulse"}`}></div>
                         <span className={`text-sm font-medium ${supabaseConnected ? "text-green-400" : "text-red-400"}`}>
-                            {supabaseConnected ? "雲端已連線" : "雲端未連線"}
+                            {supabaseConnected ? "雲端已連線" : "雲端未連線 (點擊重試)"}
                         </span>
                     </div>
                 </div>

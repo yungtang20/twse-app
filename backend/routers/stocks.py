@@ -141,7 +141,7 @@ async def get_stock(code: str):
 @router.get("/stocks/{code}/history", response_model=APIResponse)
 async def get_history(
     code: str,
-    limit: int = Query(60, ge=1, le=2000, description="回傳筆數")
+    limit: int = Query(30, ge=1, le=2000, description="回傳筆數")
 ):
     """
     取得股票歷史 K 線資料

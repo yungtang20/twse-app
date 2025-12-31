@@ -400,6 +400,24 @@ class SyncModeRequest(BaseModel):
     update_target: Optional[str] = None  # "local" or "cloud"
 
 
+@router.post("/admin/connect-cloud", response_model=AdminResponse)
+async def connect_cloud():
+    """
+    手動觸發雲端連線
+    """
+    try:
+        success = db_manager.connect_supabase()
+        return {
+            "success": success,
+            "data": {
+                "connected": success,
+                "message": "連線成功" if success else "連線失敗"
+            }
+        }
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+
 @router.get("/admin/sync-mode", response_model=AdminResponse)
 async def get_sync_mode():
     """

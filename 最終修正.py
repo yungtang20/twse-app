@@ -74,19 +74,19 @@ from dataclasses import dataclass, field
 import requests
 import urllib3
 
-try:
-    import pandas as pd
-    import numpy as np
-except ImportError:
-    print("\n缺少必要套件 (pandas, numpy)，請先安裝。")
-    sys.exit(1)
+def init_twstock():
+    """Lazy load twstock and apply patches"""
+    try:
+        import twstock
+        from twstock.stock import TPEXFetcher
+        # Apply TPEx Patch
+        TPEXFetcher.fetch = tpex_fetch
+    except ImportError:
+        print("\n缺少 twstock 套件，請先安裝。")
+        sys.exit(1)
 
-try:
-    import twstock
-    from twstock.stock import TPEXFetcher
-except ImportError:
-    print("\n缺少 twstock 套件，請先安裝。")
-    sys.exit(1)
+# Pandas/Numpy will be lazy loaded in functions
+
 
 import colorama
 try:
@@ -186,6 +186,8 @@ class Config:
 # TPEX Patch (Fix for 404 Error)
 # ==============================
 def tpex_fetch(self, year: int, month: int, sid: str, retry: int = 5):
+    import numpy as np
+    import requests
     # TPEX New API URL
     url = "https://www.tpex.org.tw/www/zh-tw/afterTrading/tradingStock"
     
@@ -221,7 +223,7 @@ def tpex_fetch(self, year: int, month: int, sid: str, retry: int = 5):
         
     return result
 
-TPEXFetcher.fetch = tpex_fetch
+# TPEXFetcher.fetch = tpex_fetch  # Moved to init_twstock
 
 # ==============================
 # 環境適配
@@ -638,6 +640,7 @@ RESET_COLOR = '\033[0m'
 
 def _worker_calc_indicators(args):
     """Step 7 Worker: 計算單支股票指標"""
+    import pandas as pd
     code, name, preloaded_df = args
     
     # [Guard Clause] 檢查參數有效性
@@ -696,6 +699,7 @@ def _worker_calc_indicators(args):
 
 def batch_load_history(codes, limit_days=400, conn=None):
     """批次載入多支股票的歷史資料 (優化版 - 直接連線)"""
+    import pandas as pd
     if not codes:
         return {}
     
@@ -764,6 +768,7 @@ def validate_dataframe(df, min_rows: int = 1, required_cols: List[str] = None) -
     Returns:
         bool: True=驗證通過, False=驗證失敗
     """
+    import pandas as pd
     if df is None:
         return False
     if not isinstance(df, pd.DataFrame):
@@ -2409,11 +2414,17 @@ def display_system_status():
     print_flush("🚀 系統已就緒")
     print_flush("=" * 80)
 
+def normalize_stock_name(name):
+    """標準化股票名稱 (移除 '股份有限公司' 等後綴)"""
+    if not name:
+        return name
+    return name.replace('股份有限公司', '').strip()
+
 def get_correct_stock_name(code, current_name=None):
     """取得正確的股票名稱，如果沒有傳入則從 DB 查詢"""
     # 已有有效名稱則直接返回
     if current_name and current_name != code and current_name != "未知":
-        return current_name
+        return normalize_stock_name(current_name)
     
     # 嘗試從 DB 查詢
     try:
@@ -2423,16 +2434,16 @@ def get_correct_stock_name(code, current_name=None):
             cur.execute("SELECT name FROM stock_snapshot WHERE code=?", (code,))
             row = cur.fetchone()
             if row and row[0]:
-                return row[0]
+                return normalize_stock_name(row[0])
             # Fallback: 從 stock_meta 查詢
             cur.execute("SELECT name FROM stock_meta WHERE code=?", (code,))
             row = cur.fetchone()
             if row and row[0]:
-                return row[0]
+                return normalize_stock_name(row[0])
     except:
         pass
     
-    return current_name if current_name else code
+    return normalize_stock_name(current_name) if current_name else code
 
 def get_latest_date_for_code(code):
     """獲取指定股票的最新日期"""
@@ -6259,7 +6270,7 @@ def step2_download_lists(silent_header=False):
                 count = 0
                 for item in data:
                     code = item.get('公司代號', '').strip()
-                    name = item.get('公司名稱', '').strip()
+                    name = normalize_stock_name(item.get('公司名稱', '').strip())
                     l_date = item.get('上市日期', '').strip()
                     ind = item.get('產業別', '').strip()
                     if not is_normal_stock(code, name): continue
@@ -6280,7 +6291,7 @@ def step2_download_lists(silent_header=False):
                 count = 0
                 for item in data:
                     code = item.get('SecuritiesCompanyCode', '').strip()
-                    name = item.get('CompanyName', '').strip()
+                    name = normalize_stock_name(item.get('CompanyName', '').strip())
                     l_date = item.get('DateOfListing', '').strip()
                     ind = item.get('Industry', '').strip()
                     if not is_normal_stock(code, name): continue
@@ -6458,9 +6469,13 @@ def step11_verify_backfill():
     step6_verify_and_backfill(skip_downloads=True, skip_institutional=True)
 
 def step12_calc_indicators():
-    """步驟12: 計算技術指標"""
+    """步驟12: 計算技術指標 (含 VSBC 分數)"""
     print_flush("\n[Step 12] 計算技術指標...")
     step7_calc_indicators()
+    
+    # 計算 VSBC 分數 (供 Web 版使用)
+    print_flush("\n[Step 12b] 計算 VSBC 分數...")
+    batch_calculate_vsbc()
 
 # ==============================
 # 市場資料更新模板 (Template Method)
@@ -6746,6 +6761,8 @@ def _fetch_and_update_tpex_valuation():
 
 def step2_download_tpex_daily(silent_header=False):
     """步驟2: 下載 TPEx (上櫃) 本日行情 (含估值)"""
+    init_twstock()
+    import twstock
     updated = update_market_data("TPEx (上櫃)", _fetch_tpex_data, _parse_tpex_item, silent_header=silent_header)
     _fetch_and_update_tpex_valuation()
     return updated
@@ -8382,8 +8399,49 @@ def step8_sync_supabase(progress_callback=None):
             else:
                 print_flush("歷史資料為空，跳過")
             
+            # ==========================================
+            # 3. 同步 stock_snapshot (快照資料)
+            # ==========================================
+            cur.execute("SELECT COUNT(*) FROM stock_snapshot")
+            total_snap = cur.fetchone()[0]
+            
+            if total_snap > 0:
+                print_flush(f"\n正在同步快照資料 ({total_snap} 筆)...")
+                BATCH_SIZE = 500
+                total_batches = math.ceil(total_snap / BATCH_SIZE)
+                
+                cur.execute("SELECT * FROM stock_snapshot")
+                
+                success_count = 0
+                for i in range(total_batches):
+                    rows = cur.fetchmany(BATCH_SIZE)
+                    if not rows: break
+                    
+                    # 清理空值
+                    clean_data = []
+                    for row in rows:
+                        d = dict(row)
+                        clean_d = {k: v for k, v in d.items() if v is not None}
+                        clean_data.append(clean_d)
+                    
+                    try:
+                        supabase.table("stock_snapshot").upsert(clean_data).execute()
+                        success_count += len(clean_data)
+                        if (i+1) % 5 == 0 or (i+1) == total_batches:
+                            print(f"\r  進度: {i+1}/{total_batches} ({(i+1)/total_batches*100:.1f}%)", end="")
+                    except Exception as e:
+                        if "relation" in str(e) and "does not exist" in str(e):
+                            print_flush(f"\n❌ 表格不存在，請先執行 supabase_stock_snapshot.sql")
+                            break
+                        pass
+                
+                print_flush(f"\n✓ 快照資料同步完成 ({success_count}/{total_snap})")
+            else:
+                print_flush("快照資料為空，跳過")
+            
     except Exception as e:
         print_flush(f"❌ 同步失敗: {e}")
+
 
 
 
@@ -8420,6 +8478,8 @@ def _build_history_query(limit_days=None):
         """
 
 def calculate_stock_history_indicators(code, display_days=30, limit_days=None, conn=None, preloaded_df=None):
+    import pandas as pd
+    import numpy as np
     """計算股票歷史技術指標"""
     try:
         # 獲取籌碼資料 (大戶比例、法人買超、集保人數)
@@ -10900,6 +10960,90 @@ def add_vsbc_columns(df):
     
     return df
 
+def batch_calculate_vsbc():
+    """
+    批次計算所有股票的 VSBC 分數並寫入 stock_snapshot 表
+    新增欄位: vsbc, vsbc_pct, vsbc_prev
+    """
+    print_flush("\n" + "=" * 60)
+    print_flush("[VSBC 批次計算]")
+    print_flush("=" * 60)
+    
+    with db_manager.get_connection() as conn:
+        cur = conn.cursor()
+        cur.execute("SELECT code, name FROM stock_snapshot")
+        stocks = cur.fetchall()
+    
+    if not stocks:
+        print_flush("❌ 沒有找到股票")
+        return
+    
+    total = len(stocks)
+    codes = [s[0] for s in stocks]
+    
+    print_flush(f"載入 {total} 檔股票的歷史資料...")
+    history_map = batch_load_history(codes, limit_days=150)
+    
+    updates = []
+    success_count = 0
+    skip_count = 0
+    
+    tracker = ProgressTracker(total_lines=2)
+    with tracker:
+        for i, (code, name) in enumerate(stocks):
+            try:
+                df = history_map.get(code)
+                if df is None or len(df) < 100:
+                    skip_count += 1
+                    continue
+                
+                # 計算 VSBC
+                df = add_vsbc_columns(df)
+                
+                t = df.iloc[-1]  # 今日
+                y = df.iloc[-2]  # 昨日
+                
+                vsbc_val = safe_float_preserving_none(t.get('vsbc'))
+                vsbc_pct_val = safe_float_preserving_none(t.get('vsbc_pct'))
+                vsbc_prev_val = safe_float_preserving_none(y.get('vsbc'))
+                
+                if vsbc_val is not None:
+                    updates.append((
+                        round(vsbc_val, 2) if vsbc_val else None,
+                        round(vsbc_pct_val, 2) if vsbc_pct_val else None,
+                        round(vsbc_prev_val, 2) if vsbc_prev_val else None,
+                        code
+                    ))
+                    success_count += 1
+                else:
+                    skip_count += 1
+                
+                # 進度更新
+                if i % 50 == 0 or i == total - 1:
+                    tracker.update_lines(
+                        f'計算中: {code} {name}',
+                        f'進度: {i+1}/{total} | 成功: {success_count} | 跳過: {skip_count}'
+                    )
+                    
+            except Exception as e:
+                skip_count += 1
+                continue
+    
+    # 批次寫入
+    if updates:
+        print_flush(f"\n正在寫入 {len(updates)} 筆 VSBC 數據...")
+        with db_manager.get_connection() as conn:
+            cur = conn.cursor()
+            cur.executemany("""
+                UPDATE stock_snapshot 
+                SET vsbc = ?, vsbc_pct = ?, vsbc_prev = ?
+                WHERE code = ?
+            """, updates)
+            conn.commit()
+        print_flush(f"✓ VSBC 計算完成! 成功: {success_count} 筆, 跳過: {skip_count} 筆")
+    else:
+        print_flush("❌ 沒有可更新的數據")
+
 # ==============================
 # 3️⃣ 行為量化（多方）
 # ==============================
@@ -12066,7 +12210,8 @@ def data_management_menu():
         'b': step10_check_gaps,
         'c': step11_verify_backfill,
         'd': step12_calc_indicators,
-        'e': step8_sync_supabase
+        'e': step8_sync_supabase,
+        'f': batch_calculate_vsbc
     }
     
     while True:
@@ -12088,6 +12233,8 @@ def data_management_menu():
         print_flush("[c] Step 11: 驗證一致性並補漏")
         print_flush("[d] Step 12: 計算技術指標")
         print_flush("[e] 同步資料到 Supabase")
+        print_flush("-" * 60)
+        print_flush("[f] 重新計算 VSBC 分數 (已整合至 Step 12)")
         print_flush("[0] 返回主選單")
         
         ch = read_single_key().lower()

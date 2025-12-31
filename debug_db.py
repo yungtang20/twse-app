@@ -1,19 +1,19 @@
 import sqlite3
-import os
+conn = sqlite3.connect('taiwan_stock.db')
+c = conn.cursor()
 
-db_path = 'd:/twse/taiwan_stock.db'
-if not os.path.exists(db_path):
-    print(f"Error: DB not found at {db_path}")
-    exit(1)
+c.execute('SELECT MAX(date_int) FROM institutional_investors')
+max_date = c.fetchone()[0]
+print(f'Max date_int in institutional_investors: {max_date}')
 
-conn = sqlite3.connect(db_path)
-cur = conn.cursor()
+c.execute('SELECT COUNT(*) FROM stock_meta WHERE market_type IN ("TWSE", "TPEx")')
+print(f'Stock meta TWSE/TPEx count: {c.fetchone()[0]}')
 
-# Check 1240 missing amount
-print("Checking 1240 missing amount:")
-cur.execute("SELECT code, date_int, amount, volume FROM stock_history WHERE code='1240' AND (amount IS NULL OR amount=0) ORDER BY date_int DESC LIMIT 10")
-rows = cur.fetchall()
-for r in rows:
-    print(r)
+c.execute('SELECT COUNT(*) FROM stock_snapshot s JOIN stock_meta m ON s.code = m.code WHERE m.market_type IN ("TWSE", "TPEx")')
+print(f'Joined snapshot+meta count: {c.fetchone()[0]}')
+
+# Check if the query works without any join
+c.execute('SELECT COUNT(*) FROM stock_snapshot')
+print(f'Total stock_snapshot rows: {c.fetchone()[0]}')
 
 conn.close()

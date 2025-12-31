@@ -51,6 +51,23 @@ def start_scheduler():
         id="sync_push_2130",
         replace_existing=True
     )
+
+    # 14:00 Daily - Fetch 0000 (Index)
+    def run_fetch_0000():
+        import subprocess
+        try:
+            logger.info("⏰ 觸發排程: 更新加權指數 (0000)")
+            subprocess.run([sys.executable, "backend/fetch_0000.py"], check=True)
+            logger.info("✅ 加權指數更新完成")
+        except Exception as e:
+            logger.error(f"❌ 加權指數更新失敗: {e}")
+
+    scheduler.add_job(
+        run_fetch_0000,
+        CronTrigger(hour=14, minute=0),
+        id="fetch_0000_1400",
+        replace_existing=True
+    )
     
     scheduler.start()
     print("📅 排程器已啟動: 每日 15:30, 21:30 自動同步到雲端")
