@@ -101,6 +101,16 @@ export const Settings = () => {
         }
     };
 
+    const handleFileSelect = (event) => {
+        const file = event.target.files[0];
+        if (file) {
+            // Note: Browser security prevents getting full path.
+            // We can only get the name. User might need to manually adjust if not in default location.
+            setDbPath(file.name);
+            alert('注意：由於瀏覽器安全限制，無法自動取得完整路徑。\n如果檔案不在程式預設目錄下，請手動補全路徑。');
+        }
+    };
+
     useEffect(() => {
         fetchStatus();
         fetchDbPath();
@@ -321,6 +331,15 @@ export const Settings = () => {
                         className={`flex-1 bg-slate-900 border rounded px-3 py-1.5 text-sm text-white focus:outline-none ${dbPathExists ? 'border-slate-700 focus:border-orange-500' : 'border-red-500'
                             }`}
                     />
+                    <label className="bg-slate-700 hover:bg-slate-600 px-3 py-1.5 rounded text-sm text-white cursor-pointer border border-slate-500 transition-colors flex items-center">
+                        瀏覽
+                        <input
+                            type="file"
+                            accept=".db,.sqlite"
+                            onChange={handleFileSelect}
+                            className="hidden"
+                        />
+                    </label>
                     <button
                         onClick={saveDbPath}
                         disabled={dbPathSaving}

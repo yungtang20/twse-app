@@ -139,7 +139,68 @@ def get_all_stocks() -> List[Dict]:
     return db_manager.execute_query(query)
 
 def get_stock_by_code(code: str) -> Optional[Dict]:
-    """取得單一股票資料 (SQLite)"""
+    """取得單一股票資料 (支援本地/雲端)"""
+    # 1. 雲端模式: 從 Supabase 讀取
+    if db_manager.is_cloud_mode and db_manager.supabase:
+        try:
+            # 取得 Meta (名稱、市場)
+            meta_res = db_manager.supabase.table('stock_meta') \
+                .select('code, name, market_type') \
+                .eq('code', code) \
+                .execute()
+            
+            if not meta_res.data:
+                return None
+            
+            meta = meta_res.data[0]
+            
+            # 取得 Snapshot (即時行情、指標)
+            snap_res = db_manager.supabase.table('stock_snapshot') \
+                .select('*') \
+                .eq('code', code) \
+                .execute()
+            
+            snap = snap_res.data[0] if snap_res.data else {}
+            
+            # 計算漲跌幅
+            close = snap.get('close', 0)
+            prev = snap.get('close_prev', 0)
+            change_pct = 0.0
+            if prev and prev > 0:
+                change_pct = round((close - prev) / prev * 100, 2)
+                
+            return {
+                'code': meta.get('code'),
+                'name': meta.get('name'),
+                'market': meta.get('market_type'),
+                'close': close,
+                'change_pct': change_pct,
+                'volume': snap.get('volume'),
+                'amount': snap.get('amount'),
+                'ma5': snap.get('ma5'),
+                'ma20': snap.get('ma20'),
+                'ma60': snap.get('ma60'),
+                'ma120': snap.get('ma120'),
+                'ma200': snap.get('ma200'),
+                'rsi': snap.get('rsi'),
+                'mfi': snap.get('mfi14'), # 注意欄位名稱映射
+                'k': snap.get('daily_k'),
+                'd': snap.get('daily_d'),
+                'vp_poc': snap.get('vp_poc'),
+                'vp_high': snap.get('vp_high'),
+                'vp_low': snap.get('vp_low'),
+                'foreign_buy': snap.get('foreign_buy'),
+                'trust_buy': snap.get('trust_buy'),
+                'dealer_buy': snap.get('dealer_buy')
+            }
+        except Exception as e:
+            print(f"⚠️ 雲端讀取股票 {code} 失敗: {e}")
+            return None
+
+    # 2. 本地模式: SQLite
+    if db_manager.is_cloud_mode:
+        return None # 雲端模式下沒有 SQLite
+
     query = """
         SELECT m.code, m.name, m.market_type as market,
                s.close, 
