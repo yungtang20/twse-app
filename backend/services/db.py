@@ -156,12 +156,19 @@ def get_stock_by_code(code: str) -> Optional[Dict]:
             meta = meta_res.data[0]
             
             # 取得 Snapshot (即時行情、指標)
-            snap_res = db_manager.supabase.table('stock_snapshot') \
-                .select('*') \
-                .eq('code', code) \
-                .execute()
+            snap = {}
+            try:
+                snap_res = db_manager.supabase.table('stock_snapshot') \
+                    .select('*') \
+                    .eq('code', code) \
+                    .execute()
+                if snap_res.data:
+                    snap = snap_res.data[0]
+            except Exception as e:
+                print(f"⚠️ 雲端讀取 Snapshot 失敗 (Code: {code}): {e}")
+                # 不拋出錯誤，僅記錄，讓基本資料能顯示
             
-            snap = snap_res.data[0] if snap_res.data else {}
+            # 計算漲跌幅
             
             # 計算漲跌幅
             close = snap.get('close', 0)
