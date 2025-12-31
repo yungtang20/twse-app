@@ -30,3 +30,6 @@ build/
 # Environment
 .env
 .env.local
+
+# External repos (not submodules)
+histockhero_youtube_code/
