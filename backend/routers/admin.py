@@ -220,56 +220,61 @@ def run_daily_update(task_id: str):
     try:
         update_task_progress(task_id, 0, "啟動每日更新流程...")
         
+        # Load main_script functions
+        funcs = _load_main_script()
+        if not funcs:
+            raise Exception("無法載入 main_script 模組")
+        
         # Step 1: Check Holiday
         update_task_progress(task_id, 5, "Step 1: 檢查開休市...")
-        if step1_check_holiday():
+        if funcs['step1_check_holiday']():
             update_task_progress(task_id, 10, "今日休市，但仍繼續執行補歷史資料...")
         else:
             update_task_progress(task_id, 10, "今日是交易日")
             
         # Step 2: Download Lists
         update_task_progress(task_id, 15, "Step 2: 下載股票清單...")
-        step2_download_lists(silent_header=True)
+        funcs['step2_download_lists'](silent_header=True)
         
         # Step 3: Basic Info
         update_task_progress(task_id, 20, "Step 3: 下載基本資料...")
-        step3_download_basic_info(silent_header=True)
+        funcs['step3_download_basic_info'](silent_header=True)
         
         # Step 4: Clean Delisted
         update_task_progress(task_id, 25, "Step 4: 清理下市股票...")
-        step4_clean_delisted()
+        funcs['step4_clean_delisted']()
         
         # Step 5: Download Quotes (TPEx + TWSE)
         update_task_progress(task_id, 35, "Step 5: 下載今日行情...")
-        step5_download_quotes(silent_header=True)
+        funcs['step5_download_quotes'](silent_header=True)
         
         # Step 6: Valuation
         update_task_progress(task_id, 45, "Step 6: 下載估值資料...")
-        step6_download_valuation(silent_header=True)
+        funcs['step6_download_valuation'](silent_header=True)
         
         # Step 7: Institutional
         update_task_progress(task_id, 55, "Step 7: 下載三大法人買賣超...")
-        step7_download_institutional(silent_header=True)
+        funcs['step7_download_institutional'](silent_header=True)
         
         # Step 8: Margin
         update_task_progress(task_id, 65, "Step 8: 下載融資融券...")
-        step8_download_margin(silent_header=True)
+        funcs['step8_download_margin'](silent_header=True)
         
         # Step 9: TDCC
         update_task_progress(task_id, 70, "Step 9: 下載集保大戶...")
-        step9_download_tdcc(silent_header=True)
+        funcs['step9_download_tdcc'](silent_header=True)
         
         # Step 10: Check Gaps
         update_task_progress(task_id, 75, "Step 10: 檢查數據缺失...")
-        step10_check_gaps()
+        funcs['step10_check_gaps']()
         
         # Step 11: Verify & Backfill
         update_task_progress(task_id, 80, "Step 11: 驗證一致性並補漏...")
-        step11_verify_backfill()
+        funcs['step11_verify_backfill']()
         
         # Step 12: Calc Indicators
         update_task_progress(task_id, 90, "Step 12: 計算技術指標...")
-        step12_calc_indicators()
+        funcs['step12_calc_indicators']()
         
         # Step 13: Sync Supabase
         # Check config for update_target
@@ -292,7 +297,7 @@ def run_daily_update(task_id: str):
                 overall = 95 + int(p * 0.04)
                 update_task_progress(task_id, overall, msg, "running")
                 
-            step8_sync_supabase(progress_callback=sync_cb)
+            funcs['step8_sync_supabase'](progress_callback=sync_cb)
         else:
             update_task_progress(task_id, 95, "Step 13: 略過雲端同步 (本地模式)")
         
@@ -589,6 +594,11 @@ def run_sync_push(task_id: str):
     try:
         update_task_progress(task_id, 10, "正在連線雲端...", "running")
         
+        # Load main_script functions
+        funcs = _load_main_script()
+        if not funcs or 'step8_sync_supabase' not in funcs:
+            raise Exception("無法載入 sync_supabase 模組")
+        
         # 使用現有的 sync_supabase 功能
         update_task_progress(task_id, 30, "正在同步資料...")
         
@@ -597,7 +607,7 @@ def run_sync_push(task_id: str):
             overall = 30 + int(p * 0.6)
             update_task_progress(task_id, overall, msg, "running")
             
-        step8_sync_supabase(progress_callback=sync_cb)
+        funcs['step8_sync_supabase'](progress_callback=sync_cb)
         
         # 更新最後同步時間
         update_task_progress(task_id, 90, "更新同步時間...")
