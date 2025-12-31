@@ -240,6 +240,10 @@ def get_stock_history_from_cloud(code: str, limit: int = 60) -> List[Dict]:
 
 def get_stock_shareholding_history(code: str, min_level: int = 15) -> List[Dict]:
     """獲取股票分級持股歷史 (大戶持股)"""
+    # 雲端模式: 返回空資料 (股東持股資料可能沒有同步到雲端)
+    if db_manager.is_cloud_mode:
+        return []
+    
     query = """
         SELECT date_int, SUM(holders) as holders, SUM(proportion) as proportion
         FROM stock_shareholding_all
@@ -251,6 +255,10 @@ def get_stock_shareholding_history(code: str, min_level: int = 15) -> List[Dict]
 
 def get_tdcc_total_holders(code: str) -> List[Dict]:
     """獲取股票集保總人數 (所有分級的人數合計)"""
+    # 雲端模式: 返回空資料
+    if db_manager.is_cloud_mode:
+        return []
+    
     query = """
         SELECT date_int, SUM(holders) as total_holders
         FROM stock_shareholding_all
@@ -261,7 +269,11 @@ def get_tdcc_total_holders(code: str) -> List[Dict]:
     return db_manager.execute_query(query, (code,))
 
 def get_stock_indicators(code: str) -> Optional[Dict]:
-    """取得股票技術指標 (SQLite)"""
+    """取得股票技術指標"""
+    # 雲端模式: 返回空資料
+    if db_manager.is_cloud_mode:
+        return None
+    
     query = """
         SELECT *
         FROM stock_snapshot
