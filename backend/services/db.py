@@ -140,6 +140,7 @@ def get_all_stocks() -> List[Dict]:
 
 def get_stock_by_code(code: str) -> Optional[Dict]:
     """取得單一股票資料 (支援本地/雲端)"""
+    # Force git update
     # 1. 雲端模式: 從 Supabase 讀取
     if db_manager.is_cloud_mode and db_manager.supabase:
         try:
