@@ -55,6 +55,17 @@ async def get_institutional_rankings(
     """
     Get institutional investor rankings.
     """
+    # 雲端模式: 返回空資料 (此功能需要本地 SQLite)
+    if db_manager.is_cloud_mode:
+        return {
+            "success": True, 
+            "data": [],
+            "total_count": 0,
+            "total_pages": 0,
+            "current_page": 1,
+            "data_date": None
+        }
+    
     sys.stdout.flush()
     
     # Map type to column name (for sorting/filtering)
