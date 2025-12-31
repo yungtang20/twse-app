@@ -98,7 +98,7 @@ logger = logging.getLogger(__name__)
 # Add root directory to path to import 最終修正
 sys.path.append(os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__)))))
 
-from 最終修正 import (
+from main_script import (
     step1_check_holiday,
     step2_download_lists,
     step3_download_basic_info,
@@ -638,4 +638,84 @@ async def get_sync_status():
         }
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
+
+
+# ========================================
+# 資料庫路徑 API
+# ========================================
+
+class DBPathRequest(BaseModel):
+    """資料庫路徑請求"""
+    db_path: str
+
+
+@router.get("/admin/db-path", response_model=AdminResponse)
+async def get_db_path():
+    """
+    取得目前資料庫路徑
+    """
+    try:
+        return {
+            "success": True,
+            "data": {
+                "db_path": str(db_manager.db_path),
+                "exists": db_manager.db_path.exists() if hasattr(db_manager.db_path, 'exists') else False
+            }
+        }
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@router.post("/admin/db-path", response_model=AdminResponse)
+async def set_db_path(request: DBPathRequest):
+    """
+    設定資料庫路徑
+    """
+    try:
+        new_path = Path(request.db_path)
+        
+        # 驗證路徑
+        if not new_path.exists():
+            return {
+                "success": False,
+                "message": f"路徑不存在: {request.db_path}"
+            }
+        
+        if not new_path.suffix == '.db':
+            return {
+                "success": False,
+                "message": "檔案必須是 .db 格式"
+            }
+        
+        # 更新 db_manager
+        success = db_manager.set_db_path(request.db_path)
+        
+        if not success:
+            return {
+                "success": False,
+                "message": "無法設定資料庫路徑"
+            }
+        
+        # 儲存到 config.json
+        config_path = Path("config.json")
+        config = {}
+        if config_path.exists():
+            with open(config_path, 'r', encoding='utf-8') as f:
+                config = json.load(f)
+        
+        config["db_path"] = request.db_path
+        
+        with open(config_path, 'w', encoding='utf-8') as f:
+            json.dump(config, f, ensure_ascii=False, indent=2)
+        
+        return {
+            "success": True,
+            "data": {
+                "db_path": request.db_path
+            },
+            "message": "資料庫路徑已更新"
+        }
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
 

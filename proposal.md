@@ -206,3 +206,40 @@
 *   [x] 隱藏手機版 Header
 *   [x] 移轉桌面版切換至 Settings
 *   [x] 優化市場掃描列表 (手機版橫向捲動)
+
+# 2025-12-31 APK 轉換 (本地 SQLite)
+## 執行目標
+將 React Web App 轉換為 Android APK，支援本地 SQLite 資料庫完全離線運作。
+
+## 修改內容
+1.  **Frontend (`frontend/src/lib/sqliteService.js`)**:
+    *   新增 SQLite 服務模組，支援本地/雲端模式切換。
+    *   實作 `getAllStocks`, `getStockByCode`, `getStockHistory`, `getInstitutionalRankings` 等函數。
+    *   新增 `downloadDatabase` 函數支援從雲端下載資料庫。
+2.  **Frontend (`frontend/src/lib/supabaseClient.js`)**:
+    *   新增 Supabase 直連客戶端，用於雲端模式。
+3.  **Frontend (`frontend/capacitor.config.ts`)**:
+    *   Capacitor 配置檔，設定 App ID 為 `com.twse.app`。
+4.  **Backend (`backend/services/db.py`)**:
+    *   新增 `set_db_path` 函數支援動態切換資料庫路徑。
+5.  **Backend (`backend/routers/admin.py`)**:
+    *   新增 `/api/admin/db-path` GET/POST 端點。
+6.  **Frontend (`frontend/src/pages/Settings.jsx`)**:
+    *   新增資料庫路徑設定 UI。
+7.  **Documentation (`README_APK.md`)**:
+    *   新增 APK 打包指南，使用 Colab + Android SDK。
+
+## 修改原因
+*   使用者要求將手機版轉換為 APK。
+*   使用者要求支援本地資料庫完全離線運作。
+*   使用者無 Android Studio，改用 Colab 打包。
+
+## 修改進度
+*   [x] 安裝 Capacitor 相關套件
+*   [x] 安裝 @capacitor-community/sqlite
+*   [x] 建立 `sqliteService.js`
+*   [x] 建立 `supabaseClient.js`
+*   [x] 建立 `capacitor.config.ts`
+*   [x] 建立 `README_APK.md`
+*   [ ] 初始化 Android 專案
+*   [ ] 測試 APK 打包

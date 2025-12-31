@@ -10,12 +10,24 @@ from contextlib import contextmanager
 import os
 from supabase import create_client
 
-# 資料庫路徑
-# __file__ = d:/twse/backend/services/db.py
-# parent = d:/twse/backend/services
-# parent.parent = d:/twse/backend
-# parent.parent.parent = d:/twse
-DB_PATH = Path(os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))) / "taiwan_stock.db"
+# 預設資料庫路徑
+DEFAULT_DB_PATH = Path(os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))) / "taiwan_stock.db"
+
+def get_configured_db_path() -> Path:
+    """從 config.json 讀取資料庫路徑，若無則使用預設值"""
+    import json
+    config_path = Path(os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))) / "config.json"
+    if config_path.exists():
+        try:
+            with open(config_path, 'r', encoding='utf-8') as f:
+                config = json.load(f)
+                if config.get("db_path"):
+                    return Path(config["db_path"])
+        except Exception:
+            pass
+    return DEFAULT_DB_PATH
+
+DB_PATH = get_configured_db_path()
 
 # Supabase 設定
 SUPABASE_URL = "https://bshxromrtsetlfjdeggv.supabase.co"
@@ -24,10 +36,18 @@ SUPABASE_KEY = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJ
 class DBManager:
     """資料庫管理器"""
     
-    def __init__(self, db_path: Path = DB_PATH):
-        self.db_path = db_path
+    def __init__(self, db_path: Path = None):
+        self.db_path = db_path or get_configured_db_path()
         self._supabase = None
         self._supabase_initialized = False
+    
+    def set_db_path(self, new_path: str) -> bool:
+        """動態切換資料庫路徑"""
+        new_path = Path(new_path)
+        if not new_path.exists():
+            return False
+        self.db_path = new_path
+        return True
 
     @property
     def supabase(self):

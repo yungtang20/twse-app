@@ -17,6 +17,9 @@ export const Settings = () => {
     const [lastSyncTime, setLastSyncTime] = useState(null);
     const [supabaseConnected, setSupabaseConnected] = useState(false);
     const [syncStatus, setSyncStatus] = useState(null);
+    const [dbPath, setDbPath] = useState('');
+    const [dbPathExists, setDbPathExists] = useState(true);
+    const [dbPathSaving, setDbPathSaving] = useState(false);
 
     const fetchStatus = async () => {
         setLoading(true);
@@ -60,8 +63,47 @@ export const Settings = () => {
         }
     };
 
+    const fetchDbPath = async () => {
+        try {
+            const res = await fetch('/api/admin/db-path');
+            const data = await res.json();
+            if (data.success) {
+                setDbPath(data.data.db_path || '');
+                setDbPathExists(data.data.exists);
+            }
+        } catch (error) {
+            console.error('Failed to fetch db path:', error);
+        }
+    };
+
+    const saveDbPath = async () => {
+        if (!dbPath.trim()) return;
+        setDbPathSaving(true);
+        try {
+            const res = await fetch('/api/admin/db-path', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ db_path: dbPath })
+            });
+            const data = await res.json();
+            if (data.success) {
+                setDbPathExists(true);
+                alert('資料庫路徑已更新');
+            } else {
+                setDbPathExists(false);
+                alert(data.message || '路徑無效');
+            }
+        } catch (error) {
+            console.error('Failed to save db path:', error);
+            alert('儲存失敗');
+        } finally {
+            setDbPathSaving(false);
+        }
+    };
+
     useEffect(() => {
         fetchStatus();
+        fetchDbPath();
     }, []);
 
     // Poll for task progress if there is an active task
@@ -254,6 +296,37 @@ export const Settings = () => {
                             }`}
                     >
                         {isMobileView ? '切換至桌面版' : '切換至手機版'}
+                    </button>
+                </div>
+            </div>
+
+            {/* Database Path Settings */}
+            <div className="bg-slate-800 p-4 rounded-lg border border-slate-700 mb-6 flex flex-col md:flex-row md:items-center justify-between gap-4">
+                <div className="flex items-center gap-2">
+                    <Database className="w-5 h-5 text-orange-500" />
+                    <span className="font-semibold text-white">資料庫路徑</span>
+                    <span className="text-xs text-slate-500 ml-2">Database Path</span>
+                    {dbPathExists ? (
+                        <CheckCircle className="w-4 h-4 text-green-500" />
+                    ) : (
+                        <AlertCircle className="w-4 h-4 text-red-500" />
+                    )}
+                </div>
+                <div className="flex gap-2 flex-1 max-w-3xl">
+                    <input
+                        type="text"
+                        value={dbPath}
+                        onChange={(e) => setDbPath(e.target.value)}
+                        placeholder="例如: D:\twse\taiwan_stock.db"
+                        className={`flex-1 bg-slate-900 border rounded px-3 py-1.5 text-sm text-white focus:outline-none ${dbPathExists ? 'border-slate-700 focus:border-orange-500' : 'border-red-500'
+                            }`}
+                    />
+                    <button
+                        onClick={saveDbPath}
+                        disabled={dbPathSaving}
+                        className="bg-orange-600 hover:bg-orange-500 disabled:opacity-50 text-white px-4 py-1.5 rounded text-sm transition-colors"
+                    >
+                        {dbPathSaving ? '儲存中...' : '儲存'}
                     </button>
                 </div>
             </div>

@@ -1,0 +1,7 @@
+<?xml version='1.0' encoding='utf-8'?>
+<resources>
+    <string name="app_name">TWSE</string>
+    <string name="title_activity_main">TWSE</string>
+    <string name="package_name">com.twse.app</string>
+    <string name="custom_url_scheme">com.twse.app</string>
+</resources>

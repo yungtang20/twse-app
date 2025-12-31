@@ -24,7 +24,7 @@ RUN pip install --no-cache-dir -r backend/requirements.txt
 COPY backend/ ./backend/
 
 # Copy necessary root scripts
-COPY 最終修正.py .
+COPY main_script.py .
 COPY cloud_update.py .
 COPY update_institutional_streaks.py .
 
