@@ -15,10 +15,14 @@ numpy>=1.26.0
 # redis>=5.0.0
 
 # 排程 (可選)
-# apscheduler>=3.10.0
+apscheduler>=3.10.0
 
 # 認證 (可選)
 # python-jose[cryptography]>=3.3.0
 # passlib[bcrypt]>=1.7.4
 supabase>=2.3.0
 yfinance
+requests
+twstock
+lxml
+colorama
