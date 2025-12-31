@@ -21,24 +21,83 @@ async def get_institutional_rankings(
     """
     Get institutional investor rankings.
     """
-    # 雲端模式: 返回空資料 (此功能需要本地 SQLite)，但嘗試返回日期
+    # 雲端模式: 從 Supabase 讀取 stock_snapshot
     if db_manager.is_cloud_mode:
         date_str = None
+        data = []
+        total_count = 0
+        
         try:
+            # 1. Get Date
             status = get_system_status()
             latest_date = status.get('latest_date')
             if latest_date:
                 d = str(latest_date)
                 if len(d) == 8:
                     date_str = f"{d[:4]}-{d[4:6]}-{d[6:8]}"
+            
+            # 2. Map sort column
+            # type: foreign, trust, dealer, total
+            # sort: buy (desc), sell (asc)
+            
+            col_map = {
+                "foreign": "foreign_buy",
+                "trust": "trust_buy",
+                "dealer": "dealer_buy",
+                "total": "volume" # Total buy not directly available in snapshot, fallback to volume or handle separately
+            }
+            
+            target_col = col_map.get(type, "foreign_buy")
+            if type == "total":
+                # For total, we might need a different approach or just show foreign for now
+                # Or if we want to sort by sum, Supabase doesn't support calculated order easily without RPC
+                # Let's fallback to foreign_buy for total in cloud mode for now, or volume
+                target_col = "foreign_buy" 
+
+            # Determine order
+            is_desc = True
+            if sort == "sell":
+                is_desc = False
+            
+            # 3. Query Supabase
+            if db_manager.supabase:
+                query = db_manager.supabase.table('stock_snapshot') \
+                    .select('*') \
+                    .order(target_col, desc=is_desc) \
+                    .limit(limit)
+                
+                # Apply simple filters if needed (e.g. exclude 0)
+                # query = query.neq(target_col, 0) 
+                
+                res = query.execute()
+                if res.data:
+                    data = res.data
+                    # Add calculated fields expected by frontend
+                    for item in data:
+                        # Frontend expects total_buy
+                        f = item.get('foreign_buy', 0) or 0
+                        t = item.get('trust_buy', 0) or 0
+                        d = item.get('dealer_buy', 0) or 0
+                        item['total_buy'] = f + t + d
+                        
+                        # Frontend expects change_pct (snapshot has it? yes usually)
+                        # If not, calculate? Snapshot should have it.
+                        
+                        # Frontend expects streak data (might be 0 in cloud)
+                        if 'foreign_streak' not in item: item['foreign_streak'] = 0
+                        if 'trust_streak' not in item: item['trust_streak'] = 0
+                        if 'dealer_streak' not in item: item['dealer_streak'] = 0
+                        
+                    total_count = len(data) # Approximation
+
         except Exception as e:
-            print(f"Cloud mode date fetch error: {e}")
+            print(f"Cloud mode ranking fetch error: {e}")
 
         return {
             "success": True, 
-            "data": [],
-            "total_count": 0,
-            "total_pages": 0,
+            "data": data,
+            "total_count": total_count,
+            "total_pages": 1,
             "current_page": 1,
             "data_date": date_str
         }
