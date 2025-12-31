@@ -80,27 +80,7 @@ export const Rankings = () => {
         fetchRankings();
     }, [sortType, filterForeign, filterTrust, sortColumn, sortDirection, page]);
 
-    // Fetch data date on mount
-    useEffect(() => {
-        const fetchDataDate = async () => {
-            try {
-                const res = await fetch(`${API_BASE_URL}/api/admin/sync/status`);
-                const data = await res.json();
-                if (data.success && data.data?.local) {
-                    const dateStr = data.data.local.latest_date || data.data.local.last_update;
-                    if (dateStr) {
-                        // Format: 2025-12-29 or 20251229
-                        const formatted = dateStr.includes('-') ? dateStr.split(' ')[0] :
-                            `${dateStr.slice(0, 4)}-${dateStr.slice(4, 6)}-${dateStr.slice(6, 8)}`;
-                        setDataDate(formatted);
-                    }
-                }
-            } catch (err) {
-                console.error('Failed to fetch data date:', err);
-            }
-        };
-        fetchDataDate();
-    }, []);
+    // Note: data_date is set from fetchRankings() response (data.data_date)
 
     const handleSort = (column) => {
         if (sortColumn === column) {
