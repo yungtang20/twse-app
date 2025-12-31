@@ -106,6 +106,13 @@ export function TechnicalChart({ code, name, onHoverData }) {
 
     const [rawData, setRawData] = useState([]);
 
+    const toggleIndicator = (name) => {
+        setActiveIndicators(prev => {
+            if (prev.includes(name)) return prev.filter(i => i !== name);
+            return [...prev, name];
+        });
+    };
+
     useEffect(() => {
         if (!code) return;
         const fetchData = async () => {

@@ -108,39 +108,29 @@ def _load_main_script():
     if _main_script_loaded:
         return _main_script_functions
     try:
-        from main_script import (
-            step1_check_holiday,
-            step2_download_lists,
-            step3_download_basic_info,
-            step4_clean_delisted,
-            step5_download_quotes,
-            step6_download_valuation,
-            step7_download_institutional,
-            step8_download_margin,
-            step9_download_tdcc,
-            step10_check_gaps,
-            step11_verify_backfill,
-            step12_calc_indicators,
-            step8_sync_supabase
-        )
+        import importlib
+        # 使用 importlib 導入中文檔名模組
+        main_module = importlib.import_module('最終修正')
+        
         _main_script_functions = {
-            'step1_check_holiday': step1_check_holiday,
-            'step2_download_lists': step2_download_lists,
-            'step3_download_basic_info': step3_download_basic_info,
-            'step4_clean_delisted': step4_clean_delisted,
-            'step5_download_quotes': step5_download_quotes,
-            'step6_download_valuation': step6_download_valuation,
-            'step7_download_institutional': step7_download_institutional,
-            'step8_download_margin': step8_download_margin,
-            'step9_download_tdcc': step9_download_tdcc,
-            'step10_check_gaps': step10_check_gaps,
-            'step11_verify_backfill': step11_verify_backfill,
-            'step12_calc_indicators': step12_calc_indicators,
-            'step8_sync_supabase': step8_sync_supabase,
+            'step1_check_holiday': getattr(main_module, 'step1_check_holiday', None),
+            'step2_download_lists': getattr(main_module, 'step2_download_lists', None),
+            'step3_download_basic_info': getattr(main_module, 'step3_download_basic_info', None),
+            'step4_clean_delisted': getattr(main_module, 'step4_clean_delisted', None),
+            'step5_download_quotes': getattr(main_module, 'step5_download_quotes', None),
+            'step6_download_valuation': getattr(main_module, 'step6_download_valuation', None),
+            'step7_download_institutional': getattr(main_module, 'step7_download_institutional', None),
+            'step8_download_margin': getattr(main_module, 'step8_download_margin', None),
+            'step9_download_tdcc': getattr(main_module, 'step9_download_tdcc', None),
+            'step10_check_gaps': getattr(main_module, 'step10_check_gaps', None),
+            'step11_verify_backfill': getattr(main_module, 'step11_verify_backfill', None),
+            'step12_calc_indicators': getattr(main_module, 'step12_calc_indicators', None),
+            'step8_sync_supabase': getattr(main_module, 'step8_sync_supabase', None),
         }
         _main_script_loaded = True
+        logger.info("✅ 已成功載入 main_script 模組")
     except Exception as e:
-        logger.warning(f"無法載入 main_script: {e}")
+        logger.warning(f"無法載入 main_script (最終修正.py): {e}")
     return _main_script_functions
 
 def _load_update_streaks():
@@ -709,8 +699,8 @@ async def get_db_path():
         return {
             "success": True,
             "data": {
-                "db_path": str(db_manager.db_path),
-                "exists": db_manager.db_path.exists() if hasattr(db_manager.db_path, 'exists') else False
+                "db_path": str(db_manager.db_path) if db_manager.db_path else "Cloud Mode",
+                "exists": db_manager.db_path.exists() if db_manager.db_path and hasattr(db_manager.db_path, 'exists') else False
             }
         }
     except Exception as e:
