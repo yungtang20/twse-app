@@ -402,24 +402,24 @@ def download_institutional(date_str: str) -> List[Dict]:
                 
             if tpex_date_int > 0:
                 if tpex_date_int == date_int:
-                        for item in data:
-                            code = str(item.get("SecuritiesCompanyCode", "")).strip()
-                            if not code.isdigit() or len(code) != 4:
-                                continue
-                            
-                            f_net = safe_int(item.get("ForeignInvestorsBuySellNet", 0))
-                            t_net = safe_int(item.get("InvestmentTrustBuySellNet", 0))
-                            d_net = safe_int(item.get("DealerBuySellNet", 0))
-                            
-                            combined_data.append({
-                                "code": code,
-                                "date_int": date_int,
-                                "foreign_net": f_net,
-                                "trust_net": t_net,
-                                "dealer_net": d_net
-                            })
-                    else:
-                        print_flush(f"  ⚠ 上櫃法人資料日期不符 (API: {tpex_date_int}, 目標: {date_int})")
+                    for item in data:
+                        code = str(item.get("SecuritiesCompanyCode", "")).strip()
+                        if not code.isdigit() or len(code) != 4:
+                            continue
+                        
+                        f_net = safe_int(item.get("ForeignInvestorsBuySellNet", 0))
+                        t_net = safe_int(item.get("InvestmentTrustBuySellNet", 0))
+                        d_net = safe_int(item.get("DealerBuySellNet", 0))
+                        
+                        combined_data.append({
+                            "code": code,
+                            "date_int": date_int,
+                            "foreign_net": f_net,
+                            "trust_net": t_net,
+                            "dealer_net": d_net
+                        })
+                else:
+                    print_flush(f"  ⚠ 上櫃法人資料日期不符 (API: {tpex_date_int}, 目標: {date_int})")
     except Exception as e:
         print_flush(f"  ❌ 下載上櫃法人資料失敗: {e}")
 
