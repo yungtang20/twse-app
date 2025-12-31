@@ -1,6 +1,7 @@
 import React, { useState, useEffect, useMemo } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useMobileView } from "@/context/MobileViewContext";
+import API_BASE_URL from '@/lib/api';
 
 export const Scan = () => {
     const navigate = useNavigate();
@@ -36,7 +37,7 @@ export const Scan = () => {
 
     const fetchSystemStatus = async () => {
         try {
-            const res = await fetch('http://localhost:8000/api/admin/status');
+            const res = await fetch(`${API_BASE_URL}/api/admin/status`);
             const data = await res.json();
             if (data.success && data.data) {
                 const dateStr = data.data.latest_date?.toString();
@@ -56,19 +57,19 @@ export const Scan = () => {
             let url = '';
             const params = `limit=100&min_vol=${minVol * 1000}${minPrice ? `&min_price=${minPrice}` : ''}`;
             switch (activeFilter) {
-                case 'vp': url = `http://localhost:8000/api/scan/vp?direction=${vpDirection}&tolerance=${tolerance}&${params}`; break;
-                case 'mfi': url = `http://localhost:8000/api/scan/mfi?condition=oversold&${params}`; break;
-                case 'ma': url = `http://localhost:8000/api/scan/ma?pattern=${maPattern}&${params}`; break;
-                case 'kd_month': url = `http://localhost:8000/api/scan/kd-cross?signal=golden&timeframe=month&${params}`; break;
-                case 'vsbc': url = `http://localhost:8000/api/scan/vsbc?style=steady&${params}`; break;
-                case 'smart_money': url = `http://localhost:8000/api/scan/smart-money?${params}`; break;
-                case '2560': url = `http://localhost:8000/api/scan/2560?${params}`; break;
-                case 'five_stage': url = `http://localhost:8000/api/scan/five-stage?${params}`; break;
-                case 'institutional': url = `http://localhost:8000/api/scan/institutional-value?${params}`; break;
-                case 'six_dim': url = `http://localhost:8000/api/scan/six-dim?${params}`; break;
-                case 'patterns': url = `http://localhost:8000/api/scan/patterns?type=morning_star&${params}`; break;
-                case 'pv_div': url = `http://localhost:8000/api/scan/pv-divergence?${params}`; break;
-                case 'builtin': url = `http://localhost:8000/api/scan/builtin?${params}`; break;
+                case 'vp': url = `${API_BASE_URL}/api/scan/vp?direction=${vpDirection}&tolerance=${tolerance}&${params}`; break;
+                case 'mfi': url = `${API_BASE_URL}/api/scan/mfi?condition=oversold&${params}`; break;
+                case 'ma': url = `${API_BASE_URL}/api/scan/ma?pattern=${maPattern}&${params}`; break;
+                case 'kd_month': url = `${API_BASE_URL}/api/scan/kd-cross?signal=golden&timeframe=month&${params}`; break;
+                case 'vsbc': url = `${API_BASE_URL}/api/scan/vsbc?style=steady&${params}`; break;
+                case 'smart_money': url = `${API_BASE_URL}/api/scan/smart-money?${params}`; break;
+                case '2560': url = `${API_BASE_URL}/api/scan/2560?${params}`; break;
+                case 'five_stage': url = `${API_BASE_URL}/api/scan/five-stage?${params}`; break;
+                case 'institutional': url = `${API_BASE_URL}/api/scan/institutional-value?${params}`; break;
+                case 'six_dim': url = `${API_BASE_URL}/api/scan/six-dim?${params}`; break;
+                case 'patterns': url = `${API_BASE_URL}/api/scan/patterns?type=morning_star&${params}`; break;
+                case 'pv_div': url = `${API_BASE_URL}/api/scan/pv-divergence?${params}`; break;
+                case 'builtin': url = `${API_BASE_URL}/api/scan/builtin?${params}`; break;
                 default:
                     setScanResults([]);
                     setLoading(false);

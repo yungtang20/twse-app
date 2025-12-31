@@ -6,6 +6,7 @@ import {
     calculateVWAP, calculateBollinger, calculateVP, calculateVSBC,
     calculateADL, calculateNVI, calculatePVI, calculateSMI
 } from '@/utils/indicators';
+import API_BASE_URL from '@/lib/api';
 
 export function TechnicalChart({ code, name, onHoverData }) {
     const { isMobileView } = useMobileView();
@@ -109,9 +110,9 @@ export function TechnicalChart({ code, name, onHoverData }) {
         if (!code) return;
         const fetchData = async () => {
             try {
-                const res = await fetch(`http://localhost:8000/api/stocks/${code}/history?limit=2000`);
+                const res = await fetch(`${API_BASE_URL}/api/stocks/${code}/history?limit=2000`);
                 const json = await res.json();
-                const shRes = await fetch(`http://localhost:8000/api/stocks/${code}/shareholding?threshold=${shareholderThreshold}`);
+                const shRes = await fetch(`${API_BASE_URL}/api/stocks/${code}/shareholding?threshold=${shareholderThreshold}`);
                 const shJson = await shRes.json();
                 const totalHoldersMap = new Map();
                 const largeHoldersMap = new Map();

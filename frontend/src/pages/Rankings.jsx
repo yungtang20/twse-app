@@ -1,6 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useMobileView } from "@/context/MobileViewContext";
+import API_BASE_URL from '@/lib/api';
 
 export const Rankings = () => {
     const navigate = useNavigate();
@@ -55,7 +56,7 @@ export const Rankings = () => {
             }
 
             const queryParams = new URLSearchParams(params);
-            const res = await fetch(`http://localhost:8000/api/rankings/institutional?${queryParams}`);
+            const res = await fetch(`${API_BASE_URL}/api/rankings/institutional?${queryParams}`);
             const data = await res.json();
             if (data.success) {
                 setRankings(data.data);
@@ -83,7 +84,7 @@ export const Rankings = () => {
     useEffect(() => {
         const fetchDataDate = async () => {
             try {
-                const res = await fetch('http://localhost:8000/api/admin/sync/status');
+                const res = await fetch(`${API_BASE_URL}/api/admin/sync/status`);
                 const data = await res.json();
                 if (data.success && data.data?.local) {
                     const dateStr = data.data.local.latest_date || data.data.local.last_update;

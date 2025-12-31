@@ -2,6 +2,7 @@ import { useState, useEffect } from 'react';
 import { useNavigate, useLocation } from 'react-router-dom';
 import { useMobileView } from "@/context/MobileViewContext";
 import TechnicalChart from '@/components/TechnicalChart';
+import API_BASE_URL from '@/lib/api';
 
 export function Dashboard() {
     const navigate = useNavigate();
@@ -29,7 +30,7 @@ export function Dashboard() {
 
     // Fetch Stock List
     useEffect(() => {
-        fetch('http://localhost:8000/api/stocks?limit=5000')
+        fetch(`${API_BASE_URL}/api/stocks?limit=5000`)
             .then(res => res.json())
             .then(data => { if (data.success) setStockList(data.data.stocks); })
             .catch(err => console.error('Stock list fetch error:', err));
