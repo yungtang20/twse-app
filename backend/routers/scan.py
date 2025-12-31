@@ -72,6 +72,9 @@ def execute_scan_query(
     min_price: Optional[float] = None
 ) -> List[Dict]:
     """執行掃描查詢"""
+    # 雲端模式: 返回空資料 (掃描功能需要本地 SQLite)
+    if db_manager.is_cloud_mode:
+        return []
     
     extra_conditions = f"AND s.volume >= {min_vol}"
     if min_price:

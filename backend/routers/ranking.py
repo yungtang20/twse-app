@@ -45,6 +45,9 @@ def get_institutional_ranking(
     min_days: int = 1
 ) -> List[Dict]:
     """取得法人排行"""
+    # 雲端模式: 返回空資料 (排行功能需要本地 SQLite)
+    if db_manager.is_cloud_mode:
+        return []
     
     # 欄位映射
     column_map = {
