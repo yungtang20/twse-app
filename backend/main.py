@@ -82,4 +82,7 @@ else:
 
 if __name__ == "__main__":
     import uvicorn
-    uvicorn.run("main:app", host="0.0.0.0", port=8000, reload=True)
+    port = int(os.environ.get("PORT", 8000))
+    # 在 Render 等生產環境中，通常不使用 reload
+    reload = os.environ.get("ENV", "development") == "development"
+    uvicorn.run("main:app", host="0.0.0.0", port=port, reload=reload)
