@@ -286,13 +286,53 @@ def get_institutional_data(code: str, limit: int = 30) -> List[Dict]:
         return []
 
 def get_system_status() -> Dict:
-    """取得系統狀態"""
+    """取得系統狀態 (支援雲端模式)"""
+    # 雲端模式: 從 Supabase 取得狀態
+    if db_manager.is_cloud_mode:
+        if db_manager.supabase:
+            try:
+                # 取得股票數量
+                meta_res = db_manager.supabase.table('stock_meta').select('code', count='exact').limit(1).execute()
+                stock_count = meta_res.count if meta_res else 0
+                
+                # 取得最新日期
+                hist_res = db_manager.supabase.table('stock_history').select('date_int').order('date_int', desc=True).limit(1).execute()
+                latest_date = hist_res.data[0]['date_int'] if hist_res.data else None
+                
+                return {
+                    "db_path": "Supabase (Cloud)",
+                    "stock_count": stock_count,
+                    "latest_date": latest_date,
+                    "institutional_date": None,
+                    "db_exists": True,
+                    "db_size_mb": 0,
+                    "last_modified": None,
+                    "supabase_connected": True,
+                    "is_cloud_mode": True
+                }
+            except Exception as e:
+                print(f"⚠️ 雲端狀態讀取錯誤: {e}")
+                return {
+                    "db_path": "Supabase (Cloud - Error)",
+                    "stock_count": 0,
+                    "latest_date": None,
+                    "supabase_connected": db_manager.supabase is not None,
+                    "is_cloud_mode": True,
+                    "error": str(e)
+                }
+        else:
+            return {
+                "db_path": "Cloud mode but Supabase not connected",
+                "stock_count": 0,
+                "latest_date": None,
+                "supabase_connected": False,
+                "is_cloud_mode": True
+            }
+    
+    # 本地模式: SQLite
     stock_count = db_manager.execute_single("SELECT COUNT(*) as cnt FROM stock_meta")
     latest_date = db_manager.execute_single("SELECT MAX(date_int) as dt FROM stock_history")
     inst_date = db_manager.execute_single("SELECT MAX(date_int) as dt FROM institutional_investors")
-    
-    # Snapshot date is not directly stored as date_int, but we can infer or add if needed.
-    # For now, let's just return what we have.
     
     return {
         "db_path": str(DB_PATH),
@@ -302,7 +342,8 @@ def get_system_status() -> Dict:
         "db_exists": DB_PATH.exists(),
         "db_size_mb": round(DB_PATH.stat().st_size / 1024 / 1024, 2) if DB_PATH.exists() else 0,
         "last_modified": datetime.fromtimestamp(DB_PATH.stat().st_mtime).strftime("%Y-%m-%d %H:%M:%S") if DB_PATH.exists() else None,
-        "supabase_connected": db_manager.supabase is not None
+        "supabase_connected": db_manager.supabase is not None,
+        "is_cloud_mode": False
     }
 
 def get_cloud_status() -> Dict:
