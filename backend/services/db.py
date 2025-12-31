@@ -47,7 +47,7 @@ class DBManager:
         
         # 雲端模式: 自動連線 Supabase
         if IS_CLOUD_MODE:
-            print("☁️ 偵測到雲端模式 (SQLite 不存在)，自動連線 Supabase...")
+            print("Detect cloud mode (SQLite not found), connecting to Supabase...")
             self.connect_supabase()
     
     def set_db_path(self, new_path: str) -> bool:

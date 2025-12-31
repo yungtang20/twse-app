@@ -71,10 +71,24 @@ def execute_scan_query(
     min_vol: int = 500,
     min_price: Optional[float] = None
 ) -> List[Dict]:
-    """執行掃描查詢"""
-    # 雲端模式: 返回空資料 (掃描功能需要本地 SQLite)
-    if db_manager.is_cloud_mode:
-        return []
+    """執行掃描查詢 (支援本地/雲端)"""
+    
+    # 檢查讀取來源設定
+    import json
+    from pathlib import Path
+    read_source = "local"
+    try:
+        config_path = Path("config.json")
+        if config_path.exists():
+            with open(config_path, 'r', encoding='utf-8') as f:
+                config = json.load(f)
+                read_source = config.get("read_source", "local")
+    except:
+        pass
+    
+    # 雲端模式: 使用 Supabase
+    if read_source == "cloud" or db_manager.is_cloud_mode:
+        return execute_scan_query_cloud(limit, min_vol, min_price)
     
     extra_conditions = f"AND s.volume >= {min_vol}"
     if min_price:
@@ -100,6 +114,76 @@ def execute_scan_query(
         LIMIT ?
     """
     return db_manager.execute_query(query, (limit,))
+
+
+def execute_scan_query_cloud(
+    limit: int = 30,
+    min_vol: int = 500,
+    min_price: Optional[float] = None
+) -> List[Dict]:
+    """雲端掃描查詢 (使用 Supabase)"""
+    if not db_manager.supabase:
+        return []
+    
+    try:
+        # 從 stock_snapshot 讀取資料
+        # 注意: change_pct 是計算欄位，需讀取 close_prev 自行計算
+        query = db_manager.supabase.table('stock_snapshot').select(
+            'code, name, close, close_prev, volume, amount, '
+            'ma5, ma20, ma60, ma120, ma200, rsi, mfi14, '
+            'vp_poc, vp_high, vp_low, foreign_buy, trust_buy, dealer_buy'
+        )
+        
+        # 套用篩選條件
+        if min_vol > 0:
+            query = query.gte('volume', min_vol)
+        if min_price:
+            query = query.gte('close', min_price)
+        
+        # 排序與限制
+        query = query.order('volume', desc=True).limit(limit)
+        
+        response = query.execute()
+        
+        if response.data:
+            # 轉換欄位名稱以符合前端期望
+            results = []
+            for row in response.data:
+                # 計算漲跌幅
+                change_pct = 0.0
+                if row.get('close') and row.get('close_prev'):
+                    try:
+                        change_pct = round((row['close'] - row['close_prev']) / row['close_prev'] * 100, 2)
+                    except:
+                        pass
+                        
+                results.append({
+                    'code': row.get('code'),
+                    'name': row.get('name'),
+                    'close': row.get('close'),
+                    'change_pct': change_pct,
+                    'volume': row.get('volume'),
+                    'amount': row.get('amount'),
+                    'ma5': row.get('ma5'),
+                    'ma20': row.get('ma20'),
+                    'ma60': row.get('ma60'),
+                    'ma120': row.get('ma120'),
+                    'ma200': row.get('ma200'),
+                    'rsi': row.get('rsi'),
+                    'mfi': row.get('mfi14'),
+                    'vp_poc': row.get('vp_poc'),
+                    'vp_high': row.get('vp_high'),
+                    'vp_low': row.get('vp_low'),
+                    'foreign': row.get('foreign_buy'),
+                    'trust': row.get('trust_buy'),
+                    'dealer': row.get('dealer_buy'),
+                    'vwap': round(row.get('amount', 0) / max(row.get('volume', 1), 1), 2) if row.get('volume') else None
+                })
+            return results
+        return []
+    except Exception as e:
+        print(f"⚠️ 雲端掃描查詢錯誤: {e}")
+        return []
 
 
 # ========================================
