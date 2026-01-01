@@ -131,14 +131,22 @@ async def get_institutional_rankings(
                     holdings_map = {}
                     if codes and db_manager.supabase:
                         try:
-                            # Get latest date first
-                            latest_hist = db_manager.supabase.table('stock_history').select('date_int').order('date_int', desc=True).limit(1).execute()
-                            if latest_hist.data:
-                                latest_date_int = latest_hist.data[0]['date_int']
+                            # Get latest date that HAS VALID HOLDINGS from institutional_investors
+                            # (not just any latest date, we need one with actual holding data)
+                            inst_date_res = db_manager.supabase.table('institutional_investors') \
+                                .select('date_int') \
+                                .not_.is_('foreign_holding_shares', 'null') \
+                                .order('date_int', desc=True) \
+                                .limit(1) \
+                                .execute()
+                            
+                            if inst_date_res.data:
+                                latest_date_int = inst_date_res.data[0]['date_int']
+                                print(f"Cloud holdings date: {latest_date_int}")
                                 
-                                # Query institutional_investors
+                                # Query institutional_investors for this date
                                 inst_res = db_manager.supabase.table('institutional_investors') \
-                                    .select('code, foreign_holding_shares, foreign_holding_pct, trust_holding_shares, trust_holding_pct') \
+                                    .select('*') \
                                     .in_('code', codes) \
                                     .eq('date_int', latest_date_int) \
                                     .execute()
