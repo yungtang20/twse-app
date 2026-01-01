@@ -278,33 +278,61 @@ export function TechnicalChart({ code, name, onHoverData, isFullScreen = false }
 
     // Helper to render indicator values overlay
     const renderIndicatorOverlay = () => {
-        const values = [];
-        indicatorConfig.forEach(ind => {
-            if (!activeIndicators.includes(ind.name)) return;
-            let val = null;
-            if (ind.name === 'MA20') val = calculateMA(chartData, 20)[hoverIdx]?.toFixed(2);
-            else if (ind.name === 'MA60') val = calculateMA(chartData, 60)[hoverIdx]?.toFixed(2);
-            else if (ind.name === 'MA120') val = calculateMA(chartData, 120)[hoverIdx]?.toFixed(2);
-            else if (ind.name === 'MA200') val = calculateMA(chartData, 200)[hoverIdx]?.toFixed(2);
-            else if (ind.name === 'VWAP') val = vwapData[hoverIdx]?.toFixed(2);
-            else if (ind.name === 'BBW') val = bollingerData.mid[hoverIdx] ? `${bollingerData.lower[hoverIdx]?.toFixed(0)}/${bollingerData.mid[hoverIdx]?.toFixed(0)}/${bollingerData.upper[hoverIdx]?.toFixed(0)}` : null;
-            else if (ind.name === 'VP') val = vpData.poc[hoverIdx] ? `${vpData.lower[hoverIdx]?.toFixed(0)}/${vpData.poc[hoverIdx]?.toFixed(0)}/${vpData.upper[hoverIdx]?.toFixed(0)}` : null;
-            else if (ind.name === 'VSBC') val = vsbcData.lower[hoverIdx] ? `${vsbcData.lower[hoverIdx]?.toFixed(0)}/${vsbcData.upper[hoverIdx]?.toFixed(0)}` : null;
+        try {
+            const values = [];
+            indicatorConfig.forEach(ind => {
+                if (!activeIndicators.includes(ind.name)) return;
+                let val = null;
+                // Helper for safe formatting
+                const fmt = (v, d = 2) => (v !== null && v !== undefined && !isNaN(v)) ? v.toFixed(d) : null;
 
-            if (val) {
-                values.push(
-                    <div key={ind.name} className="flex items-center gap-1 mr-3">
-                        <span className="w-2 h-2 rounded-full" style={{ backgroundColor: ind.color }} />
-                        <span style={{ color: ind.color }}>{ind.name} {val}</span>
-                    </div>
-                );
-            }
-        });
-        return (
-            <div className="absolute top-2 left-2 z-10 flex flex-wrap pointer-events-none text-[10px] font-mono bg-slate-900/50 p-1 rounded backdrop-blur-sm">
-                {values}
-            </div>
-        );
+                if (ind.name === 'MA20') val = fmt(calculateMA(chartData, 20)[hoverIdx]);
+                else if (ind.name === 'MA60') val = fmt(calculateMA(chartData, 60)[hoverIdx]);
+                else if (ind.name === 'MA120') val = fmt(calculateMA(chartData, 120)[hoverIdx]);
+                else if (ind.name === 'MA200') val = fmt(calculateMA(chartData, 200)[hoverIdx]);
+                else if (ind.name === 'VWAP') val = fmt(vwapData[hoverIdx]);
+                else if (ind.name === 'BBW') {
+                    const mid = bollingerData.mid[hoverIdx];
+                    const lower = bollingerData.lower[hoverIdx];
+                    const upper = bollingerData.upper[hoverIdx];
+                    if (mid !== null && lower !== null && upper !== null) {
+                        val = `${fmt(lower, 0)}/${fmt(mid, 0)}/${fmt(upper, 0)}`;
+                    }
+                }
+                else if (ind.name === 'VP') {
+                    const poc = vpData.poc[hoverIdx];
+                    const lower = vpData.lower[hoverIdx];
+                    const upper = vpData.upper[hoverIdx];
+                    if (poc !== null && lower !== null && upper !== null) {
+                        val = `${fmt(lower, 0)}/${fmt(poc, 0)}/${fmt(upper, 0)}`;
+                    }
+                }
+                else if (ind.name === 'VSBC') {
+                    const lower = vsbcData.lower[hoverIdx];
+                    const upper = vsbcData.upper[hoverIdx];
+                    if (lower !== null && upper !== null) {
+                        val = `${fmt(lower, 0)}/${fmt(upper, 0)}`;
+                    }
+                }
+
+                if (val) {
+                    values.push(
+                        <div key={ind.name} className="flex items-center gap-1 mr-3">
+                            <span className="w-2 h-2 rounded-full" style={{ backgroundColor: ind.color }} />
+                            <span style={{ color: ind.color }}>{ind.name} {val}</span>
+                        </div>
+                    );
+                }
+            });
+            return (
+                <div className="absolute top-2 left-2 z-10 flex flex-wrap pointer-events-none text-[10px] font-mono bg-slate-900/50 p-1 rounded backdrop-blur-sm">
+                    {values}
+                </div>
+            );
+        } catch (e) {
+            console.error('Render overlay error:', e);
+            return null;
+        }
     };
 
     return (
