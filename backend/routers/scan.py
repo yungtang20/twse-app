@@ -153,12 +153,33 @@ def execute_scan_query_cloud(
             query = query.not_.is_('mfi14', 'null').lt('mfi14', 30)
         elif scan_type == "mfi_overbought":
             query = query.not_.is_('mfi14', 'null').gt('mfi14', 70)
-        elif scan_type == "ma_bull":
+        elif scan_type.startswith("ma_"):
             query = query.not_.is_('ma20', 'null').not_.is_('ma60', 'null')
         elif scan_type == "institutional":
             query = query.not_.is_('ma20', 'null').not_.is_('ma60', 'null').not_.is_('rsi', 'null').lt('rsi', 60)
         elif scan_type == "six_dim":
             query = query.not_.is_('rsi', 'null')
+        elif scan_type == "kd_month":
+            # 月KD金叉需要 month_k, month_d
+            query = query.not_.is_('rsi', 'null')  # 使用 RSI 作為基本篩選
+        elif scan_type == "vsbc":
+            # VSBC 需要 vp_poc, ma20, ma60
+            query = query.not_.is_('vp_poc', 'null').not_.is_('ma20', 'null').not_.is_('ma60', 'null')
+        elif scan_type == "smart_money":
+            # 聰明錢：價格 > MA200, MFI < 80
+            query = query.not_.is_('ma200', 'null').not_.is_('mfi14', 'null').lt('mfi14', 80)
+        elif scan_type == "2560":
+            # 2560 戰法：需要 ma20, ma60
+            query = query.not_.is_('ma20', 'null').not_.is_('ma60', 'null')
+        elif scan_type == "five_stage":
+            # 五階篩選：RSI > 50
+            query = query.not_.is_('rsi', 'null').gt('rsi', 50)
+        elif scan_type == "patterns":
+            # K線型態：暫時使用成交量排序
+            pass
+        elif scan_type == "pv_div":
+            # 量價背離：暫時使用成交量排序
+            pass
         
         # 排序與限制 (加大 limit 以便後續 Python 過濾)
         fetch_limit = limit * 5 if scan_type not in ["default"] else limit
@@ -270,6 +291,43 @@ def execute_scan_query_cloud(
                 # 至少5項符合
                 if score < 5:
                     passed = False
+            elif scan_type == "kd_month":
+                # 月KD金叉: K > D, K < 80, RSI > 50
+                # 由於雲端沒有 month_k/month_d，使用 daily_k/daily_d 作為替代
+                daily_k = row.get('daily_k') or 0
+                daily_d = row.get('daily_d') or 0
+                if not (daily_k > daily_d and daily_k < 80 and rsi > 50):
+                    passed = False
+                item['_kd_score'] = daily_k - daily_d  # 金叉強度供排序
+            elif scan_type == "vsbc":
+                # VSBC: 站上 POC, MA20 > MA60, Close > MA20
+                vp_poc = item.get('vp_poc') or 0
+                if not (close >= vp_poc and ma20 > ma60 and close > ma20 and vp_poc > 0):
+                    passed = False
+                item['_vsbc_score'] = (close - vp_poc) / vp_poc if vp_poc else 0  # 站上 POC 幅度
+            elif scan_type == "smart_money":
+                # 聰明錢: Close > MA200, MFI < 80, RSI > 50
+                ma200 = item.get('ma200') or 0
+                mfi = item.get('mfi') or 0
+                if not (close > ma200 and mfi < 80 and rsi > 50 and ma200 > 0):
+                    passed = False
+                item['_smart_score'] = (close - ma200) / ma200 if ma200 else 0  # 距離 MA200 幅度
+            elif scan_type == "2560":
+                # 2560 戰法: Close > MA20 > MA60, 乖離 < 10%
+                if ma20 <= 0:
+                    passed = False
+                else:
+                    bias = (close - ma20) / ma20
+                    if not (close > ma20 > ma60 and 0 < bias < 0.1):
+                        passed = False
+                    item['_bias'] = bias  # 乖離率供排序
+            elif scan_type == "five_stage":
+                # 五階篩選: RSI > 50, MA20 > MA60, Close > MA20
+                ma5 = item.get('ma5') or 0
+                if not (rsi > 50 and ma5 > ma20 > ma60 and close > ma5):
+                    passed = False
+                item['_five_score'] = rsi  # RSI 分數供排序
+            # patterns 和 pv_div 由於缺少必要欄位，暫時不做細部篩選
             
             if passed:
                 results.append(item)
@@ -290,10 +348,25 @@ def execute_scan_query_cloud(
                 results.sort(key=lambda x: x.get('mfi', 100))
             else:
                 results.sort(key=lambda x: x.get('mfi', 0), reverse=True)
-        elif scan_type == "ma_bull":
-            # 均線多頭：按乖離率升序（貼近均線優先）
+        elif scan_type.startswith("ma_"):
+            # 均線掃描：按乖離率升序（貼近均線優先）
             results.sort(key=lambda x: abs((x.get('close', 0) - x.get('ma20', 1)) / max(x.get('ma20', 1), 1)))
-        # default: 保持原本的成交量排序
+        elif scan_type == "kd_month":
+            # 月KD：按金叉強度降序 (K-D 越大越強)
+            results.sort(key=lambda x: x.get('_kd_score', 0), reverse=True)
+        elif scan_type == "vsbc":
+            # VSBC：按站上 POC 幅度降序
+            results.sort(key=lambda x: x.get('_vsbc_score', 0), reverse=True)
+        elif scan_type == "smart_money":
+            # 聰明錢：按距離 MA200 幅度降序（越強勢越優先）
+            results.sort(key=lambda x: x.get('_smart_score', 0), reverse=True)
+        elif scan_type == "2560":
+            # 2560：按乖離率升序（貼近 MA20 優先）
+            results.sort(key=lambda x: x.get('_bias', 999))
+        elif scan_type == "five_stage":
+            # 五階：按 RSI 降序（越強勢越優先）
+            results.sort(key=lambda x: x.get('_five_score', 0), reverse=True)
+        # default (patterns, pv_div): 保持原本的成交量排序
         
         return results[:limit]
     except Exception as e:
@@ -485,7 +558,8 @@ async def scan_kd_cross(
             """
             order_by = "s.month_k DESC"
         
-        results = execute_scan_query(conditions, order_by, limit, min_vol, min_price)
+        results = execute_scan_query(conditions, order_by, limit, min_vol, min_price,
+                                     scan_type="kd_month")
         
         return {
             "success": True,
@@ -532,7 +606,8 @@ async def scan_vsbc(
         if style == "burst":
             conditions += " AND (s.close - s.close_prev) / s.close_prev > 0.03"
         
-        results = execute_scan_query(conditions, "s.vsbc_pct DESC, s.volume DESC", limit, min_vol, min_price)
+        results = execute_scan_query(conditions, "s.vsbc_pct DESC, s.volume DESC", limit, min_vol, min_price,
+                                     scan_type="vsbc")
         
         return {
             "success": True,
@@ -572,7 +647,8 @@ async def scan_smart_money(
             AND s.smart_score IS NOT NULL AND s.smart_score >= 4
         """
         
-        results = execute_scan_query(conditions, "s.smart_score DESC", limit, min_vol, min_price)
+        results = execute_scan_query(conditions, "s.smart_score DESC", limit, min_vol, min_price,
+                                     scan_type="smart_money")
         
         return {
             "success": True,
@@ -642,7 +718,8 @@ async def scan_2560(
         # Schema: 'vol_ma5' is there. 'vol_ma5_prev' is NOT in the list I saw (only price MAs).
         # So I'll stick to state check: vol_ma5 > vol_ma60.
         
-        results = execute_scan_query(conditions, "s.volume DESC", limit, min_vol, min_price)
+        results = execute_scan_query(conditions, "s.volume DESC", limit, min_vol, min_price,
+                                     scan_type="2560")
         
         return {
             "success": True,
@@ -681,7 +758,8 @@ async def scan_five_stage(
             AND s.rsi > 50
             AND s.close > s.open
         """
-        results = execute_scan_query(conditions, "s.mansfield_rs DESC", limit, min_vol, min_price)
+        results = execute_scan_query(conditions, "s.mansfield_rs DESC", limit, min_vol, min_price,
+                                     scan_type="five_stage")
         
         return {
             "success": True,
