@@ -105,39 +105,55 @@ function StockDetail() {
 
                 {/* 股票資訊欄 (非全螢幕時顯示) */}
                 {!isFullScreen && (
-                    <div className={`bg-slate-800 rounded px-3 py-2 mb-2 text-sm text-slate-300 flex ${isMobileView ? 'flex-col items-start gap-2' : 'flex-wrap gap-4 items-center'}`}>
+                    <div className={`bg-slate-800 rounded px-3 py-2 mb-2 text-sm text-slate-300 flex ${isMobileView ? 'flex-col gap-2' : 'flex-wrap gap-4 items-center'}`}>
                         <div className={`flex ${isMobileView ? 'flex-col gap-1 w-full' : 'gap-3 items-center flex-wrap'}`}>
                             <div className="flex justify-between items-center">
                                 <span className="text-white font-bold text-lg">{stock?.name} ({stock?.code})</span>
                                 <span className="text-slate-400 text-xs ml-2">{hoverData?.time || '-'}</span>
                             </div>
 
-                            <div className={`flex ${isMobileView ? 'justify-between text-xs' : 'gap-3'}`}>
-                                <span>收 <b className="text-white">{hoverData?.close?.toFixed(2) || '-'}</b></span>
-                                <span className={Number(priceChange) > 0 ? 'text-red-400' : Number(priceChange) < 0 ? 'text-green-400' : 'text-slate-400'}>
-                                    {Number(priceChange) > 0 ? '▲' : Number(priceChange) < 0 ? '▼' : ''} {Math.abs(Number(priceChange))} ({priceChangePercent}%)
-                                </span>
-                                <span>量 <b className="text-yellow-400">{hoverData ? (hoverData.value / 1000).toFixed(0) : '-'}</b>張</span>
-                            </div>
+                            {isMobileView ? (
+                                // Mobile Layout: Compact Grid
+                                <div className="grid grid-cols-3 gap-y-1 gap-x-2 text-xs mt-1">
+                                    <div className="col-span-3 flex justify-between items-baseline border-b border-slate-700 pb-1 mb-1">
+                                        <span className="text-2xl font-bold text-white">{hoverData?.close?.toFixed(2) || '-'}</span>
+                                        <span className={`text-sm font-bold ${Number(priceChange) > 0 ? 'text-red-400' : Number(priceChange) < 0 ? 'text-green-400' : 'text-slate-400'}`}>
+                                            {Number(priceChange) > 0 ? '▲' : Number(priceChange) < 0 ? '▼' : ''} {Math.abs(Number(priceChange))} ({priceChangePercent}%)
+                                        </span>
+                                    </div>
 
-                            {isMobileView && (
-                                <div className="flex justify-between text-xs text-slate-400 mt-1">
-                                    <span>開 {hoverData?.open?.toFixed(2)}</span>
-                                    <span>高 {hoverData?.high?.toFixed(2)}</span>
-                                    <span>低 {hoverData?.low?.toFixed(2)}</span>
-                                    {hoverData?.amount > 0 && <span>{(hoverData.amount / 100000000).toFixed(1)}億</span>}
+                                    <div className="flex flex-col">
+                                        <span className="text-slate-500 text-[10px]">開盤</span>
+                                        <span className={Number(hoverData?.open) > Number(prevData?.close) ? 'text-red-400' : 'text-green-400'}>{hoverData?.open?.toFixed(2)}</span>
+                                    </div>
+                                    <div className="flex flex-col">
+                                        <span className="text-slate-500 text-[10px]">最高</span>
+                                        <span className="text-red-400">{hoverData?.high?.toFixed(2)}</span>
+                                    </div>
+                                    <div className="flex flex-col">
+                                        <span className="text-slate-500 text-[10px]">最低</span>
+                                        <span className="text-green-400">{hoverData?.low?.toFixed(2)}</span>
+                                    </div>
+
+                                    <div className="flex flex-col mt-1">
+                                        <span className="text-slate-500 text-[10px]">成交量</span>
+                                        <span className="text-yellow-400">{hoverData ? (hoverData.value / 1000).toFixed(0) : '-'}張</span>
+                                    </div>
+                                    <div className="flex flex-col mt-1 col-span-2">
+                                        <span className="text-slate-500 text-[10px]">成交額</span>
+                                        <span className="text-cyan-400">{hoverData?.amount > 0 ? (hoverData.amount / 100000000).toFixed(2) + '億' : '-'}</span>
+                                    </div>
                                 </div>
-                            )}
-
-                            {!isMobileView && (
-                                <>
+                            ) : (
+                                // Desktop Layout
+                                <div className="flex gap-3 items-center flex-wrap">
                                     <span>開 <b className="text-white">{hoverData?.open?.toFixed(2) || '-'}</b></span>
                                     <span>高 <b className="text-red-400">{hoverData?.high?.toFixed(2) || '-'}</b></span>
                                     <span>低 <b className="text-green-400">{hoverData?.low?.toFixed(2) || '-'}</b></span>
                                     <span>收 <b className="text-white">{hoverData?.close?.toFixed(2) || '-'}</b><span className={Number(priceChange) > 0 ? 'text-red-400' : Number(priceChange) < 0 ? 'text-green-400' : 'text-slate-400'}>({Number(priceChange) > 0 ? '+' : ''}{priceChange})</span></span>
                                     <span>量 <b className="text-yellow-400">{hoverData ? (hoverData.value / 1000).toFixed(0) : '-'}</b><span className={Number(volChange) > 0 ? 'text-red-400' : Number(volChange) < 0 ? 'text-green-400' : 'text-slate-400'}>({Number(volChange) > 0 ? '+' : ''}{hoverData && prevData ? (volChange / 1000).toFixed(0) : '0'})</span></span>
                                     {hoverData?.amount > 0 && <span>額 <b className="text-cyan-400">{(hoverData.amount / 100000000).toFixed(2)}億</b></span>}
-                                </>
+                                </div>
                             )}
                         </div>
                     </div>
