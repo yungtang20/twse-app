@@ -69,7 +69,9 @@ def execute_scan_query(
     order_by: str = "s.close DESC",
     limit: int = 30,
     min_vol: int = 500,
-    min_price: Optional[float] = None
+    min_price: Optional[float] = None,
+    scan_type: str = "default",
+    **kwargs
 ) -> List[Dict]:
     """執行掃描查詢 (支援本地/雲端)"""
     
@@ -86,9 +88,9 @@ def execute_scan_query(
     except:
         pass
     
-    # 雲端模式: 使用 Supabase
+    # 雲端模式: 使用 Supabase (傳入 scan_type 以支援不同篩選)
     if read_source == "cloud" or db_manager.is_cloud_mode:
-        return execute_scan_query_cloud(limit, min_vol, min_price)
+        return execute_scan_query_cloud(scan_type, limit, min_vol, min_price, **kwargs)
     
     extra_conditions = f"AND s.volume >= {min_vol}"
     if min_price:
@@ -117,70 +119,131 @@ def execute_scan_query(
 
 
 def execute_scan_query_cloud(
+    scan_type: str = "default",
     limit: int = 30,
     min_vol: int = 500,
-    min_price: Optional[float] = None
+    min_price: Optional[float] = None,
+    **kwargs
 ) -> List[Dict]:
-    """雲端掃描查詢 (使用 Supabase)"""
+    """雲端掃描查詢 (使用 Supabase) - 支援不同掃描類型"""
     if not db_manager.supabase:
         return []
     
     try:
         # 從 stock_snapshot 讀取資料
-        # 注意: change_pct 是計算欄位，需讀取 close_prev 自行計算
         query = db_manager.supabase.table('stock_snapshot').select(
             'code, name, close, close_prev, volume, amount, '
             'ma5, ma20, ma60, ma120, ma200, rsi, mfi14, '
             'vp_poc, vp_high, vp_low, foreign_buy, trust_buy, dealer_buy'
         )
         
-        # 套用篩選條件
+        # 基本篩選條件
         if min_vol > 0:
             query = query.gte('volume', min_vol)
         if min_price:
             query = query.gte('close', min_price)
         
-        # 排序與限制
-        query = query.order('volume', desc=True).limit(limit)
+        # 根據 scan_type 套用特定篩選
+        if scan_type == "vp_support":
+            query = query.not_.is_('vp_low', 'null')
+        elif scan_type == "vp_resistance":
+            query = query.not_.is_('vp_high', 'null')
+        elif scan_type == "mfi_oversold":
+            query = query.not_.is_('mfi14', 'null').lt('mfi14', 30)
+        elif scan_type == "mfi_overbought":
+            query = query.not_.is_('mfi14', 'null').gt('mfi14', 70)
+        elif scan_type == "ma_bull":
+            query = query.not_.is_('ma20', 'null').not_.is_('ma60', 'null')
+        elif scan_type == "institutional":
+            query = query.not_.is_('ma20', 'null').not_.is_('ma60', 'null').not_.is_('rsi', 'null').lt('rsi', 60)
+        elif scan_type == "six_dim":
+            query = query.not_.is_('rsi', 'null')
+        
+        # 排序與限制 (加大 limit 以便後續 Python 過濾)
+        fetch_limit = limit * 5 if scan_type not in ["default"] else limit
+        query = query.order('volume', desc=True).limit(fetch_limit)
         
         response = query.execute()
         
-        if response.data:
-            # 轉換欄位名稱以符合前端期望
-            results = []
-            for row in response.data:
-                # 計算漲跌幅
-                change_pct = 0.0
-                if row.get('close') and row.get('close_prev'):
-                    try:
-                        change_pct = round((row['close'] - row['close_prev']) / row['close_prev'] * 100, 2)
-                    except:
-                        pass
-                        
-                results.append({
-                    'code': row.get('code'),
-                    'name': row.get('name'),
-                    'close': row.get('close'),
-                    'change_pct': change_pct,
-                    'volume': row.get('volume'),
-                    'amount': row.get('amount'),
-                    'ma5': row.get('ma5'),
-                    'ma20': row.get('ma20'),
-                    'ma60': row.get('ma60'),
-                    'ma120': row.get('ma120'),
-                    'ma200': row.get('ma200'),
-                    'rsi': row.get('rsi'),
-                    'mfi': row.get('mfi14'),
-                    'vp_poc': row.get('vp_poc'),
-                    'vp_high': row.get('vp_high'),
-                    'vp_low': row.get('vp_low'),
-                    'foreign': row.get('foreign_buy'),
-                    'trust': row.get('trust_buy'),
-                    'dealer': row.get('dealer_buy'),
-                    'vwap': round(row.get('amount', 0) / max(row.get('volume', 1), 1), 2) if row.get('volume') else None
-                })
-            return results
-        return []
+        if not response.data:
+            return []
+        
+        # 轉換並進行細部篩選
+        results = []
+        for row in response.data:
+            # 計算漲跌幅
+            change_pct = 0.0
+            if row.get('close') and row.get('close_prev'):
+                try:
+                    change_pct = round((row['close'] - row['close_prev']) / row['close_prev'] * 100, 2)
+                except:
+                    pass
+            
+            item = {
+                'code': row.get('code'),
+                'name': row.get('name'),
+                'close': row.get('close'),
+                'change_pct': change_pct,
+                'volume': row.get('volume'),
+                'amount': row.get('amount'),
+                'ma5': row.get('ma5'),
+                'ma20': row.get('ma20'),
+                'ma60': row.get('ma60'),
+                'ma120': row.get('ma120'),
+                'ma200': row.get('ma200'),
+                'rsi': row.get('rsi'),
+                'mfi': row.get('mfi14'),
+                'vp_poc': row.get('vp_poc'),
+                'vp_high': row.get('vp_high'),
+                'vp_low': row.get('vp_low'),
+                'foreign': row.get('foreign_buy'),
+                'trust': row.get('trust_buy'),
+                'dealer': row.get('dealer_buy'),
+                'vwap': round(row.get('amount', 0) / max(row.get('volume', 1), 1), 2) if row.get('volume') else None
+            }
+            
+            # Python 層級細部過濾
+            close = item.get('close') or 0
+            vp_low = item.get('vp_low') or 0
+            vp_high = item.get('vp_high') or 0
+            ma20 = item.get('ma20') or 0
+            ma60 = item.get('ma60') or 0
+            rsi = item.get('rsi') or 0
+            
+            passed = True
+            tolerance = kwargs.get('tolerance', 0.02)
+            
+            if scan_type == "vp_support":
+                if vp_low and close:
+                    dist = abs(close - vp_low) / close
+                    passed = dist < tolerance
+                else:
+                    passed = False
+            elif scan_type == "vp_resistance":
+                if vp_high and close:
+                    dist = abs(close - vp_high) / close
+                    passed = dist < tolerance
+                else:
+                    passed = False
+            elif scan_type == "ma_bull":
+                # MA 多頭排列: close > ma5 > ma20 > ma60
+                ma5 = item.get('ma5') or 0
+                if not (close > ma5 > ma20 > ma60 and ma60 > 0):
+                    passed = False
+            elif scan_type == "institutional":
+                # 機構價值: MA20 > MA60, Close > MA20, RSI < 60
+                if not (ma20 > ma60 and close > ma20 and rsi < 60 and rsi > 0):
+                    passed = False
+            elif scan_type == "six_dim":
+                # 六維共振: RSI > 50 (簡化版，因為 Supabase 沒有其他指標)
+                # 這裡我們至少確保 RSI > 50 作為基本多頭傾向
+                if not (rsi > 50):
+                    passed = False
+            
+            if passed:
+                results.append(item)
+        
+        return results[:limit]
     except Exception as e:
         print(f"⚠️ 雲端掃描查詢錯誤: {e}")
         return []
@@ -217,7 +280,8 @@ async def scan_vp(
             """
             order_by = "ABS(s.close - s.vp_high) / s.close ASC"
         
-        results = execute_scan_query(conditions, order_by, limit, min_vol, min_price)
+        results = execute_scan_query(conditions, order_by, limit, min_vol, min_price,
+                                     scan_type=f"vp_{direction}", tolerance=tolerance)
         
         return {
             "success": True,
@@ -262,7 +326,8 @@ async def scan_mfi(
             """
             order_by = "s.mfi14 DESC"
         
-        results = execute_scan_query(conditions, order_by, limit, min_vol, min_price)
+        results = execute_scan_query(conditions, order_by, limit, min_vol, min_price,
+                                     scan_type=f"mfi_{condition}")
         
         return {
             "success": True,
@@ -317,7 +382,8 @@ async def scan_ma(
             """
             order_by = "(s.close - s.ma200) / s.ma200 DESC"
         
-        results = execute_scan_query(conditions, order_by, limit, min_vol, min_price)
+        results = execute_scan_query(conditions, order_by, limit, min_vol, min_price, 
+                                       scan_type=f"ma_{pattern}")
         
         return {
             "success": True,
@@ -596,7 +662,8 @@ async def scan_institutional_value(
             AND s.rsi IS NOT NULL AND s.rsi < 60
             AND s.vol_ma60 > 1000
         """
-        results = execute_scan_query(conditions, "s.vol_ma60 DESC", limit, min_vol, min_price)
+        results = execute_scan_query(conditions, "s.vol_ma60 DESC", limit, min_vol, min_price, 
+                                       scan_type="institutional")
         
         return {
             "success": True,
@@ -652,7 +719,8 @@ async def scan_six_dim(
             ) DESC, s.volume DESC
         """
         
-        results = execute_scan_query(conditions, order_by, limit, min_vol, min_price)
+        results = execute_scan_query(conditions, order_by, limit, min_vol, min_price,
+                                     scan_type="six_dim")
         
         return {
             "success": True,
