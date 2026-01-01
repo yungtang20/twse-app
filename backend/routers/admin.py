@@ -466,11 +466,15 @@ async def get_sync_mode():
             with open(config_path, 'r', encoding='utf-8') as f:
                 config = json.load(f)
         
+        # Determine default read_source based on environment
+        # If no local DB path is set (Cloud Mode), default to cloud read
+        default_read_source = "cloud" if db_manager.db_path is None else "local"
+        
         return {
             "success": True,
             "data": {
                 "sync_mode": config.get("sync_mode", "hybrid"),
-                "read_source": config.get("read_source", "local"),
+                "read_source": config.get("read_source", default_read_source),
                 "update_target": config.get("update_target", "local"),
                 "last_sync_time": config.get("last_sync_time", None),
                 "supabase_connected": db_manager.supabase is not None
