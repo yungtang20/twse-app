@@ -457,28 +457,28 @@ export function TechnicalChart({ code, name, onHoverData, isFullScreen = false }
     return (
         <div className="w-full h-full flex flex-col">
             {/* Header: Scrollable Toggles */}
-            <div className="bg-slate-800 rounded p-1 mb-1 flex items-center justify-between shrink-0">
-                <div className="flex overflow-x-auto no-scrollbar gap-2 px-1 items-center flex-1 mask-linear-fade">
+            <div className="bg-slate-800 rounded p-0.5 mb-0.5 flex items-center justify-between shrink-0">
+                <div className="flex overflow-x-auto no-scrollbar gap-1 px-1 items-center flex-1 mask-linear-fade">
                     {indicatorConfig.map(ind => {
                         const active = activeIndicators.includes(ind.name);
                         return (
                             <button
                                 key={ind.name}
                                 onClick={() => toggleIndicator(ind.name)}
-                                className={`flex items-center gap-1 px-2 py-1 rounded text-[10px] whitespace-nowrap transition-all ${active ? 'bg-slate-700 text-white shadow-sm' : 'text-slate-400 hover:text-slate-300'}`}
+                                className={`flex items-center gap-0.5 px-1.5 py-0.5 rounded text-[9px] whitespace-nowrap transition-all ${active ? 'bg-slate-700 text-white shadow-sm' : 'text-slate-500 hover:text-slate-400'}`}
                             >
-                                <span className="w-1.5 h-1.5 rounded-full" style={{ backgroundColor: ind.color }} />
+                                <span className="w-1 h-1 rounded-full" style={{ backgroundColor: ind.color }} />
                                 <span>{ind.name}</span>
                             </button>
                         );
                     })}
                 </div>
-                <div className="flex gap-1 ml-2 shrink-0">
+                <div className="flex gap-0.5 ml-1 shrink-0">
                     {periods.map(p => (
                         <button
                             key={p}
                             onClick={() => setPeriod(p)}
-                            className={`px-2 py-1 text-[10px] rounded font-medium ${period === p ? 'bg-blue-600 text-white' : 'bg-slate-700 text-slate-400'}`}
+                            className={`px-1.5 py-0.5 text-[9px] rounded font-medium ${period === p ? 'bg-blue-600 text-white' : 'bg-slate-700 text-slate-500'}`}
                         >
                             {p}
                         </button>
@@ -493,38 +493,37 @@ export function TechnicalChart({ code, name, onHoverData, isFullScreen = false }
             </div>
 
             {/* Resizer */}
-            <div className="h-2 bg-slate-800 hover:bg-blue-500 cursor-row-resize flex justify-center items-center shrink-0" onMouseDown={handleResizeStart('main-vol')} onTouchStart={handleTouchStart('main-vol')}>
-                <div className="w-8 h-1 bg-slate-600 rounded-full" />
+            <div className="h-1 bg-slate-800 hover:bg-blue-500 cursor-row-resize flex justify-center items-center shrink-0" onMouseDown={handleResizeStart('main-vol')} onTouchStart={handleTouchStart('main-vol')}>
+                <div className="w-6 h-0.5 bg-slate-600 rounded-full" />
             </div>
 
             {/* Volume Section */}
-            <div className="mt-0.5">
-                <div className="flex gap-3 text-[10px] text-slate-400 px-1 absolute z-10 pointer-events-none" style={{ marginTop: '-1.2rem' }}>
-                    <span className="bg-slate-900/50 px-1 rounded">Vol</span>
-                    <span className="text-blue-400 bg-slate-900/50 px-1 rounded">MA5: {volumeMA5[hoverIdx] ? (volumeMA5[hoverIdx] / 10000).toFixed(0) : '-'}</span>
-                    <span className="text-purple-400 bg-slate-900/50 px-1 rounded">MA60: {volumeMA60[hoverIdx] ? (volumeMA60[hoverIdx] / 10000).toFixed(0) : '-'}</span>
-                    <span className="text-yellow-400 bg-slate-900/50 px-1 rounded">V: {chartData[hoverIdx] ? (chartData[hoverIdx].value / 10000).toFixed(0) : '-'}</span>
+            <div className="mt-0 relative">
+                <div className="flex gap-2 text-[9px] text-slate-400 px-1 absolute top-0 left-0 z-10 pointer-events-none">
+                    <span className="text-blue-400 bg-slate-900/40 px-0.5 rounded backdrop-blur-[1px]">MA5:{volumeMA5[hoverIdx] ? (volumeMA5[hoverIdx] / 10000).toFixed(0) : '-'}</span>
+                    <span className="text-purple-400 bg-slate-900/40 px-0.5 rounded backdrop-blur-[1px]">MA60:{volumeMA60[hoverIdx] ? (volumeMA60[hoverIdx] / 10000).toFixed(0) : '-'}</span>
+                    <span className="text-yellow-400 bg-slate-900/40 px-0.5 rounded backdrop-blur-[1px]">V:{chartData[hoverIdx] ? (chartData[hoverIdx].value / 10000).toFixed(0) : '-'}</span>
                 </div>
                 <div ref={volumeContainerRef} className="w-full rounded overflow-hidden" />
             </div>
 
             {/* Resizer */}
-            <div className="h-2 bg-slate-800 hover:bg-blue-500 cursor-row-resize flex justify-center items-center shrink-0" onMouseDown={handleResizeStart('vol-sub1')} onTouchStart={handleTouchStart('vol-sub1')}>
-                <div className="w-8 h-1 bg-slate-600 rounded-full" />
+            <div className="h-1 bg-slate-800 hover:bg-blue-500 cursor-row-resize flex justify-center items-center shrink-0" onMouseDown={handleResizeStart('vol-sub1')} onTouchStart={handleTouchStart('vol-sub1')}>
+                <div className="w-6 h-0.5 bg-slate-600 rounded-full" />
             </div>
 
             {/* Sub Chart 1 */}
-            <div className="mt-0.5 relative">
-                <div className="flex gap-2 px-1 items-center absolute top-1 left-1 z-10">
-                    <select value={activeSubIndicator} onChange={(e) => setActiveSubIndicator(e.target.value)} className="bg-slate-800/80 text-white text-[10px] px-1 py-0.5 rounded border border-slate-700 focus:outline-none backdrop-blur-sm">
+            <div className="mt-0 relative">
+                <div className="flex gap-1 px-1 items-center absolute top-0 left-0 z-10">
+                    <select value={activeSubIndicator} onChange={(e) => setActiveSubIndicator(e.target.value)} className="bg-slate-800/60 text-white text-[9px] px-0.5 py-0 rounded border border-slate-700/50 focus:outline-none backdrop-blur-[1px]">
                         {subIndicators.map(ind => <option key={ind} value={ind}>{ind}</option>)}
                     </select>
                     {activeSubIndicator === '大戶' && (
-                        <select value={shareholderThreshold} onChange={(e) => setShareholderThreshold(Number(e.target.value))} className="bg-slate-800/80 text-white text-[10px] px-1 py-0.5 rounded border border-slate-700 focus:outline-none backdrop-blur-sm">
+                        <select value={shareholderThreshold} onChange={(e) => setShareholderThreshold(Number(e.target.value))} className="bg-slate-800/60 text-white text-[9px] px-0.5 py-0 rounded border border-slate-700/50 focus:outline-none backdrop-blur-[1px]">
                             <option value={1000}>1000+</option><option value={800}>800+</option><option value={600}>600+</option><option value={400}>400+</option>
                         </select>
                     )}
-                    <div className="flex gap-2 text-[10px] text-slate-400 bg-slate-900/50 px-1 rounded backdrop-blur-sm">
+                    <div className="flex gap-1 text-[9px] text-slate-400 bg-slate-900/40 px-0.5 rounded backdrop-blur-[1px]">
                         {getSubValues(activeSubIndicator, chartRefs.current.subSeries)}
                     </div>
                 </div>
@@ -532,22 +531,22 @@ export function TechnicalChart({ code, name, onHoverData, isFullScreen = false }
             </div>
 
             {/* Resizer */}
-            <div className="h-2 bg-slate-800 hover:bg-blue-500 cursor-row-resize flex justify-center items-center shrink-0" onMouseDown={handleResizeStart('sub1-sub2')} onTouchStart={handleTouchStart('sub1-sub2')}>
-                <div className="w-8 h-1 bg-slate-600 rounded-full" />
+            <div className="h-1 bg-slate-800 hover:bg-blue-500 cursor-row-resize flex justify-center items-center shrink-0" onMouseDown={handleResizeStart('sub1-sub2')} onTouchStart={handleTouchStart('sub1-sub2')}>
+                <div className="w-6 h-0.5 bg-slate-600 rounded-full" />
             </div>
 
             {/* Sub Chart 2 */}
-            <div className="mt-0.5 relative">
-                <div className="flex gap-2 px-1 items-center absolute top-1 left-1 z-10">
-                    <select value={activeSubIndicator2} onChange={(e) => setActiveSubIndicator2(e.target.value)} className="bg-slate-800/80 text-white text-[10px] px-1 py-0.5 rounded border border-slate-700 focus:outline-none backdrop-blur-sm">
+            <div className="mt-0 relative">
+                <div className="flex gap-1 px-1 items-center absolute top-0 left-0 z-10">
+                    <select value={activeSubIndicator2} onChange={(e) => setActiveSubIndicator2(e.target.value)} className="bg-slate-800/60 text-white text-[9px] px-0.5 py-0 rounded border border-slate-700/50 focus:outline-none backdrop-blur-[1px]">
                         {subIndicators.map(ind => <option key={ind} value={ind}>{ind}</option>)}
                     </select>
                     {activeSubIndicator2 === '大戶' && (
-                        <select value={shareholderThreshold} onChange={(e) => setShareholderThreshold(Number(e.target.value))} className="bg-slate-800/80 text-white text-[10px] px-1 py-0.5 rounded border border-slate-700 focus:outline-none backdrop-blur-sm">
+                        <select value={shareholderThreshold} onChange={(e) => setShareholderThreshold(Number(e.target.value))} className="bg-slate-800/60 text-white text-[9px] px-0.5 py-0 rounded border border-slate-700/50 focus:outline-none backdrop-blur-[1px]">
                             <option value={1000}>1000+</option><option value={800}>800+</option><option value={600}>600+</option><option value={400}>400+</option>
                         </select>
                     )}
-                    <div className="flex gap-2 text-[10px] text-slate-400 bg-slate-900/50 px-1 rounded backdrop-blur-sm">
+                    <div className="flex gap-1 text-[9px] text-slate-400 bg-slate-900/40 px-0.5 rounded backdrop-blur-[1px]">
                         {getSubValues(activeSubIndicator2, chartRefs.current.subSeries2)}
                     </div>
                 </div>
@@ -555,8 +554,8 @@ export function TechnicalChart({ code, name, onHoverData, isFullScreen = false }
             </div>
 
             {/* Bottom Resizer (Optional, maybe remove to save space) */}
-            <div className="h-2 bg-slate-800 hover:bg-blue-500 cursor-row-resize flex justify-center items-center shrink-0" onMouseDown={handleResizeStart('sub2-bottom')} onTouchStart={handleTouchStart('sub2-bottom')}>
-                <div className="w-8 h-1 bg-slate-600 rounded-full" />
+            <div className="h-1 bg-slate-800 hover:bg-blue-500 cursor-row-resize flex justify-center items-center shrink-0" onMouseDown={handleResizeStart('sub2-bottom')} onTouchStart={handleTouchStart('sub2-bottom')}>
+                <div className="w-6 h-0.5 bg-slate-600 rounded-full" />
             </div>
         </div>
     );
