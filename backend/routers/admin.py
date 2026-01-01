@@ -467,8 +467,8 @@ async def get_sync_mode():
                 config = json.load(f)
         
         # Determine default read_source based on environment
-        # If no local DB path is set (Cloud Mode), default to cloud read
-        default_read_source = "cloud" if db_manager.db_path is None else "local"
+        # If running in Cloud Mode (no local DB), default to cloud read
+        default_read_source = "cloud" if db_manager.is_cloud_mode else "local"
         
         return {
             "success": True,
