@@ -15,6 +15,7 @@ export const Scan = () => {
     const [dataDate, setDataDate] = useState(null);
     const [vpDirection, setVpDirection] = useState('support'); // 'support' or 'resistance'
     const [maPattern, setMaPattern] = useState('below_ma200'); // 'below_ma200', 'below_ma20', 'bull'
+    const [patternType, setPatternType] = useState('morning_star'); // 'morning_star' or 'evening_star'
     const [tolerance, setTolerance] = useState(0.02); // 2% default
     const [sortConfig, setSortConfig] = useState({ key: null, direction: 'desc' });
 
@@ -67,7 +68,7 @@ export const Scan = () => {
                 case 'five_stage': url = `${API_BASE_URL}/api/scan/five-stage?${params}`; break;
                 case 'institutional': url = `${API_BASE_URL}/api/scan/institutional-value?${params}`; break;
                 case 'six_dim': url = `${API_BASE_URL}/api/scan/six-dim?${params}`; break;
-                case 'patterns': url = `${API_BASE_URL}/api/scan/patterns?type=morning_star&${params}`; break;
+                case 'patterns': url = `${API_BASE_URL}/api/scan/patterns?type=${patternType}&${params}`; break;
                 case 'pv_div': url = `${API_BASE_URL}/api/scan/pv-divergence?${params}`; break;
                 case 'builtin': url = `${API_BASE_URL}/api/scan/builtin?${params}`; break;
                 default:
@@ -275,6 +276,26 @@ export const Scan = () => {
                                 className={`px-2 py-1 text-[10px] font-bold rounded transition-colors ${maPattern === 'bull' ? 'bg-blue-500 text-white' : 'text-slate-400 hover:text-slate-200'}`}
                             >
                                 [3] 均線多頭
+                            </button>
+                        </div>
+                    </div>
+                )}
+                {/* Pattern Type Toggle (only for [b] K線型態) */}
+                {activeFilter === 'patterns' && (
+                    <div className="flex items-center gap-2">
+                        <span className="text-slate-400 text-xs font-medium">型態:</span>
+                        <div className="flex gap-1 bg-slate-800/60 p-0.5 rounded">
+                            <button
+                                onClick={() => setPatternType('morning_star')}
+                                className={`px-2 py-1 text-[10px] font-bold rounded transition-colors ${patternType === 'morning_star' ? 'bg-green-500 text-white' : 'text-slate-400 hover:text-slate-200'}`}
+                            >
+                                [1] 晨星
+                            </button>
+                            <button
+                                onClick={() => setPatternType('evening_star')}
+                                className={`px-2 py-1 text-[10px] font-bold rounded transition-colors ${patternType === 'evening_star' ? 'bg-red-500 text-white' : 'text-slate-400 hover:text-slate-200'}`}
+                            >
+                                [2] 黃昏之星
                             </button>
                         </div>
                     </div>

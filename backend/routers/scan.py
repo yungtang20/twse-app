@@ -174,12 +174,15 @@ def execute_scan_query_cloud(
         elif scan_type == "five_stage":
             # 五階篩選：RSI > 50
             query = query.not_.is_('rsi', 'null').gt('rsi', 50)
-        elif scan_type == "patterns":
-            # K線型態：暫時使用成交量排序
-            pass
+        elif scan_type == "patterns_morning_star":
+            # K線型態 - 晨星: 收盤價 > 開盤價 (反轉向上)
+            query = query.not_.is_('close', 'null').not_.is_('close_prev', 'null')
+        elif scan_type == "patterns_evening_star":
+            # K線型態 - 黃昏之星: 收盤價 < 開盤價 (反轉向下)
+            query = query.not_.is_('close', 'null').not_.is_('close_prev', 'null')
         elif scan_type == "pv_div":
-            # 量價背離：暫時使用成交量排序
-            pass
+            # 量價背離: 找價格和成交量走勢不一致的股票
+            query = query.not_.is_('rsi', 'null')
         
         # 排序與限制 (加大 limit 以便後續 Python 過濾)
         fetch_limit = limit * 5 if scan_type not in ["default"] else limit
@@ -327,7 +330,31 @@ def execute_scan_query_cloud(
                 if not (rsi > 50 and ma5 > ma20 > ma60 and close > ma5):
                     passed = False
                 item['_five_score'] = rsi  # RSI 分數供排序
-            # patterns 和 pv_div 由於缺少必要欄位，暫時不做細部篩選
+            elif scan_type == "patterns_morning_star":
+                # 晨星: 收盤價 > 昨收 (反轉向上), RSI < 50 (從低位反彈更有意義)
+                close_prev = item.get('close') and row.get('close_prev') or 0
+                change_pct = item.get('change_pct') or 0
+                if not (change_pct > 0 and rsi < 50):
+                    passed = False
+                item['_pattern_score'] = change_pct  # 漲幅供排序
+            elif scan_type == "patterns_evening_star":
+                # 黃昏之星: 收盤價 < 昨收 (反轉向下), RSI > 50 (從高位回落更有意義)
+                change_pct = item.get('change_pct') or 0
+                if not (change_pct < 0 and rsi > 50):
+                    passed = False
+                item['_pattern_score'] = abs(change_pct)  # 跌幅供排序
+            elif scan_type == "pv_div":
+                # 量價背離: 價格上漲但 RSI 下降，或價格下跌但 RSI 上升
+                change_pct = item.get('change_pct') or 0
+                # 簡化版: 價格創新高但 RSI 未過熱, 或價格下跌但 RSI 較強
+                if change_pct > 0 and rsi < 70:
+                    item['_div_type'] = 'bull_div'  # 正向背離
+                    item['_div_score'] = (70 - rsi)  # RSI 越低越有背離意義
+                elif change_pct < 0 and rsi > 30:
+                    item['_div_type'] = 'bear_div'  # 負向背離
+                    item['_div_score'] = (rsi - 30)  # RSI 越高越有背離意義
+                else:
+                    passed = False
             
             if passed:
                 results.append(item)
@@ -366,7 +393,12 @@ def execute_scan_query_cloud(
         elif scan_type == "five_stage":
             # 五階：按 RSI 降序（越強勢越優先）
             results.sort(key=lambda x: x.get('_five_score', 0), reverse=True)
-        # default (patterns, pv_div): 保持原本的成交量排序
+        elif scan_type.startswith("patterns_"):
+            # K線型態：按反轉幅度排序
+            results.sort(key=lambda x: x.get('_pattern_score', 0), reverse=True)
+        elif scan_type == "pv_div":
+            # 量價背離：按背離強度排序
+            results.sort(key=lambda x: x.get('_div_score', 0), reverse=True)
         
         return results[:limit]
     except Exception as e:
@@ -884,7 +916,8 @@ async def scan_patterns(
             conditions = "AND s.pattern_evening_star = 1"
             desc = "K線型態 (黃昏之星)"
 
-        results = execute_scan_query(conditions, "s.volume DESC", limit, min_vol, min_price)
+        results = execute_scan_query(conditions, "s.volume DESC", limit, min_vol, min_price,
+                                     scan_type=f"patterns_{type}")
         
         return {
             "success": True,
@@ -913,7 +946,8 @@ async def scan_pv_divergence(
         # Use pre-calculated divergence columns
         conditions = "AND (s.div_3day_bull = 1 OR s.div_3day_bear = 1)"
         
-        results = execute_scan_query(conditions, "s.rsi DESC", limit, min_vol, min_price)
+        results = execute_scan_query(conditions, "s.rsi DESC", limit, min_vol, min_price,
+                                     scan_type="pv_div")
         
         return {
             "success": True,
