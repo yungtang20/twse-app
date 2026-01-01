@@ -130,11 +130,12 @@ def execute_scan_query_cloud(
         return []
     
     try:
-        # 從 stock_snapshot 讀取資料
+        # 從 stock_snapshot 讀取資料 (包含六維共振所需的所有指標)
         query = db_manager.supabase.table('stock_snapshot').select(
             'code, name, close, close_prev, volume, amount, '
             'ma5, ma20, ma60, ma120, ma200, rsi, mfi14, '
-            'vp_poc, vp_high, vp_low, foreign_buy, trust_buy, dealer_buy'
+            'vp_poc, vp_high, vp_low, foreign_buy, trust_buy, dealer_buy, '
+            'macd, signal, daily_k, daily_d, lwr, bbi, mtm'
         )
         
         # 基本篩選條件
@@ -199,7 +200,15 @@ def execute_scan_query_cloud(
                 'foreign': row.get('foreign_buy'),
                 'trust': row.get('trust_buy'),
                 'dealer': row.get('dealer_buy'),
-                'vwap': round(row.get('amount', 0) / max(row.get('volume', 1), 1), 2) if row.get('volume') else None
+                'vwap': round(row.get('amount', 0) / max(row.get('volume', 1), 1), 2) if row.get('volume') else None,
+                # 六維共振指標
+                'macd': row.get('macd'),
+                'signal': row.get('signal'),
+                'daily_k': row.get('daily_k'),
+                'daily_d': row.get('daily_d'),
+                'lwr': row.get('lwr'),
+                'bbi': row.get('bbi'),
+                'mtm': row.get('mtm')
             }
             
             # Python 層級細部過濾
@@ -235,9 +244,26 @@ def execute_scan_query_cloud(
                 if not (ma20 > ma60 and close > ma20 and rsi < 60 and rsi > 0):
                     passed = False
             elif scan_type == "six_dim":
-                # 六維共振: RSI > 50 (簡化版，因為 Supabase 沒有其他指標)
-                # 這裡我們至少確保 RSI > 50 作為基本多頭傾向
-                if not (rsi > 50):
+                # 六維共振: MACD/KDJ/RSI/LWR/BBI/MTM 至少5項符合
+                macd_val = row.get('macd') or 0
+                signal_val = row.get('signal') or 0
+                daily_k = row.get('daily_k') or 0
+                daily_d = row.get('daily_d') or 0
+                lwr_val = row.get('lwr') or -100  # 預設為最低值
+                bbi_val = row.get('bbi') or 0
+                mtm_val = row.get('mtm') or 0
+                
+                # 計算六維分數
+                score = 0
+                if macd_val > signal_val: score += 1  # MACD 多頭
+                if daily_k > daily_d: score += 1       # KDJ 多頭
+                if rsi > 50: score += 1                # RSI 強勢
+                if lwr_val > -50: score += 1           # LWR 非超賣
+                if close > bbi_val and bbi_val > 0: score += 1  # 價格 > BBI
+                if mtm_val > 0: score += 1             # MTM 動能向上
+                
+                # 至少5項符合
+                if score < 5:
                     passed = False
             
             if passed:
