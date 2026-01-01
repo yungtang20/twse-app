@@ -151,9 +151,13 @@ def get_stock_by_code(code: str) -> Optional[Dict]:
                 .execute()
             
             if not meta_res.data:
-                return None
-            
-            meta = meta_res.data[0]
+                # Special handling for Index 0000 (TAIEX)
+                if code == '0000':
+                    meta = {'code': '0000', 'name': '加權指數', 'market_type': 'TWSE'}
+                else:
+                    return None
+            else:
+                meta = meta_res.data[0]
             
             # 取得 Snapshot (即時行情、指標)
             snap = {}
@@ -171,8 +175,8 @@ def get_stock_by_code(code: str) -> Optional[Dict]:
             # 計算漲跌幅
             
             # 計算漲跌幅
-            close = snap.get('close', 0)
-            prev = snap.get('close_prev', 0)
+            close = snap.get('close') or 0
+            prev = snap.get('close_prev') or 0
             change_pct = 0.0
             if prev and prev > 0:
                 change_pct = round((close - prev) / prev * 100, 2)
@@ -183,8 +187,8 @@ def get_stock_by_code(code: str) -> Optional[Dict]:
                 'market': meta.get('market_type'),
                 'close': close,
                 'change_pct': change_pct,
-                'volume': snap.get('volume'),
-                'amount': snap.get('amount'),
+                'volume': snap.get('volume') or 0,
+                'amount': snap.get('amount') or 0,
                 'ma5': snap.get('ma5'),
                 'ma20': snap.get('ma20'),
                 'ma60': snap.get('ma60'),
@@ -197,9 +201,9 @@ def get_stock_by_code(code: str) -> Optional[Dict]:
                 'vp_poc': snap.get('vp_poc'),
                 'vp_high': snap.get('vp_high'),
                 'vp_low': snap.get('vp_low'),
-                'foreign_buy': snap.get('foreign_buy'),
-                'trust_buy': snap.get('trust_buy'),
-                'dealer_buy': snap.get('dealer_buy')
+                'foreign_buy': snap.get('foreign_buy') or 0,
+                'trust_buy': snap.get('trust_buy') or 0,
+                'dealer_buy': snap.get('dealer_buy') or 0
             }
         except Exception as e:
             print(f"⚠️ 雲端讀取股票 {code} 失敗: {e}")

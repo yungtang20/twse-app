@@ -1,9 +1,42 @@
 from fastapi import APIRouter, Query
+from typing import List, Optional, Dict, Any
+from pydantic import BaseModel
+import sys
 from backend.services.db import db_manager, get_system_status
 
 router = APIRouter(prefix="/api/rankings", tags=["rankings"])
 
-# ... (existing imports)
+class RankingItem(BaseModel):
+    code: str
+    name: str
+    close: Optional[float] = None
+    change_pct: Optional[float] = None
+    volume: Optional[int] = None
+    foreign_buy: Optional[int] = None
+    trust_buy: Optional[int] = None
+    dealer_buy: Optional[int] = None
+    total_buy: Optional[int] = None
+    foreign_streak: Optional[int] = None
+    trust_streak: Optional[int] = None
+    dealer_streak: Optional[int] = None
+    foreign_cumulative: Optional[int] = None
+    trust_cumulative: Optional[int] = None
+    dealer_cumulative: Optional[int] = None
+    foreign_cumulative_pct: Optional[float] = None
+    trust_cumulative_pct: Optional[float] = None
+    dealer_cumulative_pct: Optional[float] = None
+    foreign_holding_shares: Optional[int] = None
+    foreign_holding_pct: Optional[float] = None
+    trust_holding_shares: Optional[int] = None
+    trust_holding_pct: Optional[float] = None
+
+class RankingResponse(BaseModel):
+    success: bool
+    data: List[RankingItem]
+    total_count: int
+    total_pages: int
+    current_page: int
+    data_date: Optional[str] = None
 
 @router.get("/institutional", response_model=RankingResponse)
 async def get_institutional_rankings(
@@ -75,9 +108,9 @@ async def get_institutional_rankings(
                     # Add calculated fields expected by frontend
                     for item in data:
                         # Frontend expects total_buy
-                        f = item.get('foreign_buy', 0) or 0
-                        t = item.get('trust_buy', 0) or 0
-                        d = item.get('dealer_buy', 0) or 0
+                        f = item.get('foreign_buy') or 0
+                        t = item.get('trust_buy') or 0
+                        d = item.get('dealer_buy') or 0
                         item['total_buy'] = f + t + d
                         
                         # Frontend expects change_pct (snapshot has it? yes usually)
@@ -87,6 +120,22 @@ async def get_institutional_rankings(
                         if 'foreign_streak' not in item: item['foreign_streak'] = 0
                         if 'trust_streak' not in item: item['trust_streak'] = 0
                         if 'dealer_streak' not in item: item['dealer_streak'] = 0
+
+                        # Frontend expects cumulative data and percentages
+                        if 'foreign_cumulative' not in item: item['foreign_cumulative'] = 0
+                        if 'trust_cumulative' not in item: item['trust_cumulative'] = 0
+                        if 'dealer_cumulative' not in item: item['dealer_cumulative'] = 0
+                        
+                        # We don't have total_shares in snapshot, so we can't calculate pct accurately in cloud mode yet.
+                        # Set to 0 to avoid frontend crash.
+                        if 'foreign_cumulative_pct' not in item: item['foreign_cumulative_pct'] = 0.0
+                        if 'trust_cumulative_pct' not in item: item['trust_cumulative_pct'] = 0.0
+                        if 'dealer_cumulative_pct' not in item: item['dealer_cumulative_pct'] = 0.0
+                        
+                        if 'foreign_holding_shares' not in item: item['foreign_holding_shares'] = 0
+                        if 'foreign_holding_pct' not in item: item['foreign_holding_pct'] = 0.0
+                        if 'trust_holding_shares' not in item: item['trust_holding_shares'] = 0
+                        if 'trust_holding_pct' not in item: item['trust_holding_pct'] = 0.0
                         
                     total_count = len(data) # Approximation
 
