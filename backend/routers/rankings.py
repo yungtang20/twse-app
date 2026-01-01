@@ -97,7 +97,27 @@ async def get_institutional_rankings(
                 query = db_manager.supabase.table('stock_snapshot') \
                     .select('*') \
                     .order(target_col, desc=is_desc) \
+                    .order(target_col, desc=is_desc) \
                     .limit(limit)
+                
+                # Apply filters
+                if min_foreign_streak != 0:
+                    if min_foreign_streak > 0:
+                        query = query.gte('foreign_streak', min_foreign_streak)
+                    else:
+                        query = query.lte('foreign_streak', min_foreign_streak)
+                
+                if min_trust_streak != 0:
+                    if min_trust_streak > 0:
+                        query = query.gte('trust_streak', min_trust_streak)
+                    else:
+                        query = query.lte('trust_streak', min_trust_streak)
+                        
+                if min_dealer_streak != 0:
+                    if min_dealer_streak > 0:
+                        query = query.gte('dealer_streak', min_dealer_streak)
+                    else:
+                        query = query.lte('dealer_streak', min_dealer_streak)
                 
                 # Apply simple filters if needed (e.g. exclude 0)
                 # query = query.neq(target_col, 0) 
