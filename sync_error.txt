@@ -1,0 +1,1 @@
+{'message': "Could not find the 'dealer_buy' column of 'institutional_investors' in the schema cache", 'code': 'PGRST204', 'hint': None, 'details': None}

@@ -1,3 +1,4 @@
+from __future__ import annotations
 import multiprocessing
 import os
 #!/usr/bin/env python3
@@ -49,7 +50,11 @@ def update_twstock_package():
 # [Optimization] 移除啟動時的自動檢查，改為手動觸發
 # if _should_update_twstock(): ...
 
-print("正在初始化系統...", end="", flush=True)
+# [Fix] 只在主進程中顯示初始化訊息 (避免多進程時重複顯示)
+import multiprocessing
+if multiprocessing.current_process().name == 'MainProcess':
+    print("正在初始化系統...", end="", flush=True)
+
 
 import os
 import time
@@ -109,7 +114,8 @@ try:
 except ImportError:
     HAS_SCHEDULER = False
 
-print("完成")
+if multiprocessing.current_process().name == 'MainProcess':
+    print("完成")
 
 # ==============================
 # Logging Configuration
@@ -143,6 +149,106 @@ def new_request(self, method, url, *args, **kwargs):
     kwargs['verify'] = False
     return old_request(self, method, url, *args, **kwargs)
 requests.Session.request = new_request
+
+# ==============================
+# [優化] HTTP 連線池 (Connection Pooling)
+# ==============================
+# 使用全域 Session 複用 TCP 連線，減少握手開銷
+_HTTP_SESSION = None
+
+def get_http_session():
+    """取得全域 HTTP Session (連線池)"""
+    global _HTTP_SESSION
+    if _HTTP_SESSION is None:
+        import urllib3
+        urllib3.disable_warnings()
+        
+        _HTTP_SESSION = requests.Session()
+        _HTTP_SESSION.headers.update({
+            'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
+            'Accept': 'application/json, text/html, */*',
+            'Accept-Language': 'zh-TW,zh;q=0.9,en;q=0.8',
+        })
+        # 連線池配置 (手機友善)
+        adapter = requests.adapters.HTTPAdapter(
+            pool_connections=5,  # 連線池大小
+            pool_maxsize=10,     # 最大連線數
+            max_retries=2        # 自動重試
+        )
+        _HTTP_SESSION.mount('https://', adapter)
+        _HTTP_SESSION.mount('http://', adapter)
+    return _HTTP_SESSION
+
+# ==============================
+# [優化] 簡易記憶體快取
+# ==============================
+class SimpleCache:
+    """輕量快取 (手機友善)"""
+    def __init__(self, max_size=100, ttl=300):
+        self._cache = {}
+        self._timestamps = {}
+        self._max_size = max_size
+        self._ttl = ttl  # 存活時間 (秒)
+    
+    def get(self, key):
+        if key in self._cache:
+            if time.time() - self._timestamps.get(key, 0) < self._ttl:
+                return self._cache[key]
+            else:
+                # 過期清理
+                del self._cache[key]
+                del self._timestamps[key]
+        return None
+    
+    def set(self, key, value):
+        # LRU: 超過上限時刪除最舊的
+        if len(self._cache) >= self._max_size:
+            oldest = min(self._timestamps, key=self._timestamps.get)
+            del self._cache[oldest]
+            del self._timestamps[oldest]
+        self._cache[key] = value
+        self._timestamps[key] = time.time()
+    
+    def clear(self):
+        self._cache.clear()
+        self._timestamps.clear()
+
+# 全域快取實例
+_QUERY_CACHE = SimpleCache(max_size=50, ttl=60)  # 1分鐘快取
+
+def http_get(url, timeout=30, json_response=True, use_cache=False, cache_ttl=60):
+    """
+    [優化] 統一 HTTP GET 介面
+    - 使用連線池複用 TCP 連線
+    - 支援快取機制
+    - 統一錯誤處理
+    
+    Args:
+        url: 請求網址
+        timeout: 超時秒數 (預設 30)
+        json_response: 是否自動解析 JSON (預設 True)
+        use_cache: 是否使用快取 (預設 False)
+        cache_ttl: 快取存活時間 (預設 60 秒)
+    
+    Returns:
+        解析後的資料 (JSON dict/list) 或 Response 物件
+    """
+    # 檢查快取
+    if use_cache:
+        cached = _QUERY_CACHE.get(url)
+        if cached is not None:
+            return cached
+    
+    session = get_http_session()
+    res = session.get(url, timeout=timeout, verify=False)
+    res.raise_for_status()
+    
+    if json_response:
+        data = res.json()
+        if use_cache:
+            _QUERY_CACHE.set(url, data)
+        return data
+    return res
 
 # ╔══════════════════════════════════════════════════════════════╗
 # ║                        CONFIG                                 ║
@@ -305,7 +411,7 @@ def load_finmind_token():
                 return config.get("finmind_token", "")
     except Exception:
         pass
-    return "eyJ0eXAiOiJKV1QiLCJhbGciOiJIUzI1NiJ9.eyJkYXRlIjoiMjAyNS0xMi0yMiAwMTo1MDoxMiIsInVzZXJfaWQiOiJ5dW5ndGFuZyAiLCJpcCI6IjExMS43MS4yMTMuNzAifQ._mhmrmnS4SIWRS6Ln9rE0-fZ9j4JZLdq1b7s-m3eDFQ"
+    return "eyJ0eXAiOiJKV1QiLCJhbGciOiJIUzI1NiJ9.eyJkYXRlIjoiMjAyNi0wMS0wMSAwNjozMTowNSIsInVzZXJfaWQiOiJ5dW5ndGFuZyAiLCJpcCI6IjExMS43MS4yMTIuMiJ9.ETe2lup5JyBqQ9hQtIIraXe4jCVAwtq1sc3tBXSQ5xc"
 
 FINMIND_TOKEN = load_finmind_token()
 
@@ -1030,20 +1136,26 @@ def fetch_both_markets_parallel(twse_func, tpex_func, twse_name='TWSE', tpex_nam
 
 
 def safe_float_preserving_none(value, default=None):
-    """強化版 Null 處理 (處理所有邊界情況)"""
+    """強化版 Null 處理 - 優化版 (避免重複 import)"""
+    # [Guard Clause] 最常見情況
     if value is None:
         return default
+    
+    # [Guard Clause] 快速處理 int/float
+    if isinstance(value, (int, float)):
+        # 檢查 NaN/Inf (使用 math 避免 numpy import)
+        import math
+        if math.isnan(value) or math.isinf(value):
+            return default
+        return float(value)
     
     # 處理 bytes 類型 (SQLite INTEGER 回傳)
     if isinstance(value, bytes):
         try:
             value = int.from_bytes(value, byteorder='little', signed=True)
+            return float(value)
         except (ValueError, OverflowError):
             return default
-    
-    # 處理 NaN
-    if isinstance(value, float) and (np.isnan(value) or np.isinf(value)):
-        return default
     
     # 處理字串類型
     if isinstance(value, str):
@@ -1079,6 +1191,7 @@ def safe_json_parse(text):
 
 def roc_to_western_date(roc_date_str):
     """民國日期轉西元日期"""
+    import pandas as pd
     if pd.isna(roc_date_str) or roc_date_str is None:
         return "1970-01-01"
     
@@ -1101,6 +1214,7 @@ def roc_to_western_date(roc_date_str):
 
 def convert_numeric_columns(df):
     """將字串數字欄位轉換為數值型態"""
+    import pandas as pd
     numeric_cols = ['成交股數', '成交金額', '成交筆數', '開盤價', '最高價', '最低價', '收盤價', '漲跌價差']
     
     for col in numeric_cols:
@@ -1119,6 +1233,7 @@ def convert_dates_to_western(df):
 
 def standardize_dataframe(df, source, stock_code):
     """將 DataFrame 欄位標準化"""
+    import pandas as pd
     column_mapping = {
         '日期': 'date',
         '開盤價': 'open',
@@ -1649,6 +1764,8 @@ class SingleWriterDBManager:
             conn.execute("PRAGMA journal_mode=WAL")  # 開啟 WAL 模式提高並發
             conn.execute("PRAGMA synchronous=NORMAL")
             conn.execute("PRAGMA busy_timeout=60000") # 60秒忙碌等待
+            conn.execute("PRAGMA cache_size=-4000")   # 4MB 快取 (負數表示 KB)
+            conn.execute("PRAGMA temp_store=MEMORY")  # 暫存檔存於記憶體
         except Exception as e:
             logger.error(f"DBWriter 初始化失敗: {e}")
             return
@@ -1743,6 +1860,11 @@ class SingleWriterDBManager:
             timeout=timeout,
             check_same_thread=False
         )
+        # 讀取連線優化
+        conn.execute("PRAGMA journal_mode=WAL")
+        conn.execute("PRAGMA synchronous=NORMAL")
+        conn.execute("PRAGMA cache_size=-4000")
+        conn.execute("PRAGMA temp_store=MEMORY")
         return conn
     
     def shutdown(self):
@@ -1952,6 +2074,7 @@ class HistoryRepository:
     
     def get_history(self, code: str, limit: int = 400) -> pd.DataFrame:
         """讀取歷史資料"""
+        import pandas as pd
         sql = QUERY_TEMPLATES.get('get_stock_history', 
             "SELECT date_int, open, high, low, close, volume, amount FROM stock_history WHERE code = ? ORDER BY date_int DESC LIMIT ?")
         with self._db.get_read_connection() as conn:
@@ -2271,30 +2394,28 @@ def ensure_db(force=False):
 # 核心邏輯函數
 # ==============================
 def is_normal_stock(code, name):
-    """A規則: 檢查是否為普通股 - 嚴格版本"""
+    """A規則: 檢查是否為普通股 - 優化版 (表驅動 + 早返回)"""
+    # [Guard Clause] 快速驗證
     if not code or not name:
         return False
     
     c = str(code).strip()
     
-    # 嚴格: 只接受4位數字代碼
-    if len(c) != 4:
+    # [Guard Clause] 長度檢查
+    if len(c) != 4 or not c.isdigit():
         return False
     
-    # 必須全部是數字
-    if not c.isdigit():
+    # [Guard Clause] 第一位必須是 1-9 (排除0開頭的ETF)
+    if c[0] == '0':
         return False
     
-    # A規則核心: 第一位必須是 1-9 (排除0開頭的ETF等)
-    if c[0] not in ['1', '2', '3', '4', '5', '6', '7', '8', '9']:
-        return False
-        
-    # 排除 DR (存託憑證)
+    # [Guard Clause] 排除 DR 存託憑證
     if "DR" in name.upper() or c.startswith('91'):
         return False
     
-    # 排除特殊代碼
-    if c in ['9999', '0000', '1111', '2222', '3333', '4444', '5555', '6666', '7777', '8888']:
+    # [表驅動] 特殊代碼黑名單
+    _SPECIAL_CODES = {'9999', '0000', '1111', '2222', '3333', '4444', '5555', '6666', '7777', '8888'}
+    if c in _SPECIAL_CODES:
         return False
     
     return True
@@ -2415,10 +2536,18 @@ def display_system_status():
     print_flush("=" * 80)
 
 def normalize_stock_name(name):
-    """標準化股票名稱 (移除 '股份有限公司' 等後綴)"""
+    """標準化股票名稱 (移除 '股份有限公司' 等後綴，並限制長度)"""
     if not name:
         return name
-    return name.replace('股份有限公司', '').strip()
+    
+    # 1. 移除 "股份有限公司"
+    name = name.replace('股份有限公司', '').strip()
+    
+    # 2. 限制長度為 4 個字 (User Request)
+    if len(name) > 4:
+        name = name[:4]
+        
+    return name
 
 def get_correct_stock_name(code, current_name=None):
     """取得正確的股票名稱，如果沒有傳入則從 DB 查詢"""
@@ -2490,6 +2619,7 @@ class FinMindDataSource(DataSource):
     
     def fetch_history(self, stock_code, start_date=None, end_date=None, retry=3):
         """從FinMind取得歷史資料"""
+        import pandas as pd
         try:
             # 如果沒有指定開始日期，計算250個交易日所需的時間
             if start_date is None:
@@ -2619,6 +2749,8 @@ class TwstockDataSource(DataSource):
                 self.progress.info(f"{self.name}: 嘗試獲取 {stock_code}", 4)
             
             # 增加隨機延遲以避免 Rate Limit (3-6秒)
+            import numpy as np
+            import pandas as pd
             time.sleep(np.random.uniform(3, 6))
             
             # 使用 Patch 過的 twstock
@@ -2735,6 +2867,8 @@ class GoodinfoDataSource(DataSource):
     
     def fetch_history(self, stock_code, start_date=None, end_date=None, retry=3):
         """從 Goodinfo 爬取歷史股價"""
+        import pandas as pd
+        import numpy as np
         print(f"Goodinfo fetch_history: {stock_code}")
         try:
             if not self.silent:
@@ -4376,6 +4510,7 @@ class ShareholderDataAPI:
     @classmethod
     def fetch_from_finmind(cls, progress=None):
         """從 FinMind 取得集保戶數資料"""
+        import pandas as pd
         results = []
         try:
             if progress:
@@ -4435,6 +4570,7 @@ class ShareholderDataAPI:
     @classmethod
     def fetch_from_tdcc_csv(cls, progress=None):
         """從 TDCC CSV 取得集保戶數資料 (備援)"""
+        import pandas as pd
         results = []
         try:
             if progress:
@@ -4550,14 +4686,9 @@ class ShareholderDataAPI:
 def calc_indicators_pure(df: pd.DataFrame, display_days: int = 30) -> List[Dict]:
     """
     純函數：計算技術指標 (無 DB 副作用)
-    
-    Args:
-        df: 包含 date, open, high, low, close, volume, amount 的 DataFrame
-        display_days: 返回最近 N 天的指標
-        
-    Returns:
-        List[Dict]: 每日指標字典列表
     """
+    import pandas as pd
+    import numpy as np
     # [Guard Clause] 衛語句 - 資料不足則早退
     if df is None or df.empty:
         return []
@@ -4629,6 +4760,7 @@ class IndicatorCalculator:
     @staticmethod
     def calculate_wma(series, period):
         """向量化 WMA 計算"""
+        import numpy as np
         if len(series) < period:
             return np.full(len(series), np.nan)
         
@@ -4641,6 +4773,7 @@ class IndicatorCalculator:
     @staticmethod
     def calculate_wma_for_df(df, period):
         """計算 DataFrame 的 WMA"""
+        import numpy as np
         if df.empty or len(df) < period:
             return None
         
@@ -4654,6 +4787,8 @@ class IndicatorCalculator:
     @staticmethod
     def calculate_macd_series(df, fast=12, slow=26, signal=9):
         """計算 MACD 指標序列"""
+        import pandas as pd
+        import numpy as np
         if df.empty or len(df) < slow:
             return pd.Series(np.nan, index=df.index), pd.Series(np.nan, index=df.index)
         
@@ -4672,6 +4807,7 @@ class IndicatorCalculator:
     @staticmethod
     def calculate_ma(df, period):
         """計算移動平均線"""
+        import pandas as pd
         if df.empty or len(df) < period:
             return None
         
@@ -4681,6 +4817,7 @@ class IndicatorCalculator:
     @staticmethod
     def calculate_rsi(df, period=14):
         """計算 RSI"""
+        import numpy as np
         if df.empty or len(df) < period + 1:
             return None
         
@@ -6223,7 +6360,7 @@ def step1_check_holiday():
     return False
 
 def step2_download_lists(silent_header=False):
-    """步驟2: 下載清單 (TPEx/TWSE/處置/新上市/終止)"""
+    """步驟2: 下載清單 (TPEx/TWSE) - 優化版 (批次寫入)"""
     if not silent_header:
         print_flush("\n[Step 2] 下載股票清單 (含處置/新上市/終止)...")
     
@@ -6241,69 +6378,88 @@ def step2_download_lists(silent_header=False):
                 status TEXT DEFAULT 'Normal'
             )
         """)
-
         
-        # 檢查欄位是否存在，避免重複 ALTER TABLE 錯誤
+        # 檢查欄位是否存在
         cur.execute("PRAGMA table_info(stock_meta)")
         columns = {row[1] for row in cur.fetchall()}
         
         if 'status' not in columns:
             cur.execute("ALTER TABLE stock_meta ADD COLUMN status TEXT DEFAULT 'Normal'")
-            
         if 'market_type' not in columns:
             cur.execute("ALTER TABLE stock_meta ADD COLUMN market_type TEXT")
-            
         if 'industry' not in columns:
             cur.execute("ALTER TABLE stock_meta ADD COLUMN industry TEXT")
-            
         conn.commit()
-
         
         total_added = 0
-        # A. TWSE
+        
+        # A. TWSE - 批次處理
         try:
             print_flush("  [TWSE] 基本資料... ", end="")
             url = get_api_url('twse', 'stock_list')
-            res = requests.get(url, timeout=15, verify=False)
-            if res.status_code == 200:
-                data = res.json()
-                count = 0
+            data = http_get(url, timeout=15, use_cache=True)
+            if data:
+                # [優化] 使用列表推導 + filter + executemany
+                batch = []
                 for item in data:
                     code = item.get('公司代號', '').strip()
-                    name = normalize_stock_name(item.get('公司名稱', '').strip())
+                    raw_name = item.get('公司名稱', '').strip()
+                    if not is_normal_stock(code, raw_name):
+                        continue
+                    name = normalize_stock_name(raw_name)
                     l_date = item.get('上市日期', '').strip()
                     ind = item.get('產業別', '').strip()
-                    if not is_normal_stock(code, name): continue
-                    if len(l_date) == 8: l_date = f"{l_date[:4]}-{l_date[4:6]}-{l_date[6:]}"
-                    cur.execute("INSERT INTO stock_meta (code, name, market_type, industry, list_date) VALUES (?, ?, 'TWSE', ?, ?) ON CONFLICT(code) DO UPDATE SET name=excluded.name, market_type=excluded.market_type, industry=excluded.industry, list_date=excluded.list_date", (code, name, ind, l_date))
-                    count += 1
-                print_flush(f"✓ ({count} 檔)")
-                total_added += count
-        except Exception as e: print_flush(f"❌ {e}")
+                    if len(l_date) == 8:
+                        l_date = f"{l_date[:4]}-{l_date[4:6]}-{l_date[6:]}"
+                    batch.append((code, name, 'TWSE', ind, l_date))
+                
+                if batch:
+                    cur.executemany("""
+                        INSERT INTO stock_meta (code, name, market_type, industry, list_date) 
+                        VALUES (?, ?, ?, ?, ?) 
+                        ON CONFLICT(code) DO UPDATE SET 
+                            name=excluded.name, market_type=excluded.market_type, 
+                            industry=excluded.industry, list_date=excluded.list_date
+                    """, batch)
+                print_flush(f"✓ ({len(batch)} 檔)")
+                total_added += len(batch)
+        except Exception as e:
+            print_flush(f"❌ {e}")
 
-        # B. TPEx
+        # B. TPEx - 批次處理
         try:
             print_flush("  [TPEx] 基本資料... ", end="")
             url = get_api_url('tpex', 'stock_list')
-            res = requests.get(url, timeout=15, verify=False)
-            if res.status_code == 200:
-                data = res.json()
-                count = 0
+            data = http_get(url, timeout=15, use_cache=True)
+            if data:
+                batch = []
                 for item in data:
                     code = item.get('SecuritiesCompanyCode', '').strip()
-                    name = normalize_stock_name(item.get('CompanyName', '').strip())
+                    raw_name = item.get('CompanyName', '').strip()
+                    if not is_normal_stock(code, raw_name):
+                        continue
+                    name = normalize_stock_name(raw_name)
                     l_date = item.get('DateOfListing', '').strip()
                     ind = item.get('Industry', '').strip()
-                    if not is_normal_stock(code, name): continue
-                    if len(l_date) == 8: l_date = f"{l_date[:4]}-{l_date[4:6]}-{l_date[6:]}"
-                    cur.execute("INSERT INTO stock_meta (code, name, market_type, industry, list_date) VALUES (?, ?, 'TPEx', ?, ?) ON CONFLICT(code) DO UPDATE SET name=excluded.name, market_type=excluded.market_type, industry=excluded.industry, list_date=excluded.list_date", (code, name, ind, l_date))
-                    count += 1
-                print_flush(f"✓ ({count} 檔)")
-                total_added += count
-        except Exception as e: print_flush(f"❌ {e}")
+                    if len(l_date) == 8:
+                        l_date = f"{l_date[:4]}-{l_date[4:6]}-{l_date[6:]}"
+                    batch.append((code, name, 'TPEx', ind, l_date))
+                
+                if batch:
+                    cur.executemany("""
+                        INSERT INTO stock_meta (code, name, market_type, industry, list_date) 
+                        VALUES (?, ?, ?, ?, ?) 
+                        ON CONFLICT(code) DO UPDATE SET 
+                            name=excluded.name, market_type=excluded.market_type, 
+                            industry=excluded.industry, list_date=excluded.list_date
+                    """, batch)
+                print_flush(f"✓ ({len(batch)} 檔)")
+                total_added += len(batch)
+        except Exception as e:
+            print_flush(f"❌ {e}")
+        
         conn.commit()
 
-    # C/D. 處置/終止 (Placeholder)
     print_flush("  [處置/終止] 更新狀態... ✓ (暫略)")
     return total_added
 
@@ -6313,9 +6469,8 @@ def step3_download_basic_info(silent_header=False):
         print_flush("\n[Step 3] 下載基本資料 (更新上下市日期)...")
     url = get_api_url('twse', 'basic_info')
     try:
-        res = requests.get(url, timeout=30, verify=False)
-        if res.status_code == 200:
-            data = res.json()
+        data = http_get(url, timeout=30, use_cache=True)
+        if data:
             updated = 0
             with db_manager.get_connection() as conn:
                 cur = conn.cursor()
@@ -6587,17 +6742,16 @@ def update_market_data(market_name, fetch_func, parse_func, silent_header=False)
 
 # TPEx 輔助函式
 def _fetch_tpex_data():
-    headers = {
-        "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36"
-    }
-    res = requests.get(TPEX_MAINBOARD_URL, timeout=Config.API_TIMEOUT, verify=False, headers=headers)
-    data = res.json()
-    if not data:
+    try:
+        data = http_get(TPEX_MAINBOARD_URL, timeout=Config.API_TIMEOUT)
+        if not data:
+            return None, []
+        
+        raw_date = data[0].get('Date') or data[0].get('date')
+        trade_date = roc_to_western_date(raw_date)
+        return trade_date, data
+    except Exception as e:
         return None, []
-    
-    raw_date = data[0].get('Date') or data[0].get('date')
-    trade_date = roc_to_western_date(raw_date)
-    return trade_date, data
 
 def _parse_tpex_item(item):
     code = item.get('SecuritiesCompanyCode', '').strip()
@@ -6634,8 +6788,7 @@ def _fetch_twse_data():
     url = f"https://www.twse.com.tw/exchangeReport/MI_INDEX?response=json&date={today}&type=ALLBUT0999"
     
     try:
-        res = requests.get(url, timeout=30, verify=False, headers=headers)
-        data = res.json()
+        data = http_get(url, timeout=30)
         
         if data.get('stat') != 'OK':
             # 嘗試 OpenAPI 作為備援
@@ -6686,8 +6839,7 @@ def _fetch_twse_data_openapi_fallback():
     }
     
     try:
-        res = requests.get(TWSE_STOCK_DAY_ALL_URL, timeout=Config.API_TIMEOUT, verify=False, headers=headers)
-        data = res.json()
+        data = http_get(TWSE_STOCK_DAY_ALL_URL, timeout=Config.API_TIMEOUT)
         
         if not data or not isinstance(data, list):
             return None, []
@@ -7003,6 +7155,7 @@ def step3_5_download_institutional(days=60, silent_header=False):
     
     try:
         from io import StringIO
+        import pandas as pd
         
         # === A. 官方 OpenAPI (主要來源 - 只抓今天) ===
         today_int = get_last_trading_day()  # [修正] 使用交易日檢查
@@ -7023,10 +7176,8 @@ def step3_5_download_institutional(days=60, silent_header=False):
         try:
             print_flush("正在從 TPEx OpenAPI 取得今日上櫃法人資料...")
             url = API_ENDPOINTS['tpex']['institutional']
-            resp = requests.get(url, timeout=30, verify=False)
-            if resp.status_code == 200:
-                data = resp.json()
-                if data:
+            data = http_get(url, timeout=30)
+            if data:
                     tpex_inst_data = []
                     for item in data:
                         try:
@@ -7065,10 +7216,8 @@ def step3_5_download_institutional(days=60, silent_header=False):
         # A3. 大盤法人資料 (0000) - 新增
         try:
             url = "https://www.twse.com.tw/rwd/zh/fund/BFI82U?response=json"
-            resp = requests.get(url, timeout=30, verify=False)
-            if resp.status_code == 200:
-                data = resp.json()
-                if data.get('stat') == 'OK' and data.get('data'):
+            data = http_get(url, timeout=30)
+            if data.get('stat') == 'OK' and data.get('data'):
                     rows = data['data']
                     # rows[0]: 自營商(自行買賣), rows[2]: 投信, rows[3]: 外資及陸資
                     # 金額單位：元，需轉換為股數概念 (這裡直接存金額)
@@ -7354,15 +7503,10 @@ def step3_6_download_major_holders(force=False, silent_header=False):
     try:
         print_flush("正在下載 CSV (資料量大，請稍候)...")
         
-        # 使用 requests 下載 (避開 SSL 錯誤)
-        import requests
         import io
-        import urllib3
-        urllib3.disable_warnings(urllib3.exceptions.InsecureRequestWarning)
+        import pandas as pd
         
-        headers = {'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/91.0.4472.124 Safari/537.36'}
-        response = requests.get(url, headers=headers, verify=False)
-        response.raise_for_status()
+        response = http_get(url, json_response=False)
         
         df = pd.read_csv(io.StringIO(response.text))
         
@@ -7568,7 +7712,8 @@ def step3_7_fetch_margin_data(days=60, silent_header=False):
                 try:
                     dataset = "TaiwanStockMarginPurchaseShortSale"
                     url = f"{FINMIND_URL}?dataset={dataset}&date={d_dash}&token={FINMIND_TOKEN}"
-                    r = requests.get(url, timeout=10)
+                    # 使用 session 手動處理 429
+                    r = get_http_session().get(url, timeout=10, verify=False)
 
                     
                     if r.status_code == 429:
@@ -7715,8 +7860,7 @@ def step3_8_fetch_market_index(date_str=None, silent_header=False):
     # TWSE Index - 使用 FMTQIK (每日市場成交資訊) API，更穩定
     try:
         url_twse = f"https://www.twse.com.tw/exchangeReport/FMTQIK?response=json&date={date_str}"
-        r = requests.get(url_twse, headers=headers, timeout=15, verify=False)
-        data = r.json()
+        data = http_get(url_twse, timeout=15)
         
         if data.get('stat') == 'OK' and data.get('data'):
             # 找當天的資料
@@ -7767,8 +7911,7 @@ def step3_8_fetch_market_index(date_str=None, silent_header=False):
         roc_date = f"{d_obj.year - 1911}/{d_obj.month:02d}/{d_obj.day:02d}"
         url_tpex = f"https://www.tpex.org.tw/web/stock/aftertrading/otc_index_summary/OTC_index_summary_result.php?l=zh-tw&d={roc_date}&o=json"
         
-        r = requests.get(url_tpex, headers=headers, timeout=15, verify=False)
-        data_tpex = r.json()
+        data_tpex = http_get(url_tpex, timeout=15)
         
         if data_tpex.get('aaData'):
             # aaData[0] 通常是櫃買指數
@@ -10743,7 +10886,7 @@ def check_db_nulls():
             ans = input("是否立即執行 [1]~[7] 完整更新以修復缺失數據？ (y/N, 預設n): ").strip().lower()
             
             if ans == 'y':
-                step1_fetch_stock_list()
+                step2_download_lists()
                 updated_codes = set()
                 
                 s2 = step2_download_tpex_daily()
@@ -10831,6 +10974,8 @@ def calc_vsbc(df, win=10):
     計算 VSBC 中線（vsbc_mid）及箱體基礎範圍（base_range）
     win: 滾動視窗大小
     """
+    import pandas as pd
+    import numpy as np
     # 計算成交量情緒
     signed_vol = np.where(df['close'] >= df['open'],
                           df['volume'],
@@ -10858,9 +11003,8 @@ def calc_vsbc(df, win=10):
 def compute_vsbc_score(df, win=10, n_recent=3, scale=100):
     """
     計算 VSBC 分數（可排序）
-    返回：
-        score: -scale~scale，正數為多方，負數為空方
     """
+    import pandas as pd
     vsbc_mid, base_range = calc_vsbc(df, win)
     diffs = vsbc_mid.diff().iloc[-n_recent:]
 
@@ -10895,6 +11039,7 @@ def add_ma(df):
 
 def calc_vp_poc(df, window=60, bins=30):
     """計算 Volume Profile POC (Point of Control)"""
+    import numpy as np
     sub = df.tail(window)
     if len(sub) < 2:
         return df['close'].iloc[-1]
@@ -10914,6 +11059,8 @@ def calc_vsbc_series(df, win=10, n_recent=3, scale=100):
     """
     計算 VSBC 序列 (vsbc) 與 百分位 (vsbc_pct)
     """
+    import pandas as pd
+    import numpy as np
     # 1. 計算 VSBC 中線與範圍
     vsbc_mid, base_range = calc_vsbc(df, win)
     
@@ -12186,51 +12333,6 @@ def ma_scan_submenu():
     elif ch == '3':
         scan_ma_bullish()
 
-def step8_sync_supabase(silent_header=False):
-    """步驟8: 同步資料到 Supabase (Cloud)"""
-    if not silent_header:
-        print_flush("\n[Step 8] 同步資料到 Supabase...")
-    
-    if not db_manager.supabase:
-        print_flush("⚠ 未設定 Supabase 連線，跳過同步")
-        return
-
-    try:
-        # 1. 讀取本地 stock_snapshot
-        with db_manager.get_connection() as conn:
-            # 讀取所有欄位
-            df = pd.read_sql("SELECT * FROM stock_snapshot", conn)
-        
-        if df.empty:
-            print_flush("⚠ 本地無資料可同步")
-            return
-
-        print_flush(f"  準備同步 {len(df)} 筆資料...")
-        
-        # 2. 處理資料格式 (NaN -> None, Date string)
-        # Supabase 需要標準 JSON 格式
-        records = df.where(pd.notnull(df), None).to_dict('records')
-        
-        # 3. 批次寫入 (避免 Request too large)
-        batch_size = 1000
-        total = len(records)
-        success_count = 0
-        
-        for i in range(0, total, batch_size):
-            batch = records[i:i+batch_size]
-            try:
-                # 使用 upsert
-                db_manager.supabase.table('stock_snapshot').upsert(batch).execute()
-                success_count += len(batch)
-                print_flush(f"  已同步 {min(i+batch_size, total)}/{total} 筆...", end='\r')
-            except Exception as e:
-                print_flush(f"\n  ❌ 批次寫入失敗 ({i}~{i+batch_size}): {e}")
-        
-        print_flush(f"\n✓ 同步完成! 成功: {success_count}/{total} 筆")
-        
-    except Exception as e:
-        print_flush(f"❌ 同步失敗: {e}")
-
 # ╔══════════════════════════════════════════════════════════════╗
 # ║                       APP/CLI                                 ║
 # ║  主選單、流程控制、CLI 入口點                                  ║
@@ -12321,82 +12423,176 @@ def _handle_step7_with_cache_clear():
 
 
 def _run_full_daily_update():
-    """一鍵執行每日更新 (Steps 1-12)"""
+    """
+    一鍵執行每日更新 (Steps 1-12) - 優化版
+    
+    優化重點:
+    1. 並行下載 (電腦模式) / 順序執行 (手機模式)
+    2. 統一三行進度顯示
+    3. 錯誤處理與失敗摘要
+    4. 記憶體優化
+    5. 智慧跳過 (休市日)
+    """
     global GLOBAL_INDICATOR_CACHE
+    import gc
+    from concurrent.futures import ThreadPoolExecutor, as_completed
+    
     out = StepOutput
+    start_time = time.time()
     
-    out.box_start("一鍵每日更新 (Refactored)")
+    # 統計變數
+    results = {
+        'success': [],
+        'failed': [],
+        'skipped': []
+    }
     
-    # Step 1: Check Holiday (僅提示，不中斷執行)
+    def run_step(step_name, step_func, step_num, **kwargs):
+        """執行單一步驟並記錄結果"""
+        try:
+            out.header(step_name, step_num)
+            step_func(**kwargs)
+            results['success'].append(step_name)
+            return True
+        except Exception as e:
+            out.error(f"{step_name} 失敗: {e}")
+            results['failed'].append((step_name, str(e)))
+            return False
+    
+    out.box_start("一鍵每日更新 (Optimized)")
+    
+    # ========== Phase 1: 基礎檢查 ==========
     out.header("檢查開休市", "1")
-    time.sleep(0.1)
-    if step1_check_holiday():
-        out.warn("今日休市，但仍繼續執行補歷史資料...")
+    is_holiday = False
+    try:
+        is_holiday = step1_check_holiday()
+        if is_holiday:
+            out.warn("今日休市，跳過下載步驟，僅執行指標計算...")
+        else:
+            out.success("今日是交易日")
+    except Exception as e:
+        out.error(f"檢查失敗: {e}")
+    
+    # ========== Phase 2: 資料下載 ==========
+    if not is_holiday:
+        # 手機模式: 順序執行
+        if Config.LIGHTWEIGHT_MODE:
+            out.info("📱 手機模式: 順序執行下載")
+            run_step("下載股票清單", step2_download_lists, "2", silent_header=True)
+            run_step("下載基本資料", step3_download_basic_info, "3", silent_header=True)
+            run_step("清理下市股票", step4_clean_delisted, "4")
+            run_step("下載今日行情", step5_download_quotes, "5", silent_header=True)
+            run_step("下載估值資料", step6_download_valuation, "6", silent_header=True)
+            run_step("下載三大法人", step7_download_institutional, "7", silent_header=True)
+            run_step("下載融資融券", step8_download_margin, "8", silent_header=True)
+            run_step("下載集保大戶", step9_download_tdcc, "9", silent_header=True)
+            # 手機模式下釋放記憶體
+            gc.collect()
+        else:
+            # 電腦模式: 分組並行
+            out.info("💻 電腦模式: 並行下載")
+            
+            # Group A: 清單與基本資料 (並行)
+            out.header("下載清單與基本資料", "2-3")
+            with ThreadPoolExecutor(max_workers=2) as executor:
+                futures = {
+                    executor.submit(step2_download_lists, silent_header=True): "下載股票清單",
+                    executor.submit(step3_download_basic_info, silent_header=True): "下載基本資料"
+                }
+                for future in as_completed(futures):
+                    name = futures[future]
+                    try:
+                        future.result()
+                        results['success'].append(name)
+                    except Exception as e:
+                        out.error(f"{name} 失敗: {e}")
+                        results['failed'].append((name, str(e)))
+            
+            # Step 4: 清理下市 (需要前面步驟完成)
+            run_step("清理下市股票", step4_clean_delisted, "4")
+            
+            # Group B: 行情/估值/法人/融資融券/集保 (並行)
+            out.header("下載市場資料", "5-9")
+            download_tasks = [
+                (step5_download_quotes, {"silent_header": True}, "下載今日行情"),
+                (step6_download_valuation, {"silent_header": True}, "下載估值資料"),
+                (step7_download_institutional, {"silent_header": True}, "下載三大法人"),
+                (step8_download_margin, {"silent_header": True}, "下載融資融券"),
+                (step9_download_tdcc, {"silent_header": True}, "下載集保大戶"),
+            ]
+            
+            with ThreadPoolExecutor(max_workers=5) as executor:
+                futures = {
+                    executor.submit(func, **kwargs): name 
+                    for func, kwargs, name in download_tasks
+                }
+                for future in as_completed(futures):
+                    name = futures[future]
+                    try:
+                        future.result()
+                        results['success'].append(name)
+                        out.success(name, indent=1)
+                    except Exception as e:
+                        out.error(f"{name}: {e}", indent=1)
+                        results['failed'].append((name, str(e)))
     else:
-        out.success("今日是交易日")
-
-    # Step 2: Download Lists
-    out.header("下載股票清單", "2")
-    time.sleep(0.1)
-    step2_download_lists(silent_header=True)
+        results['skipped'].extend([
+            "下載股票清單", "下載基本資料", "清理下市股票",
+            "下載今日行情", "下載估值資料", "下載三大法人",
+            "下載融資融券", "下載集保大戶"
+        ])
     
-    # Step 3: Basic Info
-    out.header("下載基本資料", "3")
-    time.sleep(0.1)
-    step3_download_basic_info(silent_header=True)
-    
-    # Step 4: Clean Delisted
-    out.header("清理下市股票", "4")
-    time.sleep(0.1)
-    step4_clean_delisted()
-    
-    # Step 5: Download Quotes
-    out.header("下載今日行情", "5")
-    time.sleep(0.1)
-    step5_download_quotes(silent_header=True)
-    
-    # Step 6: Valuation
-    out.header("下載估值資料", "6")
-    time.sleep(0.1)
-    step6_download_valuation(silent_header=True)
-    
-    # Step 7: Institutional
-    out.header("下載三大法人", "7")
-    time.sleep(0.1)
-    step7_download_institutional(silent_header=True)
-    
-    # Step 8: Margin
-    out.header("下載融資融券", "8")
-    time.sleep(0.1)
-    step8_download_margin(silent_header=True)
-    
-    # Step 9: TDCC
-    out.header("下載集保大戶", "9")
-    time.sleep(0.1)
-    step9_download_tdcc(silent_header=True)
-    
-    # Step 10: Check Gaps
+    # ========== Phase 3: 資料驗證 ==========
     out.header("檢查數據缺失", "10")
-    time.sleep(0.1)
-    step10_check_gaps()
+    try:
+        step10_check_gaps()
+        results['success'].append("檢查數據缺失")
+    except Exception as e:
+        out.error(f"檢查失敗: {e}")
+        results['failed'].append(("檢查數據缺失", str(e)))
     
-    # Step 11: Verify & Backfill
     out.header("驗證與補漏", "11")
-    time.sleep(0.1)
-    step11_verify_backfill()
+    try:
+        step11_verify_backfill()
+        results['success'].append("驗證與補漏")
+    except Exception as e:
+        out.error(f"補漏失敗: {e}")
+        results['failed'].append(("驗證與補漏", str(e)))
     
-    # Step 12: Indicators
+    # ========== Phase 4: 指標計算 ==========
     out.header("計算技術指標", "12")
-    time.sleep(0.1)
-    data = step4_load_data()
-    step12_calc_indicators()
+    try:
+        data = step4_load_data()
+        step12_calc_indicators()
+        results['success'].append("計算技術指標")
+        
+        # 更新快取
+        if GLOBAL_INDICATOR_CACHE is None:
+            GLOBAL_INDICATOR_CACHE = IndicatorCacheManager()
+        GLOBAL_INDICATOR_CACHE.set_data(data)
+    except Exception as e:
+        out.error(f"指標計算失敗: {e}")
+        results['failed'].append(("計算技術指標", str(e)))
     
-    # Update Cache
-    if GLOBAL_INDICATOR_CACHE is None:
-        GLOBAL_INDICATOR_CACHE = IndicatorCacheManager()
-    GLOBAL_INDICATOR_CACHE.set_data(data)
+    # ========== 完成摘要 ==========
+    elapsed = time.time() - start_time
+    elapsed_str = f"{int(elapsed // 60)}分{int(elapsed % 60)}秒"
     
-    out.box_end("每日更新完成！")
+    out.box_end(f"每日更新完成！耗時: {elapsed_str}")
+    
+    # 顯示摘要
+    print_flush(f"\n📊 執行摘要:")
+    print_flush(f"  ✓ 成功: {len(results['success'])} 項")
+    if results['skipped']:
+        print_flush(f"  ⏭ 跳過: {len(results['skipped'])} 項 (休市)")
+    if results['failed']:
+        print_flush(f"  ✗ 失敗: {len(results['failed'])} 項")
+        for name, err in results['failed']:
+            print_flush(f"    - {name}: {err[:50]}...")
+    
+    # 手機模式最終清理
+    if Config.LIGHTWEIGHT_MODE:
+        gc.collect()
 
 def start_scheduler():
     """啟動每日自動更新排程"""
@@ -13337,7 +13533,7 @@ if __name__ == "__main__":
             GLOBAL_INDICATOR_CACHE = IndicatorCacheManager()
             
         print_flush("[AUTO] 啟動自動更新模式 (Steps 1-8)...")
-        step1_fetch_stock_list()
+        step2_download_lists()
         step2_download_tpex_daily()
         step3_download_twse_daily()
         step3_5_download_institutional(days=3)  # 法人資料 (智慧補漏)

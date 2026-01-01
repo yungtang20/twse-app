@@ -1,3 +1,4 @@
+from __future__ import annotations
 import multiprocessing
 import os
 #!/usr/bin/env python3
@@ -1031,6 +1032,7 @@ def fetch_both_markets_parallel(twse_func, tpex_func, twse_name='TWSE', tpex_nam
 
 def safe_float_preserving_none(value, default=None):
     """強化版 Null 處理 (處理所有邊界情況)"""
+    import numpy as np
     if value is None:
         return default
     
@@ -1079,6 +1081,7 @@ def safe_json_parse(text):
 
 def roc_to_western_date(roc_date_str):
     """民國日期轉西元日期"""
+    import pandas as pd
     if pd.isna(roc_date_str) or roc_date_str is None:
         return "1970-01-01"
     
@@ -1101,6 +1104,7 @@ def roc_to_western_date(roc_date_str):
 
 def convert_numeric_columns(df):
     """將字串數字欄位轉換為數值型態"""
+    import pandas as pd
     numeric_cols = ['成交股數', '成交金額', '成交筆數', '開盤價', '最高價', '最低價', '收盤價', '漲跌價差']
     
     for col in numeric_cols:
@@ -1119,6 +1123,7 @@ def convert_dates_to_western(df):
 
 def standardize_dataframe(df, source, stock_code):
     """將 DataFrame 欄位標準化"""
+    import pandas as pd
     column_mapping = {
         '日期': 'date',
         '開盤價': 'open',
@@ -1952,6 +1957,7 @@ class HistoryRepository:
     
     def get_history(self, code: str, limit: int = 400) -> pd.DataFrame:
         """讀取歷史資料"""
+        import pandas as pd
         sql = QUERY_TEMPLATES.get('get_stock_history', 
             "SELECT date_int, open, high, low, close, volume, amount FROM stock_history WHERE code = ? ORDER BY date_int DESC LIMIT ?")
         with self._db.get_read_connection() as conn:
@@ -2415,10 +2421,18 @@ def display_system_status():
     print_flush("=" * 80)
 
 def normalize_stock_name(name):
-    """標準化股票名稱 (移除 '股份有限公司' 等後綴)"""
+    """標準化股票名稱 (移除 '股份有限公司' 等後綴，並限制長度)"""
     if not name:
         return name
-    return name.replace('股份有限公司', '').strip()
+    
+    # 1. 移除 "股份有限公司"
+    name = name.replace('股份有限公司', '').strip()
+    
+    # 2. 限制長度為 4 個字 (User Request)
+    if len(name) > 4:
+        name = name[:4]
+        
+    return name
 
 def get_correct_stock_name(code, current_name=None):
     """取得正確的股票名稱，如果沒有傳入則從 DB 查詢"""
@@ -2619,6 +2633,8 @@ class TwstockDataSource(DataSource):
                 self.progress.info(f"{self.name}: 嘗試獲取 {stock_code}", 4)
             
             # 增加隨機延遲以避免 Rate Limit (3-6秒)
+            import numpy as np
+            import pandas as pd
             time.sleep(np.random.uniform(3, 6))
             
             # 使用 Patch 過的 twstock
@@ -2735,6 +2751,8 @@ class GoodinfoDataSource(DataSource):
     
     def fetch_history(self, stock_code, start_date=None, end_date=None, retry=3):
         """從 Goodinfo 爬取歷史股價"""
+        import pandas as pd
+        import numpy as np
         print(f"Goodinfo fetch_history: {stock_code}")
         try:
             if not self.silent:
@@ -4376,6 +4394,7 @@ class ShareholderDataAPI:
     @classmethod
     def fetch_from_finmind(cls, progress=None):
         """從 FinMind 取得集保戶數資料"""
+        import pandas as pd
         results = []
         try:
             if progress:
@@ -4435,6 +4454,7 @@ class ShareholderDataAPI:
     @classmethod
     def fetch_from_tdcc_csv(cls, progress=None):
         """從 TDCC CSV 取得集保戶數資料 (備援)"""
+        import pandas as pd
         results = []
         try:
             if progress:
@@ -4550,14 +4570,9 @@ class ShareholderDataAPI:
 def calc_indicators_pure(df: pd.DataFrame, display_days: int = 30) -> List[Dict]:
     """
     純函數：計算技術指標 (無 DB 副作用)
-    
-    Args:
-        df: 包含 date, open, high, low, close, volume, amount 的 DataFrame
-        display_days: 返回最近 N 天的指標
-        
-    Returns:
-        List[Dict]: 每日指標字典列表
     """
+    import pandas as pd
+    import numpy as np
     # [Guard Clause] 衛語句 - 資料不足則早退
     if df is None or df.empty:
         return []
@@ -4629,6 +4644,7 @@ class IndicatorCalculator:
     @staticmethod
     def calculate_wma(series, period):
         """向量化 WMA 計算"""
+        import numpy as np
         if len(series) < period:
             return np.full(len(series), np.nan)
         
@@ -4641,6 +4657,7 @@ class IndicatorCalculator:
     @staticmethod
     def calculate_wma_for_df(df, period):
         """計算 DataFrame 的 WMA"""
+        import numpy as np
         if df.empty or len(df) < period:
             return None
         
@@ -4654,6 +4671,8 @@ class IndicatorCalculator:
     @staticmethod
     def calculate_macd_series(df, fast=12, slow=26, signal=9):
         """計算 MACD 指標序列"""
+        import pandas as pd
+        import numpy as np
         if df.empty or len(df) < slow:
             return pd.Series(np.nan, index=df.index), pd.Series(np.nan, index=df.index)
         
@@ -4672,6 +4691,7 @@ class IndicatorCalculator:
     @staticmethod
     def calculate_ma(df, period):
         """計算移動平均線"""
+        import pandas as pd
         if df.empty or len(df) < period:
             return None
         
@@ -4681,6 +4701,7 @@ class IndicatorCalculator:
     @staticmethod
     def calculate_rsi(df, period=14):
         """計算 RSI"""
+        import numpy as np
         if df.empty or len(df) < period + 1:
             return None
         
@@ -6270,10 +6291,17 @@ def step2_download_lists(silent_header=False):
                 count = 0
                 for item in data:
                     code = item.get('公司代號', '').strip()
-                    name = normalize_stock_name(item.get('公司名稱', '').strip())
+                    raw_name = item.get('公司名稱', '').strip()
+                    
+                    # [A Rule] 先用原始名稱檢查 (避免 DR 被截斷導致誤判)
+                    if not is_normal_stock(code, raw_name): continue
+                    
+                    # 通過檢查後，再進行標準化 (移除後綴 + 截斷)
+                    name = normalize_stock_name(raw_name)
+                    
                     l_date = item.get('上市日期', '').strip()
                     ind = item.get('產業別', '').strip()
-                    if not is_normal_stock(code, name): continue
+                    
                     if len(l_date) == 8: l_date = f"{l_date[:4]}-{l_date[4:6]}-{l_date[6:]}"
                     cur.execute("INSERT INTO stock_meta (code, name, market_type, industry, list_date) VALUES (?, ?, 'TWSE', ?, ?) ON CONFLICT(code) DO UPDATE SET name=excluded.name, market_type=excluded.market_type, industry=excluded.industry, list_date=excluded.list_date", (code, name, ind, l_date))
                     count += 1
@@ -6291,10 +6319,17 @@ def step2_download_lists(silent_header=False):
                 count = 0
                 for item in data:
                     code = item.get('SecuritiesCompanyCode', '').strip()
-                    name = normalize_stock_name(item.get('CompanyName', '').strip())
+                    raw_name = item.get('CompanyName', '').strip()
+                    
+                    # [A Rule] 先用原始名稱檢查
+                    if not is_normal_stock(code, raw_name): continue
+                    
+                    # 通過檢查後，再進行標準化
+                    name = normalize_stock_name(raw_name)
+                    
                     l_date = item.get('DateOfListing', '').strip()
                     ind = item.get('Industry', '').strip()
-                    if not is_normal_stock(code, name): continue
+                    
                     if len(l_date) == 8: l_date = f"{l_date[:4]}-{l_date[4:6]}-{l_date[6:]}"
                     cur.execute("INSERT INTO stock_meta (code, name, market_type, industry, list_date) VALUES (?, ?, 'TPEx', ?, ?) ON CONFLICT(code) DO UPDATE SET name=excluded.name, market_type=excluded.market_type, industry=excluded.industry, list_date=excluded.list_date", (code, name, ind, l_date))
                     count += 1
@@ -7003,6 +7038,7 @@ def step3_5_download_institutional(days=60, silent_header=False):
     
     try:
         from io import StringIO
+        import pandas as pd
         
         # === A. 官方 OpenAPI (主要來源 - 只抓今天) ===
         today_int = get_last_trading_day()  # [修正] 使用交易日檢查
@@ -7357,6 +7393,7 @@ def step3_6_download_major_holders(force=False, silent_header=False):
         # 使用 requests 下載 (避開 SSL 錯誤)
         import requests
         import io
+        import pandas as pd
         import urllib3
         urllib3.disable_warnings(urllib3.exceptions.InsecureRequestWarning)
         
@@ -10831,6 +10868,8 @@ def calc_vsbc(df, win=10):
     計算 VSBC 中線（vsbc_mid）及箱體基礎範圍（base_range）
     win: 滾動視窗大小
     """
+    import pandas as pd
+    import numpy as np
     # 計算成交量情緒
     signed_vol = np.where(df['close'] >= df['open'],
                           df['volume'],
@@ -10858,9 +10897,8 @@ def calc_vsbc(df, win=10):
 def compute_vsbc_score(df, win=10, n_recent=3, scale=100):
     """
     計算 VSBC 分數（可排序）
-    返回：
-        score: -scale~scale，正數為多方，負數為空方
     """
+    import pandas as pd
     vsbc_mid, base_range = calc_vsbc(df, win)
     diffs = vsbc_mid.diff().iloc[-n_recent:]
 
@@ -10895,6 +10933,7 @@ def add_ma(df):
 
 def calc_vp_poc(df, window=60, bins=30):
     """計算 Volume Profile POC (Point of Control)"""
+    import numpy as np
     sub = df.tail(window)
     if len(sub) < 2:
         return df['close'].iloc[-1]
@@ -10914,6 +10953,8 @@ def calc_vsbc_series(df, win=10, n_recent=3, scale=100):
     """
     計算 VSBC 序列 (vsbc) 與 百分位 (vsbc_pct)
     """
+    import pandas as pd
+    import numpy as np
     # 1. 計算 VSBC 中線與範圍
     vsbc_mid, base_range = calc_vsbc(df, win)
     
@@ -12185,51 +12226,6 @@ def ma_scan_submenu():
     
     elif ch == '3':
         scan_ma_bullish()
-
-def step8_sync_supabase(silent_header=False):
-    """步驟8: 同步資料到 Supabase (Cloud)"""
-    if not silent_header:
-        print_flush("\n[Step 8] 同步資料到 Supabase...")
-    
-    if not db_manager.supabase:
-        print_flush("⚠ 未設定 Supabase 連線，跳過同步")
-        return
-
-    try:
-        # 1. 讀取本地 stock_snapshot
-        with db_manager.get_connection() as conn:
-            # 讀取所有欄位
-            df = pd.read_sql("SELECT * FROM stock_snapshot", conn)
-        
-        if df.empty:
-            print_flush("⚠ 本地無資料可同步")
-            return
-
-        print_flush(f"  準備同步 {len(df)} 筆資料...")
-        
-        # 2. 處理資料格式 (NaN -> None, Date string)
-        # Supabase 需要標準 JSON 格式
-        records = df.where(pd.notnull(df), None).to_dict('records')
-        
-        # 3. 批次寫入 (避免 Request too large)
-        batch_size = 1000
-        total = len(records)
-        success_count = 0
-        
-        for i in range(0, total, batch_size):
-            batch = records[i:i+batch_size]
-            try:
-                # 使用 upsert
-                db_manager.supabase.table('stock_snapshot').upsert(batch).execute()
-                success_count += len(batch)
-                print_flush(f"  已同步 {min(i+batch_size, total)}/{total} 筆...", end='\r')
-            except Exception as e:
-                print_flush(f"\n  ❌ 批次寫入失敗 ({i}~{i+batch_size}): {e}")
-        
-        print_flush(f"\n✓ 同步完成! 成功: {success_count}/{total} 筆")
-        
-    except Exception as e:
-        print_flush(f"❌ 同步失敗: {e}")
 
 # ╔══════════════════════════════════════════════════════════════╗
 # ║                       APP/CLI                                 ║

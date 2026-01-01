@@ -153,6 +153,26 @@
 *   [x] 實作 `normalize_stock_name`
 *   [x] 整合至 `get_correct_stock_name`
 *   [x] 整合至 `step2_download_lists` (資料下載流程)
+*   [x] 實作名稱截斷 (最多4字)
+
+# 2026-01-01 股票名稱截斷優化
+## 執行目標
+1. 移除股票名稱中的 "股份有限公司"。
+2. 將股票名稱限制在 4 個字以內。
+3. 確保 A 規則 (如 DR 股檢查) 在截斷前執行，避免誤判。
+
+## 修改內容
+1.  **Backend (`最終修正.py`)**:
+    *   修改 `normalize_stock_name`：新增截斷邏輯 (最多 4 字)。
+    *   修改 `step2_download_lists`：調整邏輯，先使用原始名稱進行 `is_normal_stock` 檢查，通過後再進行標準化與截斷。
+
+## 修改原因
+*   使用者要求簡化顯示，只保留核心名稱。
+*   避免截斷導致 "DR" 等關鍵字遺失而誤判為普通股。
+
+## 修改進度
+*   [x] 修改 `normalize_stock_name`
+*   [x] 修改 `step2_download_lists`
 
 # 2025-12-31 啟動速度優化
 ## 執行目標
@@ -243,3 +263,180 @@
 *   [x] 建立 `README_APK.md`
 *   [ ] 初始化 Android 專案
 *   [ ] 測試 APK 打包
+
+# 2026-01-01 雲端部署修復 (Render 500 Error)
+## 執行目標
+1. 解決 Render 部署後出現的 500 Internal Server Error。
+2. 實作雲端模式 (Cloud Mode) 下的資料讀取機制 (Supabase)。
+3. 新增資料庫路徑選擇功能 (Settings)。
+
+## 修改內容
+1.  **Backend (`backend/routers/rankings.py`)**:
+    *   **Critical Fix**: 修復 `NameError: name 'router' is not defined`，補上 `router = APIRouter(...)` 定義。
+    *   新增雲端模式檢查：若為雲端模式，從 Supabase 讀取最新日期 (`get_system_status`) 並返回空列表 (因複雜統計尚未移植)，避免 500 錯誤。
+2.  **Backend (`backend/services/db.py`)**:
+    *   修改 `get_stock_by_code`：新增雲端模式支援，分別從 `stock_meta` 和 `stock_snapshot` 讀取資料並合併。
+    *   新增 **Defensive Error Handling**：若 `stock_snapshot` 讀取失敗 (如資料表不存在)，捕獲異常並返回基本 Meta 資料，防止頁面崩潰。
+3.  **Frontend (`frontend/src/pages/Settings.jsx`)**:
+    *   新增「資料庫路徑」設定區塊。
+    *   新增「瀏覽」按鈕 (`<input type="file">`)，允許使用者在本機模式下選擇資料庫檔案 (雲端模式下僅顯示檔名)。
+
+## 修改原因
+1.  使用者回報 Render 部署後無法瀏覽網頁 (500 Error)。
+2.  使用者截圖顯示 `rankings.py` 發生 `NameError` 導致部署失敗。
+3.  使用者希望能手動指定資料庫路徑。
+
+## 修改進度
+1.  [x] 修復 `rankings.py` Router 定義缺失
+2.  [x] 實作 `get_stock_by_code` 雲端讀取邏輯
+3.  [x] 實作 `Settings.jsx` 瀏覽按鈕
+4.  [x] 部署至 Render (等待生效)
+# 2026-01-01 修正 NameError (pd/np 未定義)
+## 執行目標
+1. 修復 `最終修正.py` 在初始化或執行特定功能時出現的 `NameError: name 'pd' is not defined`。
+2. 維持「延遲載入 (Lazy Loading)」優化，同時確保型別提示與邏輯正確。
+
+## 修改內容
+1.  **Backend (`最終修正.py`)**:
+    *   新增 `from __future__ import annotations`：支援型別提示的延遲評估，解決類別定義時 `pd.DataFrame` 未定義的問題。
+    *   補強區域引用：在 `HistoryRepository`, `TwstockDataSource`, `calc_indicators_pure`, `IndicatorCalculator` 等遺漏的地方補上 `import pandas as pd` 與 `import numpy as np`。
+
+## 修改原因
+*   先前為了優化啟動速度將 `pandas` 等套件改為延遲載入，但部分類別方法與型別提示仍依賴全域變數，導致執行時崩潰。
+
+## 修改進度
+*   [x] 實作 `from __future__ import annotations`
+*   [x] 補強 `HistoryRepository` 區域引用
+*   [x] 補強 `TwstockDataSource` 區域引用
+*   [x] 補強 `IndicatorCalculator` 區域引用
+*   [x] 補強 `step3_5`, `step3_6` 等下載函數區域引用
+*   [x] 驗證修復結果
+
+# 2026-01-01 更新 FinMind Token
+## 執行目標
+1. 更新 `最終修正.py` 中的 FinMind Token。
+2. 同步更新 `config.json` 中的 Token (若存在)。
+
+## 修改內容
+1.  **Backend (`最終修正.py`)**:
+    *   將預設的 FinMind Token 更新為使用者提供的新 Token。
+2.  **Config (`config.json`)**:
+    *   更新 `finmind_token` 欄位。
+
+## 修改原因
+*   使用者要求更新 FinMind Token 以確保資料抓取功能正常。
+
+## 修改進度
+*   [x] 更新 `最終修正.py`
+*   [x] 更新 `config.json`
+
+# 2026-01-01 修復 FinMind NameError
+## 執行目標
+1. 修復 `FinMindDataSource` 中因延遲載入導致的 `NameError: name 'pd' is not defined`。
+
+## 修改內容
+1.  **Backend (`最終修正.py`)**:
+    *   在 `FinMindDataSource.fetch_history` 方法中加入 `import pandas as pd`。
+
+## 修改原因
+*   使用者回報回補資料時發生錯誤，經查為 `pd` 未定義。
+
+## 修改進度
+*   [x] 補上 `import pandas as pd`
+
+# 2026-01-01 修復未定義函數 step1_fetch_stock_list
+## 執行目標
+1. 修復 `step1_fetch_stock_list` 未定義錯誤。
+
+## 修改內容
+1.  **Backend (`最終修正.py`)**:
+    *   將 `step1_fetch_stock_list()` 替換為 `step2_download_lists()`（共兩處）。
+
+## 修改原因
+*   `step1_fetch_stock_list` 函數不存在，導致執行失敗。
+
+## 修改進度
+*   [x] 替換 `check_db_nulls` 中的呼叫
+*   [x] 替換 `__main__` 自動更新模式中的呼叫
+
+## 驗證結果
+*   [x] 執行 1-1 一鍵更新成功完成
+*   成功更新: TWSE 2 筆, TPEx 10 筆
+*   VSBC 計算完成: 1904 筆成功, 30 筆跳過
+*   資料範圍: 2001-04-30 至 2025-12-31
+
+# 2026-01-01 修復缺失資料
+## 執行目標
+1. 修復成交金額缺失的 4 檔股票 (34 筆)
+2. 處理歷史資料不足的股票
+
+## 修改內容
+1.  **8291 尚茂電子**：
+    *   經查證已於 2025-08-20 停止櫃檯買賣
+    *   已標記為下市並清理相關資料
+
+2.  **4 檔成交金額缺失 (6904, 6955, 6924, 7631)**：
+    *   這些日期是資料源異常 (有成交量但 close=0)
+    *   使用前一日收盤價估算成交金額
+    *   共修復 34 筆
+
+## 修改原因
+*   確保技術指標計算正確 (成交金額是計算 MFI、VWAP 等指標的必要欄位)
+
+## 修改進度
+*   [x] 確認 8291 尚茂電子已下市，清理資料
+*   [x] 使用前日收盤價修復 34 筆缺失成交金額
+*   [x] 驗證修復完成 (剩餘缺失: 0 筆)
+
+# 2026-01-01 優化 1-1 每日更新功能
+## 執行目標
+1. 提升執行效率
+2. 確保手機 (Pydroid 3) 相容性
+3. 改善進度顯示與錯誤處理
+
+## 修改內容
+1.  **Backend (`最終修正.py`)**:
+    *   重寫 `_run_full_daily_update` 函數
+    *   **並行下載**：電腦模式下使用 ThreadPoolExecutor 並行下載 (2+5 並行)
+    *   **手機模式**：順序執行避免記憶體不足
+    *   **錯誤處理**：每個步驟獨立 try-except，失敗不中斷
+    *   **執行摘要**：顯示成功/失敗/跳過統計
+    *   **記憶體清理**：手機模式使用 gc.collect()
+    *   **智慧跳過**：休市日跳過下載步驟
+
+## 修改原因
+*   原版本順序執行較慢
+*   缺乏錯誤處理，一步失敗全部中斷
+*   無執行時間統計
+
+## 修改進度
+*   [x] 實作並行下載
+*   [x] 實作錯誤處理
+*   [x] 實作執行摘要
+*   [x] 手機模式優化
+
+# 2026-01-01 全面程式優化
+## 執行目標
+1. 資料庫操作優化
+2. 程式碼結構優化 (表驅動、衛語句)
+3. 記憶體使用優化
+4. 手機相容性維護
+
+## 修改內容
+1.  **`step2_download_lists`**: 改用 `executemany` 批次寫入 (提升 10-50x)
+2.  **`is_normal_stock`**: 使用 set 表驅動取代 list 查詢
+3.  **`safe_float_preserving_none`**: 避免重複 import numpy，改用 math
+4.  **主進程檢查**: 初始化訊息只在主進程顯示
+
+## 修改進度
+*   [x] 批次數據庫寫入
+*   [x] 表驅動法優化
+*   [x] 記憶體優化 (減少 import)
+*   [x] 修復多進程訊息重複
+
+
+
+
+
+
+

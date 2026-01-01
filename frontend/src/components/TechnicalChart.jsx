@@ -8,7 +8,7 @@ import {
 } from '@/utils/indicators';
 import API_BASE_URL from '@/lib/api';
 
-export function TechnicalChart({ code, name, onHoverData }) {
+export function TechnicalChart({ code, name, onHoverData, isFullScreen = false }) {
     const { isMobileView } = useMobileView();
     const [period, setPeriod] = useState('日');
     const periods = ['日', '週', '月'];
@@ -33,7 +33,28 @@ export function TechnicalChart({ code, name, onHoverData }) {
     const isResizing = useRef(null);
     const lastTouchY = useRef(0);
 
+    // Full Screen Height Calculation
+    useEffect(() => {
+        if (isFullScreen) {
+            const calculateHeights = () => {
+                // Total available height - header (approx 40px) - toolbar (approx 80px) - margins
+                const totalHeight = window.innerHeight - 120;
+                const mainH = Math.floor(totalHeight * 0.55);
+                const volH = Math.floor(totalHeight * 0.15);
+                const subH = Math.floor(totalHeight * 0.15);
+                setChartHeights({ main: mainH, volume: volH, sub1: subH, sub2: subH });
+            };
+            calculateHeights();
+            window.addEventListener('resize', calculateHeights);
+            return () => window.removeEventListener('resize', calculateHeights);
+        } else {
+            // Reset to default or previous values if needed, or just leave as is
+            setChartHeights({ main: 300, volume: 80, sub1: 120, sub2: 120 });
+        }
+    }, [isFullScreen]);
+
     const handleResizeStart = (type) => (e) => {
+        if (isFullScreen) return; // Disable manual resize in full screen
         isResizing.current = type;
         document.body.style.cursor = 'row-resize';
         document.body.style.userSelect = 'none';
@@ -59,6 +80,7 @@ export function TechnicalChart({ code, name, onHoverData }) {
     }, []);
 
     const handleTouchStart = (type) => (e) => {
+        if (isFullScreen) return; // Disable manual resize in full screen
         isResizing.current = type;
         lastTouchY.current = e.touches[0].clientY;
         document.body.style.overflow = 'hidden';
