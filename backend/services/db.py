@@ -231,23 +231,28 @@ def get_stock_by_code(code: str) -> Optional[Dict]:
 def get_stock_history(code: str, limit: int = 60) -> List[Dict]:
     """取得股票歷史 K 線 (支援本地/雲端切換)"""
     # 1. 雲端模式優先 (自動偵測或設定檔指定)
+    # 1. 雲端模式優先 (自動偵測或設定檔指定)
     read_source = "cloud" if db_manager.is_cloud_mode else "local"
     
-    # 檢查 config.json 是否有覆蓋設定
-    try:
-        import json
-        config_path = Path("config.json")
-        if config_path.exists():
-            with open(config_path, 'r', encoding='utf-8') as f:
-                config = json.load(f)
-                read_source = config.get("read_source", read_source)
-    except:
-        pass
+    # 檢查 config.json 是否有覆蓋設定 (僅在非強制雲端模式下)
+    if not db_manager.is_cloud_mode:
+        try:
+            import json
+            config_path = Path("config.json")
+            if config_path.exists():
+                with open(config_path, 'r', encoding='utf-8') as f:
+                    config = json.load(f)
+                    read_source = config.get("read_source", read_source)
+        except:
+            pass
 
     # 2. 如果是雲端模式，且 Supabase 已連線
     if read_source == "cloud" and db_manager.supabase:
         try:
-            return get_stock_history_from_cloud(code, limit)
+            data = get_stock_history_from_cloud(code, limit)
+            if not data:
+                print(f"⚠️ Cloud history for {code} is empty")
+            return data
         except Exception as e:
             print(f"⚠️ 雲端讀取失敗: {e}")
             if db_manager.is_cloud_mode:
