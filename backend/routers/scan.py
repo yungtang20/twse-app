@@ -225,12 +225,14 @@ def execute_scan_query_cloud(
             if scan_type == "vp_support":
                 if vp_low and close:
                     dist = abs(close - vp_low) / close
+                    item['_distance'] = dist  # 保存距離供排序
                     passed = dist < tolerance
                 else:
                     passed = False
             elif scan_type == "vp_resistance":
                 if vp_high and close:
                     dist = abs(close - vp_high) / close
+                    item['_distance'] = dist  # 保存距離供排序
                     passed = dist < tolerance
                 else:
                     passed = False
@@ -262,12 +264,36 @@ def execute_scan_query_cloud(
                 if close > bbi_val and bbi_val > 0: score += 1  # 價格 > BBI
                 if mtm_val > 0: score += 1             # MTM 動能向上
                 
+                # 保存分數供排序使用
+                item['six_dim_score'] = score
+                
                 # 至少5項符合
                 if score < 5:
                     passed = False
             
             if passed:
                 results.append(item)
+        
+        # 根據 scan_type 進行特定排序
+        if scan_type == "six_dim":
+            # 六維共振：按分數降序，分數相同則按 RSI 降序
+            results.sort(key=lambda x: (x.get('six_dim_score', 0), x.get('rsi', 0)), reverse=True)
+        elif scan_type == "institutional":
+            # 機構價值：按 RSI 升序（未過熱優先）
+            results.sort(key=lambda x: x.get('rsi', 100))
+        elif scan_type.startswith("vp_"):
+            # VP 掃描：按距離升序（越接近越優先）
+            results.sort(key=lambda x: x.get('_distance', 999))
+        elif scan_type.startswith("mfi_"):
+            # MFI 掃描：oversold 按 MFI 升序，overbought 按 MFI 降序
+            if "oversold" in scan_type:
+                results.sort(key=lambda x: x.get('mfi', 100))
+            else:
+                results.sort(key=lambda x: x.get('mfi', 0), reverse=True)
+        elif scan_type == "ma_bull":
+            # 均線多頭：按乖離率升序（貼近均線優先）
+            results.sort(key=lambda x: abs((x.get('close', 0) - x.get('ma20', 1)) / max(x.get('ma20', 1), 1)))
+        # default: 保持原本的成交量排序
         
         return results[:limit]
     except Exception as e:
