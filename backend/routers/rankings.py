@@ -125,6 +125,30 @@ async def get_institutional_rankings(
                 res = query.execute()
                 if res.data:
                     data = res.data
+                    
+                    # Fetch holdings data from institutional_investors for these stocks
+                    codes = [item['code'] for item in data]
+                    holdings_map = {}
+                    if codes and db_manager.supabase:
+                        try:
+                            # Get latest date first
+                            latest_hist = db_manager.supabase.table('stock_history').select('date_int').order('date_int', desc=True).limit(1).execute()
+                            if latest_hist.data:
+                                latest_date_int = latest_hist.data[0]['date_int']
+                                
+                                # Query institutional_investors
+                                inst_res = db_manager.supabase.table('institutional_investors') \
+                                    .select('code, foreign_holding_shares, foreign_holding_pct, trust_holding_shares, trust_holding_pct') \
+                                    .in_('code', codes) \
+                                    .eq('date_int', latest_date_int) \
+                                    .execute()
+                                
+                                if inst_res.data:
+                                    for h in inst_res.data:
+                                        holdings_map[h['code']] = h
+                        except Exception as e:
+                            print(f"Error fetching cloud holdings: {e}")
+
                     # Add calculated fields expected by frontend
                     for item in data:
                         # Frontend expects total_buy
@@ -152,10 +176,12 @@ async def get_institutional_rankings(
                         if 'trust_cumulative_pct' not in item: item['trust_cumulative_pct'] = 0.0
                         if 'dealer_cumulative_pct' not in item: item['dealer_cumulative_pct'] = 0.0
                         
-                        if 'foreign_holding_shares' not in item: item['foreign_holding_shares'] = 0
-                        if 'foreign_holding_pct' not in item: item['foreign_holding_pct'] = 0.0
-                        if 'trust_holding_shares' not in item: item['trust_holding_shares'] = 0
-                        if 'trust_holding_pct' not in item: item['trust_holding_pct'] = 0.0
+                        # Merge holdings data
+                        h_data = holdings_map.get(item['code'], {})
+                        item['foreign_holding_shares'] = h_data.get('foreign_holding_shares') or 0
+                        item['foreign_holding_pct'] = h_data.get('foreign_holding_pct') or 0.0
+                        item['trust_holding_shares'] = h_data.get('trust_holding_shares') or 0
+                        item['trust_holding_pct'] = h_data.get('trust_holding_pct') or 0.0
                         
                     total_count = len(data) # Approximation
 
