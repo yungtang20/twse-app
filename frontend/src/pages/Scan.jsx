@@ -289,7 +289,7 @@ export const Scan = () => {
                 <div className="grid grid-cols-[auto_1fr_auto] gap-x-3 gap-y-2 items-center">
                     {/* Row 1: Logic */}
                     <div className="text-blue-400 font-bold whitespace-nowrap">ℹ️ 篩選邏輯:</div>
-                    <div className="text-white font-medium col-span-2">{activeDesc}</div>
+                    <div className="text-white font-medium col-span-2 whitespace-normal break-words leading-relaxed">{activeDesc}</div>
 
                     {/* Row 2: Filter Conditions */}
                     <div className="text-slate-400 font-bold text-xs whitespace-nowrap">篩選條件:</div>
