@@ -37,11 +37,12 @@ export function TechnicalChart({ code, name, onHoverData, isFullScreen = false }
     useEffect(() => {
         if (isFullScreen) {
             const calculateHeights = () => {
-                // Total available height - header (approx 40px) - toolbar (approx 80px) - margins
-                const totalHeight = window.innerHeight - 120;
-                const mainH = Math.floor(totalHeight * 0.55);
-                const volH = Math.floor(totalHeight * 0.15);
-                const subH = Math.floor(totalHeight * 0.15);
+                // Total available height - header (approx 40px) - toolbar (approx 40px)
+                // Reduced offset from 120 to 80 because header is now more compact
+                const totalHeight = window.innerHeight - 80;
+                const mainH = Math.floor(totalHeight * 0.60); // Increased from 0.55
+                const volH = Math.floor(totalHeight * 0.12);  // Reduced from 0.15
+                const subH = Math.floor(totalHeight * 0.14);  // Reduced from 0.15
                 setChartHeights({ main: mainH, volume: volH, sub1: subH, sub2: subH });
             };
             calculateHeights();
@@ -422,64 +423,141 @@ export function TechnicalChart({ code, name, onHoverData, isFullScreen = false }
         }
     };
 
+    // Helper to render indicator values overlay
+    const renderIndicatorOverlay = () => {
+        const values = [];
+        indicatorConfig.forEach(ind => {
+            if (!activeIndicators.includes(ind.name)) return;
+            let val = null;
+            if (ind.name === 'MA20') val = calculateMA(chartData, 20)[hoverIdx]?.toFixed(2);
+            else if (ind.name === 'MA60') val = calculateMA(chartData, 60)[hoverIdx]?.toFixed(2);
+            else if (ind.name === 'MA120') val = calculateMA(chartData, 120)[hoverIdx]?.toFixed(2);
+            else if (ind.name === 'MA200') val = calculateMA(chartData, 200)[hoverIdx]?.toFixed(2);
+            else if (ind.name === 'VWAP') val = vwapData[hoverIdx]?.toFixed(2);
+            else if (ind.name === 'BBW') val = bollingerData.mid[hoverIdx] ? `${bollingerData.lower[hoverIdx]?.toFixed(0)}/${bollingerData.mid[hoverIdx]?.toFixed(0)}/${bollingerData.upper[hoverIdx]?.toFixed(0)}` : null;
+            else if (ind.name === 'VP') val = vpData.poc[hoverIdx] ? `${vpData.lower[hoverIdx]?.toFixed(0)}/${vpData.poc[hoverIdx]?.toFixed(0)}/${vpData.upper[hoverIdx]?.toFixed(0)}` : null;
+            else if (ind.name === 'VSBC') val = vsbcData.lower[hoverIdx] ? `${vsbcData.lower[hoverIdx]?.toFixed(0)}/${vsbcData.upper[hoverIdx]?.toFixed(0)}` : null;
+
+            if (val) {
+                values.push(
+                    <div key={ind.name} className="flex items-center gap-1 mr-3">
+                        <span className="w-2 h-2 rounded-full" style={{ backgroundColor: ind.color }} />
+                        <span style={{ color: ind.color }}>{ind.name} {val}</span>
+                    </div>
+                );
+            }
+        });
+        return (
+            <div className="absolute top-2 left-2 z-10 flex flex-wrap pointer-events-none text-[10px] font-mono bg-slate-900/50 p-1 rounded backdrop-blur-sm">
+                {values}
+            </div>
+        );
+    };
+
     return (
-        <div className="w-full">
-            <div className="bg-slate-800 rounded p-2 mb-2 flex flex-wrap items-center gap-3">
-                {indicatorConfig.map(ind => {
-                    const active = activeIndicators.includes(ind.name);
-                    let val = null;
-                    if (ind.name === 'MA20') val = calculateMA(chartData, 20)[hoverIdx]?.toFixed(2);
-                    else if (ind.name === 'MA60') val = calculateMA(chartData, 60)[hoverIdx]?.toFixed(2);
-                    else if (ind.name === 'MA120') val = calculateMA(chartData, 120)[hoverIdx]?.toFixed(2);
-                    else if (ind.name === 'MA200') val = calculateMA(chartData, 200)[hoverIdx]?.toFixed(2);
-                    else if (ind.name === 'VWAP') val = vwapData[hoverIdx]?.toFixed(2);
-                    else if (ind.name === 'BBW') val = bollingerData.mid[hoverIdx] ? `${bollingerData.lower[hoverIdx]?.toFixed(0)}/${bollingerData.mid[hoverIdx]?.toFixed(0)}/${bollingerData.upper[hoverIdx]?.toFixed(0)}` : null;
-                    else if (ind.name === 'VP') val = vpData.poc[hoverIdx] ? `${vpData.lower[hoverIdx]?.toFixed(0)}/${vpData.poc[hoverIdx]?.toFixed(0)}/${vpData.upper[hoverIdx]?.toFixed(0)}` : null;
-                    else if (ind.name === 'VSBC') val = vsbcData.lower[hoverIdx] ? `${vsbcData.lower[hoverIdx]?.toFixed(0)}/${vsbcData.upper[hoverIdx]?.toFixed(0)}` : null;
-                    return (
-                        <button key={ind.name} onClick={() => toggleIndicator(ind.name)} className={`flex items-center gap-1.5 text-xs transition-opacity ${active ? 'opacity-100' : 'opacity-40'}`}>
-                            <span className="w-2.5 h-2.5 rounded-full" style={{ backgroundColor: ind.color }} />
-                            <span className="text-slate-300">{ind.name}</span>
-                            {active && val && <span style={{ color: ind.color }}>{val}</span>}
+        <div className="w-full h-full flex flex-col">
+            {/* Header: Scrollable Toggles */}
+            <div className="bg-slate-800 rounded p-1 mb-1 flex items-center justify-between shrink-0">
+                <div className="flex overflow-x-auto no-scrollbar gap-2 px-1 items-center flex-1 mask-linear-fade">
+                    {indicatorConfig.map(ind => {
+                        const active = activeIndicators.includes(ind.name);
+                        return (
+                            <button
+                                key={ind.name}
+                                onClick={() => toggleIndicator(ind.name)}
+                                className={`flex items-center gap-1 px-2 py-1 rounded text-[10px] whitespace-nowrap transition-all ${active ? 'bg-slate-700 text-white shadow-sm' : 'text-slate-400 hover:text-slate-300'}`}
+                            >
+                                <span className="w-1.5 h-1.5 rounded-full" style={{ backgroundColor: ind.color }} />
+                                <span>{ind.name}</span>
+                            </button>
+                        );
+                    })}
+                </div>
+                <div className="flex gap-1 ml-2 shrink-0">
+                    {periods.map(p => (
+                        <button
+                            key={p}
+                            onClick={() => setPeriod(p)}
+                            className={`px-2 py-1 text-[10px] rounded font-medium ${period === p ? 'bg-blue-600 text-white' : 'bg-slate-700 text-slate-400'}`}
+                        >
+                            {p}
                         </button>
-                    );
-                })}
-                <div className="ml-auto flex gap-1">
-                    {periods.map(p => <button key={p} onClick={() => setPeriod(p)} className={`px-3 py-1 text-xs rounded ${period === p ? 'bg-blue-600 text-white' : 'bg-slate-700 text-slate-400'}`}>{p}</button>)}
+                    ))}
                 </div>
             </div>
-            <div ref={mainContainerRef} className="w-full rounded overflow-hidden" />
-            <div className="h-2 bg-slate-800 hover:bg-blue-500 cursor-row-resize flex justify-center items-center" onMouseDown={handleResizeStart('main-vol')} onTouchStart={handleTouchStart('main-vol')}><div className="w-10 h-1 bg-slate-600 rounded-full" /></div>
-            <div className="mt-1">
-                <div className="flex gap-3 text-xs text-slate-400 mb-1 px-1">
-                    <span>成交量</span>
-                    <span className="text-blue-400">— MA5: {volumeMA5[hoverIdx] ? (volumeMA5[hoverIdx] / 10000).toFixed(0) : '-'}</span>
-                    <span className="text-purple-400">— MA60: {volumeMA60[hoverIdx] ? (volumeMA60[hoverIdx] / 10000).toFixed(0) : '-'}</span>
-                    <span className="text-yellow-400">量: {chartData[hoverIdx] ? (chartData[hoverIdx].value / 10000).toFixed(0) : '-'}</span>
+
+            {/* Main Chart with Overlay */}
+            <div className="relative w-full">
+                {renderIndicatorOverlay()}
+                <div ref={mainContainerRef} className="w-full rounded overflow-hidden" />
+            </div>
+
+            {/* Resizer */}
+            <div className="h-2 bg-slate-800 hover:bg-blue-500 cursor-row-resize flex justify-center items-center shrink-0" onMouseDown={handleResizeStart('main-vol')} onTouchStart={handleTouchStart('main-vol')}>
+                <div className="w-8 h-1 bg-slate-600 rounded-full" />
+            </div>
+
+            {/* Volume Section */}
+            <div className="mt-0.5">
+                <div className="flex gap-3 text-[10px] text-slate-400 px-1 absolute z-10 pointer-events-none" style={{ marginTop: '-1.2rem' }}>
+                    <span className="bg-slate-900/50 px-1 rounded">Vol</span>
+                    <span className="text-blue-400 bg-slate-900/50 px-1 rounded">MA5: {volumeMA5[hoverIdx] ? (volumeMA5[hoverIdx] / 10000).toFixed(0) : '-'}</span>
+                    <span className="text-purple-400 bg-slate-900/50 px-1 rounded">MA60: {volumeMA60[hoverIdx] ? (volumeMA60[hoverIdx] / 10000).toFixed(0) : '-'}</span>
+                    <span className="text-yellow-400 bg-slate-900/50 px-1 rounded">V: {chartData[hoverIdx] ? (chartData[hoverIdx].value / 10000).toFixed(0) : '-'}</span>
                 </div>
                 <div ref={volumeContainerRef} className="w-full rounded overflow-hidden" />
             </div>
-            <div className="h-2 bg-slate-800 hover:bg-blue-500 cursor-row-resize flex justify-center items-center" onMouseDown={handleResizeStart('vol-sub1')} onTouchStart={handleTouchStart('vol-sub1')}><div className="w-10 h-1 bg-slate-600 rounded-full" /></div>
-            <div className="mt-1">
-                <div className="flex gap-2 mb-1 px-1 items-center">
-                    <span className="text-xs text-slate-400">副圖1:</span>
-                    <select value={activeSubIndicator} onChange={(e) => setActiveSubIndicator(e.target.value)} className="bg-slate-700 text-white text-xs px-2 py-1 rounded focus:outline-none">{subIndicators.map(ind => <option key={ind} value={ind}>{ind}</option>)}</select>
-                    {activeSubIndicator === '大戶' && <select value={shareholderThreshold} onChange={(e) => setShareholderThreshold(Number(e.target.value))} className="bg-slate-700 text-white text-xs px-2 py-1 rounded focus:outline-none"><option value={1000}>1000張以上</option><option value={800}>800張以上</option><option value={600}>600張以上</option><option value={400}>400張以上</option></select>}
+
+            {/* Resizer */}
+            <div className="h-2 bg-slate-800 hover:bg-blue-500 cursor-row-resize flex justify-center items-center shrink-0" onMouseDown={handleResizeStart('vol-sub1')} onTouchStart={handleTouchStart('vol-sub1')}>
+                <div className="w-8 h-1 bg-slate-600 rounded-full" />
+            </div>
+
+            {/* Sub Chart 1 */}
+            <div className="mt-0.5 relative">
+                <div className="flex gap-2 px-1 items-center absolute top-1 left-1 z-10">
+                    <select value={activeSubIndicator} onChange={(e) => setActiveSubIndicator(e.target.value)} className="bg-slate-800/80 text-white text-[10px] px-1 py-0.5 rounded border border-slate-700 focus:outline-none backdrop-blur-sm">
+                        {subIndicators.map(ind => <option key={ind} value={ind}>{ind}</option>)}
+                    </select>
+                    {activeSubIndicator === '大戶' && (
+                        <select value={shareholderThreshold} onChange={(e) => setShareholderThreshold(Number(e.target.value))} className="bg-slate-800/80 text-white text-[10px] px-1 py-0.5 rounded border border-slate-700 focus:outline-none backdrop-blur-sm">
+                            <option value={1000}>1000+</option><option value={800}>800+</option><option value={600}>600+</option><option value={400}>400+</option>
+                        </select>
+                    )}
+                    <div className="flex gap-2 text-[10px] text-slate-400 bg-slate-900/50 px-1 rounded backdrop-blur-sm">
+                        {getSubValues(activeSubIndicator, chartRefs.current.subSeries)}
+                    </div>
                 </div>
-                <div className="flex gap-3 text-xs text-slate-400 mb-1 px-1 min-h-[1.25rem]">{getSubValues(activeSubIndicator, chartRefs.current.subSeries)}</div>
                 <div ref={subChartContainerRef} className="w-full rounded overflow-hidden" />
             </div>
-            <div className="h-2 bg-slate-800 hover:bg-blue-500 cursor-row-resize flex justify-center items-center" onMouseDown={handleResizeStart('sub1-sub2')} onTouchStart={handleTouchStart('sub1-sub2')}><div className="w-10 h-1 bg-slate-600 rounded-full" /></div>
-            <div className="mt-1">
-                <div className="flex gap-2 mb-1 px-1 items-center">
-                    <span className="text-xs text-slate-400">副圖2:</span>
-                    <select value={activeSubIndicator2} onChange={(e) => setActiveSubIndicator2(e.target.value)} className="bg-slate-700 text-white text-xs px-2 py-1 rounded focus:outline-none">{subIndicators.map(ind => <option key={ind} value={ind}>{ind}</option>)}</select>
-                    {activeSubIndicator2 === '大戶' && <select value={shareholderThreshold} onChange={(e) => setShareholderThreshold(Number(e.target.value))} className="bg-slate-700 text-white text-xs px-2 py-1 rounded focus:outline-none"><option value={1000}>1000張以上</option><option value={800}>800張以上</option><option value={600}>600張以上</option><option value={400}>400張以上</option></select>}
+
+            {/* Resizer */}
+            <div className="h-2 bg-slate-800 hover:bg-blue-500 cursor-row-resize flex justify-center items-center shrink-0" onMouseDown={handleResizeStart('sub1-sub2')} onTouchStart={handleTouchStart('sub1-sub2')}>
+                <div className="w-8 h-1 bg-slate-600 rounded-full" />
+            </div>
+
+            {/* Sub Chart 2 */}
+            <div className="mt-0.5 relative">
+                <div className="flex gap-2 px-1 items-center absolute top-1 left-1 z-10">
+                    <select value={activeSubIndicator2} onChange={(e) => setActiveSubIndicator2(e.target.value)} className="bg-slate-800/80 text-white text-[10px] px-1 py-0.5 rounded border border-slate-700 focus:outline-none backdrop-blur-sm">
+                        {subIndicators.map(ind => <option key={ind} value={ind}>{ind}</option>)}
+                    </select>
+                    {activeSubIndicator2 === '大戶' && (
+                        <select value={shareholderThreshold} onChange={(e) => setShareholderThreshold(Number(e.target.value))} className="bg-slate-800/80 text-white text-[10px] px-1 py-0.5 rounded border border-slate-700 focus:outline-none backdrop-blur-sm">
+                            <option value={1000}>1000+</option><option value={800}>800+</option><option value={600}>600+</option><option value={400}>400+</option>
+                        </select>
+                    )}
+                    <div className="flex gap-2 text-[10px] text-slate-400 bg-slate-900/50 px-1 rounded backdrop-blur-sm">
+                        {getSubValues(activeSubIndicator2, chartRefs.current.subSeries2)}
+                    </div>
                 </div>
-                <div className="flex gap-3 text-xs text-slate-400 mb-1 px-1 min-h-[1.25rem]">{getSubValues(activeSubIndicator2, chartRefs.current.subSeries2)}</div>
                 <div ref={subChartContainerRef2} className="w-full rounded overflow-hidden" />
             </div>
-            <div className="h-2 bg-slate-800 hover:bg-blue-500 cursor-row-resize flex justify-center items-center" onMouseDown={handleResizeStart('sub2-bottom')} onTouchStart={handleTouchStart('sub2-bottom')}><div className="w-10 h-1 bg-slate-600 rounded-full" /></div>
+
+            {/* Bottom Resizer (Optional, maybe remove to save space) */}
+            <div className="h-2 bg-slate-800 hover:bg-blue-500 cursor-row-resize flex justify-center items-center shrink-0" onMouseDown={handleResizeStart('sub2-bottom')} onTouchStart={handleTouchStart('sub2-bottom')}>
+                <div className="w-8 h-1 bg-slate-600 rounded-full" />
+            </div>
         </div>
     );
 }
