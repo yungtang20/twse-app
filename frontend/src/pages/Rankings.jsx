@@ -177,56 +177,56 @@ export const Rankings = () => {
                 </div>
             </div>
 
-            {/* Table */}
-            <div className="bg-slate-800/50 border border-slate-700 rounded overflow-x-auto relative min-h-[400px]">
+            {/* Table Container - Horizontal Scroll */}
+            <div className="bg-slate-800/50 border border-slate-700 rounded overflow-x-auto relative min-h-[400px] no-scrollbar">
                 {loading ? (
                     <div className="flex items-center justify-center h-64 text-slate-500">載入中...</div>
                 ) : (
                     <table className="w-full text-xs border-collapse whitespace-nowrap text-left">
                         <thead>
                             <tr className="bg-slate-800 text-slate-400 border-b border-slate-700">
-                                <th rowSpan="2" className="p-2 font-bold text-slate-300 sticky left-0 z-20 bg-slate-800 shadow-[2px_0_5px_-2px_rgba(0,0,0,0.5)]">
+                                <th rowSpan="2" className="p-2 font-bold text-slate-300 sticky left-0 z-20 bg-slate-800 shadow-[2px_0_5px_-2px_rgba(0,0,0,0.5)] min-w-[80px]">
                                     股票
                                 </th>
-                                <th rowSpan="2" className="p-2 font-bold text-slate-300 cursor-pointer hover:text-white text-right" onClick={() => handleSort('close')}>
+                                <th rowSpan="2" className="p-2 font-bold text-slate-300 cursor-pointer hover:text-white text-right min-w-[70px]" onClick={() => handleSort('close')}>
                                     現價%<SortIcon column="close" />
                                 </th>
-                                <th rowSpan="2" className="p-2 font-bold text-slate-300 cursor-pointer hover:text-white text-right" onClick={() => handleSort('volume')}>
+                                <th rowSpan="2" className="p-2 font-bold text-slate-300 cursor-pointer hover:text-white text-right min-w-[70px]" onClick={() => handleSort('volume')}>
                                     成交量<SortIcon column="volume" />
                                 </th>
-                                <th colSpan="2" className="p-2 font-bold text-slate-300 cursor-pointer hover:text-white text-center" onClick={() => handleSort('streak')}>
+                                <th colSpan="2" className="p-2 font-bold text-slate-300 cursor-pointer hover:text-white text-center border-l border-slate-700" onClick={() => handleSort('streak')}>
                                     連買連賣<SortIcon column="streak" />
                                 </th>
-                                <th colSpan="2" className="p-2 font-bold text-orange-400 bg-orange-500/10 cursor-pointer hover:text-orange-300 text-center" onClick={() => handleSort('foreign_holding')}>
+                                <th colSpan="2" className="p-2 font-bold text-orange-400 bg-orange-500/10 cursor-pointer hover:text-orange-300 text-center border-l border-slate-700" onClick={() => handleSort('foreign_holding')}>
                                     外資持股<SortIcon column="foreign_holding" />
                                 </th>
-                                <th colSpan="2" className="p-2 font-bold text-yellow-400 bg-yellow-500/10 cursor-pointer hover:text-yellow-300 text-center" onClick={() => handleSort('trust_holding')}>
+                                <th colSpan="2" className="p-2 font-bold text-yellow-400 bg-yellow-500/10 cursor-pointer hover:text-yellow-300 text-center border-l border-slate-700" onClick={() => handleSort('trust_holding')}>
                                     投信持股(估)<SortIcon column="trust_holding" />
                                 </th>
                             </tr>
                             <tr className="bg-slate-800/80 text-slate-400 border-b border-slate-700">
-                                <th className="p-2 text-red-400 text-center">
+                                <th className="p-2 text-red-400 text-center border-l border-slate-700 min-w-[80px]">
                                     <div className="flex flex-col items-center">
                                         <span className="cursor-pointer hover:text-red-300" onClick={() => handleSort('foreign_streak')}>外資</span>
-                                        <div className="flex gap-0.5 mt-1 w-full">
-                                            <span onClick={() => handleSort('foreign_cumulative')} className="flex-1 text-xs bg-slate-700 py-1.5 rounded-sm cursor-pointer hover:bg-slate-600 text-slate-300 text-center transition-colors" title="依累計張數排序">張</span>
-                                            <span onClick={() => handleSort('foreign_cumulative_amount')} className="flex-1 text-xs bg-slate-700 py-1.5 rounded-sm cursor-pointer hover:bg-slate-600 text-slate-300 text-center transition-colors" title="依累計金額排序">金</span>
+                                        <div className="flex gap-0.5 mt-1 w-full justify-center">
+                                            <span onClick={() => handleSort('foreign_cumulative')} className="px-1.5 py-0.5 text-[10px] bg-slate-700 rounded cursor-pointer hover:bg-slate-600 text-slate-300" title="依累計張數排序">張</span>
+                                            <span onClick={() => handleSort('foreign_cumulative_amount')} className="px-1.5 py-0.5 text-[10px] bg-slate-700 rounded cursor-pointer hover:bg-slate-600 text-slate-300" title="依累計金額排序">金</span>
                                         </div>
                                     </div>
                                 </th>
-                                <th className="p-2 text-yellow-400 text-center">
+                                <th className="p-2 text-yellow-400 text-center min-w-[80px]">
                                     <div className="flex flex-col items-center">
                                         <span className="cursor-pointer hover:text-yellow-300" onClick={() => handleSort('trust_streak')}>投信</span>
-                                        <div className="flex gap-0.5 mt-1 w-full">
-                                            <span onClick={() => handleSort('trust_cumulative')} className="flex-1 text-xs bg-slate-700 py-1.5 rounded-sm cursor-pointer hover:bg-slate-600 text-slate-300 text-center transition-colors" title="依累計張數排序">張</span>
-                                            <span onClick={() => handleSort('trust_cumulative_amount')} className="flex-1 text-xs bg-slate-700 py-1.5 rounded-sm cursor-pointer hover:bg-slate-600 text-slate-300 text-center transition-colors" title="依累計金額排序">金</span>
+                                        <div className="flex gap-0.5 mt-1 w-full justify-center">
+                                            <span onClick={() => handleSort('trust_cumulative')} className="px-1.5 py-0.5 text-[10px] bg-slate-700 rounded cursor-pointer hover:bg-slate-600 text-slate-300" title="依累計張數排序">張</span>
+                                            <span onClick={() => handleSort('trust_cumulative_amount')} className="px-1.5 py-0.5 text-[10px] bg-slate-700 rounded cursor-pointer hover:bg-slate-600 text-slate-300" title="依累計金額排序">金</span>
                                         </div>
                                     </div>
                                 </th>
-                                <th className="p-2 text-orange-400 text-right">張數</th>
-                                <th className="p-2 text-orange-400 text-right">比率</th>
-                                <th className="p-2 text-yellow-400 text-right">張數</th>
-                                <th className="p-2 text-yellow-400 text-right">比率</th>
+                                <th className="p-2 text-orange-400 text-right border-l border-slate-700 min-w-[70px]">張數</th>
+                                <th className="p-2 text-orange-400 text-right min-w-[60px]">比率</th>
+                                <th className="p-2 text-yellow-400 text-right border-l border-slate-700 min-w-[70px]">張數</th>
+                                <th className="p-2 text-yellow-400 text-right min-w-[60px]">比率</th>
                             </tr>
                         </thead>
                         <tbody>
@@ -248,7 +248,7 @@ export const Rankings = () => {
                                     <td className="p-2 text-right font-mono text-slate-300">
                                         {fmtVolume(stock.volume)}
                                     </td>
-                                    <td className="p-2 text-center">
+                                    <td className="p-2 text-center border-l border-slate-700/50">
                                         <div className="flex flex-col items-center justify-center gap-0.5">
                                             <StreakBadge value={stock.foreign_streak} />
                                             <div className={`text-[10px] ${getColor(stock.foreign_cumulative)}`}>
@@ -256,7 +256,6 @@ export const Rankings = () => {
                                             </div>
                                             <div className={`text-[10px] ${getColor(stock.foreign_cumulative)}`}>
                                                 {fmtAmount(stock.foreign_cumulative, stock.close)}億
-                                                <span className="text-slate-500 ml-0.5">({stock.foreign_cumulative_pct}%)</span>
                                             </div>
                                         </div>
                                     </td>
@@ -268,17 +267,16 @@ export const Rankings = () => {
                                             </div>
                                             <div className={`text-[10px] ${getColor(stock.trust_cumulative)}`}>
                                                 {fmtAmount(stock.trust_cumulative, stock.close)}億
-                                                <span className="text-slate-500 ml-0.5">({stock.trust_cumulative_pct}%)</span>
                                             </div>
                                         </div>
                                     </td>
-                                    <td className="p-2 text-right font-mono text-orange-300">
+                                    <td className="p-2 text-right font-mono text-orange-300 border-l border-slate-700/50">
                                         {fmtCumulative(stock.foreign_holding_shares)}
                                     </td>
                                     <td className="p-2 text-right font-mono text-orange-300">
                                         {stock.foreign_holding_pct}%
                                     </td>
-                                    <td className="p-2 text-right font-mono text-yellow-300">
+                                    <td className="p-2 text-right font-mono text-yellow-300 border-l border-slate-700/50">
                                         {fmtCumulative(stock.trust_holding_shares || 0)}
                                     </td>
                                     <td className="p-2 text-right font-mono text-yellow-300">

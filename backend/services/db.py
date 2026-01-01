@@ -45,10 +45,13 @@ class DBManager:
         self._supabase_initialized = False
         self.is_cloud_mode = IS_CLOUD_MODE
         
-        # 雲端模式: 自動連線 Supabase
-        if IS_CLOUD_MODE:
-            print("Detect cloud mode (SQLite not found), connecting to Supabase...")
+        # 嘗試連線 Supabase (無論是否為雲端模式，只要有設定就連線)
+        if SUPABASE_URL and SUPABASE_KEY:
             self.connect_supabase()
+            
+        # 雲端模式: 如果 SQLite 不存在，且 Supabase 連線成功，則標記為雲端模式
+        if IS_CLOUD_MODE:
+            print("Detect cloud mode (SQLite not found)")
     
     def set_db_path(self, new_path: str) -> bool:
         """動態切換資料庫路徑"""
@@ -424,21 +427,37 @@ def get_system_status() -> Dict:
             }
     
     # 本地模式: SQLite
-    stock_count = db_manager.execute_single("SELECT COUNT(*) as cnt FROM stock_meta")
-    latest_date = db_manager.execute_single("SELECT MAX(date_int) as dt FROM stock_history")
-    inst_date = db_manager.execute_single("SELECT MAX(date_int) as dt FROM institutional_investors")
-    
-    return {
-        "db_path": str(DB_PATH),
-        "stock_count": stock_count["cnt"] if stock_count else 0,
-        "latest_date": latest_date["dt"] if latest_date else None,
-        "institutional_date": inst_date["dt"] if inst_date else None,
-        "db_exists": DB_PATH.exists(),
-        "db_size_mb": round(DB_PATH.stat().st_size / 1024 / 1024, 2) if DB_PATH.exists() else 0,
-        "last_modified": datetime.fromtimestamp(DB_PATH.stat().st_mtime).strftime("%Y-%m-%d %H:%M:%S") if DB_PATH.exists() else None,
-        "supabase_connected": db_manager.supabase is not None,
-        "is_cloud_mode": False
-    }
+    try:
+        stock_count = db_manager.execute_single("SELECT COUNT(*) as cnt FROM stock_meta")
+        latest_date = db_manager.execute_single("SELECT MAX(date_int) as dt FROM stock_history")
+        inst_date = db_manager.execute_single("SELECT MAX(date_int) as dt FROM institutional_investors")
+        
+        return {
+            "db_path": str(DB_PATH),
+            "stock_count": stock_count["cnt"] if stock_count else 0,
+            "latest_date": latest_date["dt"] if latest_date else None,
+            "institutional_date": inst_date["dt"] if inst_date else None,
+            "db_exists": DB_PATH.exists(),
+            "db_size_mb": round(DB_PATH.stat().st_size / 1024 / 1024, 2) if DB_PATH.exists() else 0,
+            "last_modified": datetime.fromtimestamp(DB_PATH.stat().st_mtime).strftime("%Y-%m-%d %H:%M:%S") if DB_PATH.exists() else None,
+            "supabase_connected": db_manager.supabase is not None,
+            "is_cloud_mode": False
+        }
+    except Exception as e:
+        # 如果本地資料庫存在但沒有資料表 (例如剛建立)，回傳空狀態而不是錯誤
+        print(f"Local DB error (possibly empty): {e}")
+        return {
+            "db_path": str(DB_PATH),
+            "stock_count": 0,
+            "latest_date": None,
+            "institutional_date": None,
+            "db_exists": DB_PATH.exists(),
+            "db_size_mb": round(DB_PATH.stat().st_size / 1024 / 1024, 2) if DB_PATH.exists() else 0,
+            "last_modified": datetime.fromtimestamp(DB_PATH.stat().st_mtime).strftime("%Y-%m-%d %H:%M:%S") if DB_PATH.exists() else None,
+            "supabase_connected": db_manager.supabase is not None,
+            "is_cloud_mode": False,
+            "note": "Local DB exists but may be uninitialized"
+        }
 
 def get_cloud_status() -> Dict:
     """取得雲端資料狀態"""
