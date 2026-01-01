@@ -389,11 +389,15 @@ def get_system_status() -> Dict:
                 hist_res = db_manager.supabase.table('stock_history').select('date_int').order('date_int', desc=True).limit(1).execute()
                 latest_date = hist_res.data[0]['date_int'] if hist_res.data else None
                 
+                # 取得法人最新日期
+                inst_res = db_manager.supabase.table('institutional_investors').select('date_int').order('date_int', desc=True).limit(1).execute()
+                institutional_date = inst_res.data[0]['date_int'] if inst_res.data else None
+                
                 return {
                     "db_path": "Supabase (Cloud)",
                     "stock_count": stock_count,
                     "latest_date": latest_date,
-                    "institutional_date": None,
+                    "institutional_date": institutional_date,
                     "db_exists": True,
                     "db_size_mb": 0,
                     "last_modified": None,
