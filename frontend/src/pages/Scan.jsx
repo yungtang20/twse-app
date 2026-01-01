@@ -285,45 +285,51 @@ export const Scan = () => {
 
 
             {/* Screening Process Panel (Info Box) */}
+            {/* Screening Process Panel (Info Box) */}
             <div className="bg-slate-800/80 border border-blue-500/30 rounded p-3 mb-4 text-sm text-slate-300 shadow-sm">
-                <div className="grid grid-cols-[auto_1fr_auto] gap-x-3 gap-y-2 items-center">
+                <div className="flex flex-col gap-3">
                     {/* Row 1: Logic */}
-                    <div className="text-blue-400 font-bold whitespace-nowrap">ℹ️ 篩選邏輯:</div>
-                    <div className="text-white font-medium col-span-2 whitespace-normal break-words leading-relaxed">{activeDesc}</div>
-
-                    {/* Row 2: Filter Conditions */}
-                    <div className="text-slate-400 font-bold text-xs whitespace-nowrap">篩選條件:</div>
-                    <div className="flex flex-wrap items-center gap-2">
-                        <div className="flex items-center gap-2 bg-slate-900/50 px-2 py-1 rounded border border-slate-700">
-                            <span className="text-xs text-slate-500 whitespace-nowrap">量&gt;</span>
-                            <input
-                                type="number"
-                                value={minVol}
-                                onChange={(e) => setMinVol(Number(e.target.value))}
-                                className="bg-transparent text-white w-12 text-xs focus:outline-none text-right"
-                            />
-                            <span className="text-xs text-slate-500 whitespace-nowrap">張</span>
-                        </div>
-                        <div className="flex items-center gap-2 bg-slate-900/50 px-2 py-1 rounded border border-slate-700">
-                            <span className="text-xs text-slate-500 whitespace-nowrap">價&gt;</span>
-                            <input
-                                type="number"
-                                value={minPrice}
-                                onChange={(e) => setMinPrice(Number(e.target.value))}
-                                className="bg-transparent text-white w-10 text-xs focus:outline-none text-right"
-                            />
-                            <span className="text-xs text-slate-500 whitespace-nowrap">元</span>
-                        </div>
-                        {loading && <span className="text-yellow-500 text-xs animate-pulse ml-2">掃描運算中...</span>}
+                    <div className="flex flex-col sm:flex-row sm:items-start gap-1 sm:gap-3">
+                        <div className="text-blue-400 font-bold whitespace-nowrap shrink-0">ℹ️ 篩選邏輯:</div>
+                        <div className="text-white font-medium whitespace-normal break-words leading-relaxed">{activeDesc}</div>
                     </div>
-                    <div className="flex flex-col items-end gap-1">
-                        {!loading && scanResults.length > 0 && <span className="text-green-400 text-xs font-bold">符合條件: {scanResults.length} 檔</span>}
-                        <button
-                            onClick={() => setShowColumnSelector(!showColumnSelector)}
-                            className="text-xs bg-slate-800 hover:bg-slate-700 text-slate-400 hover:text-white px-2 py-1 rounded border border-slate-700 transition-colors flex items-center gap-1 whitespace-nowrap"
-                        >
-                            ⚙️ 顯示欄位 {showColumnSelector ? '▲' : '▼'}
-                        </button>
+
+                    {/* Row 2: Filter Conditions & Controls */}
+                    <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2 border-t border-slate-700/50 pt-2">
+                        <div className="flex flex-wrap items-center gap-2">
+                            <div className="text-slate-400 font-bold text-xs whitespace-nowrap">篩選條件:</div>
+                            <div className="flex items-center gap-2 bg-slate-900/50 px-2 py-1 rounded border border-slate-700">
+                                <span className="text-xs text-slate-500 whitespace-nowrap">量&gt;</span>
+                                <input
+                                    type="number"
+                                    value={minVol}
+                                    onChange={(e) => setMinVol(Number(e.target.value))}
+                                    className="bg-transparent text-white w-12 text-xs focus:outline-none text-right"
+                                />
+                                <span className="text-xs text-slate-500 whitespace-nowrap">張</span>
+                            </div>
+                            <div className="flex items-center gap-2 bg-slate-900/50 px-2 py-1 rounded border border-slate-700">
+                                <span className="text-xs text-slate-500 whitespace-nowrap">價&gt;</span>
+                                <input
+                                    type="number"
+                                    value={minPrice}
+                                    onChange={(e) => setMinPrice(Number(e.target.value))}
+                                    className="bg-transparent text-white w-10 text-xs focus:outline-none text-right"
+                                />
+                                <span className="text-xs text-slate-500 whitespace-nowrap">元</span>
+                            </div>
+                            {loading && <span className="text-yellow-500 text-xs animate-pulse ml-2">掃描運算中...</span>}
+                        </div>
+
+                        <div className="flex items-center justify-end gap-2">
+                            {!loading && scanResults.length > 0 && <span className="text-green-400 text-xs font-bold whitespace-nowrap">符合: {scanResults.length} 檔</span>}
+                            <button
+                                onClick={() => setShowColumnSelector(!showColumnSelector)}
+                                className="text-xs bg-slate-800 hover:bg-slate-700 text-slate-400 hover:text-white px-2 py-1 rounded border border-slate-700 transition-colors flex items-center gap-1 whitespace-nowrap"
+                            >
+                                ⚙️ 欄位 {showColumnSelector ? '▲' : '▼'}
+                            </button>
+                        </div>
                     </div>
                 </div>
             </div>
