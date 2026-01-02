@@ -10884,6 +10884,44 @@ def scan_2560_strategy():
 
 def scan_candlestick_patterns():
     """K 線型態掃描 (晨星/夜星) - 詳細漏斗版"""
+def scan_candlestick_patterns():
+    """K 線型態掃描 (晨星/夜星) - Table-Driven Refactored"""
+    
+    # --- Helper Functions ---
+    def _check_morning_star(c0, c1, c2, o0, o1, o2, v0, v1, range0, range2, body0, body1, body2):
+        # Returns (passed, step_reached)
+        # Step 1: T-2 Long Black
+        if not ((c2 < o2) and (body2 > range2 * 0.6)):
+            return False, 0
+        
+        # Step 2: T-1 Star
+        if not ((body1 < body2 * 0.3) and (c1 < c2)):
+            return False, 1
+            
+        # Step 3: T Long Red
+        mid_point_2 = (o2 + c2) / 2
+        if not ((c0 > o0) and (c0 > mid_point_2) and (body0 > range0 * 0.6)):
+            return False, 2
+            
+        # Step 4: Volume Surge
+        if not (v0 > v1 * 1.3):
+            return False, 3
+            
+        return True, 4
+
+    def _check_evening_star(c0, c1, c2, o0, o1, o2, range0, range2, body0, body1, body2):
+        # T-2 Long Red
+        if not ((c2 > o2) and (body2 > range2 * 0.6)):
+            return False
+        # T-1 Star
+        if not ((body1 < body2 * 0.3) and (c1 > c2)):
+            return False
+        # T Long Black
+        mid_point_2 = (o2 + c2) / 2
+        if not ((c0 < o0) and (c0 < mid_point_2) and (body0 > range0 * 0.6)):
+            return False
+        return True
+
     limit, min_vol = get_user_scan_params()
     print_flush(f"\n正在掃描 K 線型態 (成交量 > {min_vol} 張)...")
     print_flush("篩選條件: 晨星(T-2長黑, T-1星線, T長紅, 爆量), 夜星(反之)")
@@ -10899,16 +10937,12 @@ def scan_candlestick_patterns():
     morning_stars = []
     evening_stars = []
     
-    # Counters (Morning Star Funnel)
+    # Counters
     count_total = len(stocks)
     count_vol = 0
-    count_m_step1 = 0 # T-2 Long Black
-    count_m_step2 = 0 # T-1 Star
-    count_m_step3 = 0 # T Long Red
-    count_m_step4 = 0 # Vol Surge
+    # Morning Star Funnel
+    ms_funnel = [0, 0, 0, 0] # Steps 1-4
     count_m_final = 0
-    
-    # Counters (Evening Star - Simplified tracking)
     count_e_final = 0
     
     for code, name in stocks:
@@ -10923,149 +10957,91 @@ def scan_candlestick_patterns():
                 continue
             count_vol += 1
             
-            # Prepare Data for Manual Checking (Latest 3 days)
-            # T (Today), T-1 (Yesterday), T-2 (Day before)
-            c0, c1, c2 = df['close'].iloc[-1], df['close'].iloc[-2], df['close'].iloc[-3]
-            o0, o1, o2 = df['open'].iloc[-1], df['open'].iloc[-2], df['open'].iloc[-3]
-            h0, h1, h2 = df['high'].iloc[-1], df['high'].iloc[-2], df['high'].iloc[-3]
-            l0, l1, l2 = df['low'].iloc[-1], df['low'].iloc[-2], df['low'].iloc[-3]
-            v0, v1 = df['volume'].iloc[-1], df['volume'].iloc[-2]
+            # Prepare Data
+            c = df['close'].values[-3:]
+            o = df['open'].values[-3:]
+            h = df['high'].values[-3:]
+            l = df['low'].values[-3:]
+            v = df['volume'].values[-2:] # v0, v1
             
-            # Ranges
+            c0, c1, c2 = c[2], c[1], c[0]
+            o0, o1, o2 = o[2], o[1], o[0]
+            h0, h1, h2 = h[2], h[1], h[0]
+            l0, l1, l2 = l[2], l[1], l[0]
+            v0, v1 = v[1], v[0]
+            
             range0 = h0 - l0
-            range1 = h1 - l1
             range2 = h2 - l2
             body0 = abs(c0 - o0)
             body1 = abs(c1 - o1)
             body2 = abs(c2 - o2)
             
-            # --- Morning Star Logic (Sequential) ---
-            passed_m = False
-            
-            # Step 1: T-2 Long Black (Body > 0.6 * Range)
-            is_long_black_2 = (c2 < o2) and (body2 > range2 * 0.6)
-            if is_long_black_2:
-                count_m_step1 += 1
+            # Check Morning Star
+            passed_m, step_m = _check_morning_star(c0, c1, c2, o0, o1, o2, v0, v1, range0, range2, body0, body1, body2)
+            if step_m >= 1: ms_funnel[0] += 1
+            if step_m >= 2: ms_funnel[1] += 1
+            if step_m >= 3: ms_funnel[2] += 1
+            if passed_m:
+                ms_funnel[3] += 1
+                count_m_final += 1
                 
-                # Step 2: T-1 Star (Body < 0.3 * T-2 Body, Close < T-2 Close)
-                # Note: User text says "Close < T-2 Close", standard is "Gap" or "Low body".
-                # We stick to user prompt: "實體很小，且收盤價低於 T-2日收盤"
-                is_star_1 = (body1 < body2 * 0.3) and (c1 < c2)
-                if is_star_1:
-                    count_m_step2 += 1
-                    
-                    # Step 3: T Long Red (Close > T-2 Mid)
-                    mid_point_2 = (o2 + c2) / 2
-                    is_long_red_0 = (c0 > o0) and (c0 > mid_point_2)
-                    # Also check if it's a "Long" candle (Body > 0.6 Range) as per previous logic?
-                    # User text says "長紅 K", so yes.
-                    is_long_red_0 = is_long_red_0 and (body0 > range0 * 0.6)
-                    
-                    if is_long_red_0:
-                        count_m_step3 += 1
-                        
-                        # Step 4: Volume Surge (Third candle volume > ?)
-                        # "爆量" -> Let's say > 1.3x Prev or > MA5
-                        # Let's use > 1.3x Prev for strictness or > MA5
-                        # User text: "第三根陽線若爆量"
-                        vol_surge = v0 > v1 * 1.3
-                        if vol_surge:
-                            count_m_step4 += 1
-                            count_m_final += 1
-                            passed_m = True
-                            
-                            # Calculate VSBC & Fib
-                            df = add_vsbc_columns(df)
-                            t = df.iloc[-1]
-                            vsbc_val = t['vsbc'] if 'vsbc' in t else 0
-                            
-                            # Calculate POC (Simple approximation using mode of close price in recent period or just use VSBC value itself if that's what user wants)
-                            # User said "VSBC上/下 (如：壓力區)<--這個應該是數字吧！0000/0000"
-                            # Let's assume they want VSBC Value / Price or VSBC / POC.
-                            # In scan_vsbc_strategy, we use calc_vp_poc(df). Let's use that if available, or implement simple one.
-                            # Since calc_vp_poc is defined elsewhere, let's check if we can use it.
-                            # It seems calc_vp_poc is a global function.
-                            try:
-                                poc = calc_vp_poc(df)
-                            except:
-                                poc = df['close'].mean() # Fallback
-                            
-                            # Fib 60 days
-                            recent_60 = df.iloc[-60:]
-                            h60 = recent_60['high'].max()
-                            l60 = recent_60['low'].min()
-                            diff = h60 - l60
-                            fib_0618 = h60 - (diff * 0.618)
-                            
-                            # Calculate current retracement ratio
-                            # Ratio = (High - Close) / (High - Low) for pullback from High
-                            if diff > 0:
-                                current_ratio = (h60 - c0) / diff
-                            else:
-                                current_ratio = 0
-                            
-                            morning_stars.append({
-                                'code': code, 'name': name,
-                                'close': c0, 'close_prev': c1,
-                                'pattern': '早晨之星',
-                                'volume': v0, # Raw volume
-                                'vol_ratio': v0/v1 if v1>0 else 1,
-                                'vsbc_lower': vsbc_val, # Map to VSBC Lower
-                                'vsbc_upper': poc,      # Map to VSBC Upper (POC)
-                                'fib_val': fib_0618,
-                                'fib_ratio': current_ratio
-                            })
+                # Calculate Metrics
+                df = add_vsbc_columns(df)
+                t = df.iloc[-1]
+                vsbc_val = t['vsbc'] if 'vsbc' in t else 0
+                try: poc = calc_vp_poc(df)
+                except: poc = df['close'].mean()
+                
+                recent_60 = df.iloc[-60:]
+                h60 = recent_60['high'].max()
+                l60 = recent_60['low'].min()
+                diff = h60 - l60
+                fib_0618 = h60 - (diff * 0.618)
+                current_ratio = (h60 - c0) / diff if diff > 0 else 0
+                
+                morning_stars.append({
+                    'code': code, 'name': name,
+                    'close': c0, 'close_prev': c1,
+                    'pattern': '早晨之星',
+                    'volume': v0,
+                    'vol_ratio': v0/v1 if v1>0 else 1,
+                    'vsbc_lower': vsbc_val,
+                    'vsbc_upper': poc,
+                    'fib_val': fib_0618,
+                    'fib_ratio': current_ratio
+                })
 
-            # --- Evening Star Logic (Simplified for now, or parallel) ---
-            # T-2 Long Red
-            is_long_red_2 = (c2 > o2) and (body2 > range2 * 0.6)
-            if is_long_red_2:
-                # T-1 Star (High)
-                is_star_1 = (body1 < body2 * 0.3) and (c1 > c2)
-                if is_star_1:
-                    # T Long Black (Close < T-2 Mid)
-                    mid_point_2 = (o2 + c2) / 2
-                    is_long_black_0 = (c0 < o0) and (c0 < mid_point_2) and (body0 > range0 * 0.6)
-                    if is_long_black_0:
-                        # Vol Surge (Optional for Evening? Usually volume shrinks on top, but breakdown needs volume)
-                        # Let's apply same surge logic for symmetry or just pass
-                        # User only specified Morning Star funnel details.
-                        # We'll just add it.
-                        count_e_final += 1
-                        # Calculate VSBC & Fib (Same as above)
-                        df = add_vsbc_columns(df)
-                        t = df.iloc[-1]
-                        vsbc_val = t['vsbc'] if 'vsbc' in t else 0
-                        
-                        try:
-                            poc = calc_vp_poc(df)
-                        except:
-                            poc = df['close'].mean()
+            # Check Evening Star
+            passed_e = _check_evening_star(c0, c1, c2, o0, o1, o2, range0, range2, body0, body1, body2)
+            if passed_e:
+                count_e_final += 1
+                # Calculate Metrics (Duplicate logic, could be extracted)
+                df = add_vsbc_columns(df) # Idempotent?
+                t = df.iloc[-1]
+                vsbc_val = t['vsbc'] if 'vsbc' in t else 0
+                try: poc = calc_vp_poc(df)
+                except: poc = df['close'].mean()
+                
+                recent_60 = df.iloc[-60:]
+                h60 = recent_60['high'].max()
+                l60 = recent_60['low'].min()
+                diff = h60 - l60
+                fib_0618 = h60 - (diff * 0.618)
+                current_ratio = (h60 - c0) / diff if diff > 0 else 0
+                
+                evening_stars.append({
+                    'code': code, 'name': name,
+                    'close': c0, 'close_prev': c1,
+                    'pattern': '黃昏之星',
+                    'volume': v0,
+                    'vol_ratio': v0/v1 if v1>0 else 1,
+                    'vsbc_lower': vsbc_val,
+                    'vsbc_upper': poc,
+                    'fib_val': fib_0618,
+                    'fib_ratio': current_ratio
+                })
 
-                        recent_60 = df.iloc[-60:]
-                        h60 = recent_60['high'].max()
-                        l60 = recent_60['low'].min()
-                        diff = h60 - l60
-                        fib_0618 = h60 - (diff * 0.618)
-                        
-                        if diff > 0:
-                            current_ratio = (h60 - c0) / diff
-                        else:
-                            current_ratio = 0
-
-                        evening_stars.append({
-                            'code': code, 'name': name,
-                            'close': c0, 'close_prev': c1,
-                            'pattern': '黃昏之星',
-                            'volume': v0,
-                            'vol_ratio': v0/v1 if v1>0 else 1,
-                            'vsbc_lower': vsbc_val,
-                            'vsbc_upper': poc,
-                            'fib_val': fib_0618,
-                            'fib_ratio': current_ratio
-                        })
-
-        except Exception as e:
+        except Exception:
             continue
             
     # Summary
@@ -11075,16 +11051,16 @@ def scan_candlestick_patterns():
     print_flush(f"總股數: {count_total}")
     print_flush("─"*60)
     print_flush(f"✓ 成交量 >= {min_vol}張        → {count_vol} 檔")
-    print_flush(f"✓ [第1階] T-2: 長黑 K (實體 > 0.6 * 總長)   → {count_m_step1} 檔")
-    print_flush(f"✓ [第2階] T-1: 星線 (實體 < 0.3 * T-2實體)  → {count_m_step2} 檔")
-    print_flush(f"✓ [第3階] T: 長紅 K (收盤 > T-2實體中點)    → {count_m_step3} 檔")
-    print_flush(f"✓ [第4階] 第三根陽線若爆量 (>1.3倍)         → {count_m_step4} 檔")
+    print_flush(f"✓ [第1階] T-2: 長黑 K (實體 > 0.6 * 總長)   → {ms_funnel[0]} 檔")
+    print_flush(f"✓ [第2階] T-1: 星線 (實體 < 0.3 * T-2實體)  → {ms_funnel[1]} 檔")
+    print_flush(f"✓ [第3階] T: 長紅 K (收盤 > T-2實體中點)    → {ms_funnel[2]} 檔")
+    print_flush(f"✓ [第4階] 第三根陽線若爆量 (>1.3倍)         → {ms_funnel[3]} 檔")
     print_flush(f"✓ 綜合評分 >= 以上都符合 (晨星)             → {count_m_final} 檔")
     if count_e_final > 0:
         print_flush(f"✓ 黃昏之星 (額外篩選)                       → {count_e_final} 檔")
     print_flush("─"*60)
     
-    # 使用統一格式輸出
+    # Output
     def candle_extra(code, item):
         ratio = item.get('fib_ratio', 0)
         close = item.get('close', 0)

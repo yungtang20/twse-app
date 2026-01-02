@@ -19,16 +19,29 @@ export function TechnicalChart({ code, name, onHoverData, isFullScreen = false }
     const [chartData, setChartData] = useState([]);
     const [hoverIdx, setHoverIdx] = useState(-1);
     const [shareholderThreshold, setShareholderThreshold] = useState(1000);
+    const [debugStatus, setDebugStatus] = useState('Init...');
 
     // Fetch Data
     useEffect(() => {
-        if (!code) return;
+        if (!code) {
+            setDebugStatus('No code');
+            return;
+        }
 
         const fetchData = async () => {
+            setDebugStatus(`Fetching ${code}...`);
             try {
-                const res = await fetch(`${API_BASE_URL}/api/stocks/${code}/history?limit=500`);
+                const url = `${API_BASE_URL}/api/stocks/${code}/history?limit=500`;
+                setDebugStatus(`Req: ${url}`);
+                const res = await fetch(url);
+                if (!res.ok) {
+                    setDebugStatus(`HTTP Error: ${res.status}`);
+                    return;
+                }
                 const json = await res.json();
                 if (json.success && json.data && json.data.history) {
+                    const count = json.data.history.length;
+                    setDebugStatus(`Data: ${count} recs`);
                     const formatted = json.data.history.map(d => ({
                         time: d.date_int ? `${String(d.date_int).slice(0, 4)}-${String(d.date_int).slice(4, 6)}-${String(d.date_int).slice(6, 8)}` : '',
                         open: d.open,
@@ -48,9 +61,12 @@ export function TechnicalChart({ code, name, onHoverData, isFullScreen = false }
                     if (onHoverData && formatted.length > 0) {
                         onHoverData(formatted[formatted.length - 1], formatted.length > 1 ? formatted[formatted.length - 2] : null);
                     }
+                } else {
+                    setDebugStatus(`API Fail: ${json.message || 'No data'}`);
                 }
             } catch (err) {
                 console.error("Fetch history failed", err);
+                setDebugStatus(`Err: ${err.message}`);
             }
         };
 
@@ -513,6 +529,11 @@ export function TechnicalChart({ code, name, onHoverData, isFullScreen = false }
             {/* Resizer */}
             <div className="h-1 bg-slate-800 hover:bg-blue-500 cursor-row-resize flex justify-center items-center shrink-0" onMouseDown={handleResizeStart('main-vol')} onTouchStart={handleTouchStart('main-vol')}>
                 <div className="w-6 h-0.5 bg-slate-600 rounded-full" />
+            </div>
+
+            {/* Debug Info */}
+            <div className="absolute top-0 right-0 bg-black/50 text-white text-xs p-1 z-50 pointer-events-none">
+                Debug: {debugStatus}
             </div>
 
             {/* Volume Section */}
