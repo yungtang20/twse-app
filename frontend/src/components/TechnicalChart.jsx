@@ -542,7 +542,7 @@ export function TechnicalChart({ code, name, onHoverData, isFullScreen = false }
     };
 
     return (
-        <div className="w-full h-full flex flex-col">
+        <div className="w-full h-full flex flex-col max-h-screen overflow-hidden">
             {/* Header: Scrollable Toggles */}
             <div className="bg-slate-800 rounded p-0.5 mb-0.5 flex items-center justify-between shrink-0">
                 <div className="flex overflow-x-auto no-scrollbar gap-1 px-1 items-center flex-1 mask-linear-fade">
