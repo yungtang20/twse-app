@@ -59,7 +59,12 @@ if os.path.exists(frontend_dist):
     # Mount assets
     app.mount("/assets", StaticFiles(directory=os.path.join(frontend_dist, "assets")), name="assets")
     
-    # Serve index.html for root and SPA routes
+    # Serve index.html for root
+    @app.get("/")
+    async def serve_root():
+        return FileResponse(os.path.join(frontend_dist, "index.html"))
+
+    # Serve index.html for other SPA routes (catch-all)
     @app.get("/{full_path:path}")
     async def serve_frontend(full_path: str):
         # 如果請求的是 API，但不小心落入這裡 (理論上不會，因為 API 路由在上面)，則返回 404
@@ -67,7 +72,8 @@ if os.path.exists(frontend_dist):
             from fastapi import HTTPException
             raise HTTPException(status_code=404, detail="Not Found")
             
-        # 否則返回 index.html 讓前端路由處理
+        # 檢查檔案是否存在，若不存在則返回 index.html (SPA 路由)
+        # 這裡可以加入更細緻的判斷，例如檢查副檔名來決定是否返回 404
         return FileResponse(os.path.join(frontend_dist, "index.html"))
 else:
     print("⚠️ 警告: 找不到前端建置目錄 (frontend/dist)。請先執行 'npm run build'。")

@@ -1,27 +1,23 @@
+
 import os
-from supabase import create_client
-import json
+import sys
+from backend.services.db import db_manager
 
-SUPABASE_URL = "https://bshxromrtsetlfjdeggv.supabase.co"
-SUPABASE_KEY = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImJzaHhyb21ydHNldGxmamRlZ2d2Iiwicm9sZSI6InNlcnZpY2Vfcm9sZSIsImlhdCI6MTc2Njk5NzI1NywiZXhwIjoyMDgyNTczMjU3fQ.8i4GD8rOQtpISgEd2ZX-wzR4xq2FCuKC99NyKqjmHi0"
-
-def main():
-    print(f"Connecting to {SUPABASE_URL}...")
-    supabase = create_client(SUPABASE_URL, SUPABASE_KEY)
-    
-    print("\nChecking institutional_investors columns...")
-    try:
-        # Fetch one record
-        res = supabase.table("institutional_investors").select("*").limit(1).execute()
-        
+def check_schema():
+    if db_manager.is_cloud_mode:
+        print("Cloud mode detected. Checking Supabase schema...")
+        # In cloud mode, we might not be able to easily check schema via SQL, 
+        # but we can fetch one row and see keys.
+        res = db_manager.supabase.table("institutional_investors").select("*").limit(1).execute()
         if res.data:
-            print("Columns found:")
-            print(list(res.data[0].keys()))
+            print("Columns:", res.data[0].keys())
         else:
-            print("No records found.")
-
-    except Exception as e:
-        print(f"Error: {e}")
+            print("Table is empty, cannot infer schema from data.")
+    else:
+        print("Local mode detected. Checking SQLite schema...")
+        schema = db_manager.execute_query("PRAGMA table_info(institutional_investors)")
+        for col in schema:
+            print(col)
 
 if __name__ == "__main__":
-    main()
+    check_schema()

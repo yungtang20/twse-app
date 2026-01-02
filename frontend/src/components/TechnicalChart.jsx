@@ -20,6 +20,10 @@ export function TechnicalChart({ code, name, onHoverData, isFullScreen = false }
     const [hoverIdx, setHoverIdx] = useState(-1);
     const [shareholderThreshold, setShareholderThreshold] = useState(1000);
 
+    // Calculate Volume MAs
+    const volumeMA5 = useMemo(() => calculateMA(chartData, 5, 'value'), [chartData]);
+    const volumeMA60 = useMemo(() => calculateMA(chartData, 60, 'value'), [chartData]);
+
     const mainContainerRef = useRef(null);
     const volumeContainerRef = useRef(null);
     const subChartContainerRef = useRef(null);
