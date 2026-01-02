@@ -6,7 +6,7 @@ import {
     calculateVWAP, calculateBollinger, calculateVP, calculateVSBC,
     calculateADL, calculateNVI, calculatePVI, calculateSMI
 } from '@/utils/indicators';
-import API_BASE_URL from '@/lib/api';
+import { getStockHistory } from '@/lib/supabaseClient';
 
 export function TechnicalChart({ code, name, onHoverData, isFullScreen = false }) {
     const { isMobileView } = useMobileView();
@@ -80,18 +80,12 @@ export function TechnicalChart({ code, name, onHoverData, isFullScreen = false }
         const fetchData = async () => {
             setDebugStatus(`Fetching ${code}...`);
             try {
-                const url = `${API_BASE_URL}/api/stocks/${code}/history?limit=500`;
-                setDebugStatus(`Req: ${url}`);
-                const res = await fetch(url);
-                if (!res.ok) {
-                    setDebugStatus(`HTTP Error: ${res.status}`);
-                    return;
-                }
-                const json = await res.json();
-                if (json.success && json.data && json.data.history) {
-                    const count = json.data.history.length;
+                // Use Supabase client directly for production compatibility
+                const historyData = await getStockHistory(code, 500);
+                if (historyData && historyData.length > 0) {
+                    const count = historyData.length;
                     setDebugStatus(`Data: ${count} recs`);
-                    const formatted = json.data.history.map(d => ({
+                    const formatted = historyData.map(d => ({
                         time: d.date_int ? `${String(d.date_int).slice(0, 4)}-${String(d.date_int).slice(4, 6)}-${String(d.date_int).slice(6, 8)}` : '',
                         open: d.open,
                         high: d.high,
@@ -111,7 +105,7 @@ export function TechnicalChart({ code, name, onHoverData, isFullScreen = false }
                         onHoverData(formatted[formatted.length - 1], formatted.length > 1 ? formatted[formatted.length - 2] : null);
                     }
                 } else {
-                    setDebugStatus(`API Fail: ${json.message || 'No data'}`);
+                    setDebugStatus(`No data for ${code}`);
                 }
             } catch (err) {
                 console.error("Fetch history failed", err);
