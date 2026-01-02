@@ -4765,6 +4765,8 @@ class IndicatorCalculator:
     @staticmethod
     def calculate_rsi_series(df, period=14):
         """計算 RSI 指標序列"""
+        import pandas as pd
+        import numpy as np
         if df.empty or len(df) < period + 1:
             return pd.Series(np.nan, index=df.index)
         
@@ -4818,6 +4820,8 @@ class IndicatorCalculator:
     @staticmethod
     def calculate_mfi(df, period=14):
         """計算 MFI"""
+        import pandas as pd
+        import numpy as np
         if df.empty or len(df) < period:
             return pd.Series(np.nan, index=df.index)
         
@@ -4848,6 +4852,8 @@ class IndicatorCalculator:
     @staticmethod
     def calculate_vwap_series(df, lookback=20):
         """計算 VWAP 序列"""
+        import pandas as pd
+        import numpy as np
         if df.empty or len(df) < lookback:
             return pd.Series(np.nan, index=df.index)
         
@@ -4862,6 +4868,8 @@ class IndicatorCalculator:
     @staticmethod
     def calculate_chg14_series(df):
         """計算14日變化率序列"""
+        import pandas as pd
+        import numpy as np
         if df.empty or len(df) < 14:
             return pd.Series(np.nan, index=df.index)
         
@@ -4874,6 +4882,8 @@ class IndicatorCalculator:
     @staticmethod
     def calculate_monthly_kd_series(df, k_period=9, d_period=3):
         """計算月KD序列"""
+        import pandas as pd
+        import numpy as np
         if df.empty or len(df) < k_period:
             return pd.Series(np.nan, index=df.index), pd.Series(np.nan, index=df.index)
         
@@ -4903,6 +4913,7 @@ class IndicatorCalculator:
     @staticmethod
     def calculate_smart_score_series(df):
         """計算智慧分數序列"""
+        import pandas as pd
         if df.empty:
             empty = pd.Series(0, index=df.index)
             return empty, empty, empty, empty, empty, empty, empty
@@ -4925,6 +4936,8 @@ class IndicatorCalculator:
     @staticmethod
     def calculate_smi_series(df, period=14):
         """計算SMI序列"""
+        import pandas as pd
+        import numpy as np
         if df.empty or len(df) < period:
             return pd.Series(np.nan, index=df.index)
         
@@ -4938,6 +4951,7 @@ class IndicatorCalculator:
     @staticmethod
     def calculate_nvi_series(df):
         """計算NVI序列"""
+        import pandas as pd
         if df.empty or len(df) < 2:
             return pd.Series(1000, index=df.index), pd.Series(1000, index=df.index)
         
@@ -4958,6 +4972,7 @@ class IndicatorCalculator:
     @staticmethod
     def calculate_adl_series(df):
         """計算ADL序列"""
+        import pandas as pd
         if df.empty:
             return pd.Series(0, index=df.index)
         
@@ -4973,6 +4988,7 @@ class IndicatorCalculator:
     @staticmethod
     def calculate_rs_series(df, period=14):
         """計算相對強度序列"""
+        import pandas as pd
         if df.empty or len(df) < period:
             return pd.Series(50, index=df.index)
         
@@ -4993,6 +5009,7 @@ class IndicatorCalculator:
     @staticmethod
     def calculate_pvi_series(df):
         """計算PVI序列"""
+        import pandas as pd
         if df.empty or len(df) < 2:
             return pd.Series(1000, index=df.index)
         
@@ -5011,6 +5028,7 @@ class IndicatorCalculator:
     @staticmethod
     def calculate_clv_series(df):
         """計算CLV序列"""
+        import pandas as pd
         if df.empty:
             return pd.Series(0, index=df.index)
         
@@ -5023,6 +5041,7 @@ class IndicatorCalculator:
     @staticmethod
     def calculate_3day_divergence_series(df):
         """計算3日背離序列"""
+        import pandas as pd
         if df.empty or len(df) < 3:
             return pd.Series(0, index=df.index), pd.Series(0, index=df.index)
         
@@ -5119,6 +5138,8 @@ class IndicatorCalculator:
     @staticmethod
     def calculate_vsbc_bands(df, win=10):
         """計算 VSBC 上下通道"""
+        import pandas as pd
+        import numpy as np
         if df.empty or len(df) < win:
             return pd.Series(np.nan, index=df.index), pd.Series(np.nan, index=df.index)
         
@@ -5157,6 +5178,7 @@ class IndicatorCalculator:
         T-1: 星線 (實體小, 收盤 < T-2 收盤)
         T: 長紅 K (收盤 > T-2 實體中點)
         """
+        import pandas as pd
         if len(df) < 3:
             return pd.Series([False] * len(df), index=df.index)
             
@@ -5197,6 +5219,7 @@ class IndicatorCalculator:
         T-1: 星線 (實體小, 收盤 > T-2 收盤)
         T: 長黑 K (收盤 < T-2 實體中點)
         """
+        import pandas as pd
         if len(df) < 3:
             return pd.Series([False] * len(df), index=df.index)
             
@@ -5765,6 +5788,13 @@ def get_trend_color(curr, prev):
     if curr is None or prev is None: return Colors.RESET
     if curr > prev: return Colors.RED
     elif curr < prev: return Colors.GREEN
+    return Colors.RESET
+
+def get_indicator_color(val):
+    """指標顏色：正值=紅色、負值=綠色（用於法人買賣超等）"""
+    if val is None: return Colors.RESET
+    if val > 0: return Colors.RED
+    elif val < 0: return Colors.GREEN
     return Colors.RESET
 
 def get_colored_value(text, change, arrow=""):
@@ -9919,6 +9949,7 @@ class CloudSync:
     @staticmethod
     def upload_stock_list():
         """上傳股票清單到雲端"""
+        import pandas as pd
         if not ENABLE_CLOUD_SYNC:
             print_flush("⚠ 未設定 Supabase，無法同步")
             return False
@@ -9959,6 +9990,7 @@ class CloudSync:
     @staticmethod
     def upload_calculated_data(days=None):
         """上傳計算結果到雲端"""
+        import pandas as pd
         if not ENABLE_CLOUD_SYNC:
             print_flush("⚠ 未設定 Supabase，無法同步")
             return False
@@ -10100,6 +10132,8 @@ class CloudSync:
     @staticmethod
     def upload_all_history():
         """上傳所有歷史 K 線數據到雲端"""
+        import pandas as pd
+        import numpy as np
         if not ENABLE_CLOUD_SYNC:
             print_flush("⚠ 未設定 Supabase，無法同步")
             return
