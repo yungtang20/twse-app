@@ -24,6 +24,23 @@ export function TechnicalChart({ code, name, onHoverData, isFullScreen = false }
     const volumeMA5 = useMemo(() => calculateMA(chartData, 5, 'value'), [chartData]);
     const volumeMA60 = useMemo(() => calculateMA(chartData, 60, 'value'), [chartData]);
 
+    // Calculate Technical Indicators
+    const vwapData = useMemo(() => calculateVWAP(chartData), [chartData]);
+    const bollingerData = useMemo(() => calculateBollinger(chartData), [chartData]);
+    const vpData = useMemo(() => calculateVP(chartData), [chartData]);
+    const vsbcData = useMemo(() => calculateVSBC(chartData), [chartData]);
+    const kdData = useMemo(() => calculateKD(chartData), [chartData]);
+    const macdData = useMemo(() => calculateMACD(chartData), [chartData]);
+    const rsi5Data = useMemo(() => calculateRSI(chartData, 5), [chartData]);
+    const rsi10Data = useMemo(() => calculateRSI(chartData, 10), [chartData]);
+    const mfiData = useMemo(() => calculateMFI(chartData), [chartData]);
+    const nviData = useMemo(() => calculateNVI(chartData), [chartData]);
+    const pviData = useMemo(() => calculatePVI(chartData), [chartData]);
+    const adlData = useMemo(() => calculateADL(chartData), [chartData]);
+    const smiData = useMemo(() => calculateSMI(chartData), [chartData]);
+    const tdccData = useMemo(() => chartData.map(d => d.tdcc || null), [chartData]);
+    const largeData = useMemo(() => chartData.map(d => d.large || null), [chartData]);
+
     const mainContainerRef = useRef(null);
     const volumeContainerRef = useRef(null);
     const subChartContainerRef = useRef(null);

@@ -1,0 +1,4 @@
+=== Stocks Needing Backfill (Old but < 450 records) ===
+6899 創為精密 Listed:2024-04-08 Records:424
+5548 安倉營造 Listed:2024-03-18 Records:436
+6949 沛爾生技 Listed:2024-03-08 Records:442

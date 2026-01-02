@@ -2751,6 +2751,7 @@ class TwstockDataSource(DataSource):
             # 增加隨機延遲以避免 Rate Limit (3-6秒)
             import numpy as np
             import pandas as pd
+            import twstock
             time.sleep(np.random.uniform(3, 6))
             
             # 使用 Patch 過的 twstock
@@ -6488,34 +6489,6 @@ def step3_download_basic_info(silent_header=False):
             print_flush(f"✓ 更新 {updated} 檔日期資訊")
     except Exception as e: print_flush(f"❌ {e}")
 
-def step4_clean_delisted():
-    """步驟4: 清理下市股票"""
-    print_flush("\n[Step 4] 清理下市股票...")
-    with db_manager.get_connection() as conn:
-        cur = conn.cursor()
-        
-        # 1. 標記下市 (delist_date 不為空)
-        cur.execute("SELECT code FROM stock_meta WHERE delist_date IS NOT NULL AND delist_date != ''")
-        delisted_meta = {r[0] for r in cur.fetchall()}
-        
-        # 2. 找出不在 meta 中的孤兒
-        cur.execute("SELECT DISTINCT h.code FROM stock_history h LEFT JOIN stock_meta m ON h.code=m.code WHERE m.code IS NULL")
-        orphans = {r[0] for r in cur.fetchall()}
-        
-        targets = delisted_meta | orphans
-        if not targets:
-            print_flush("✓ 無下市股票殘留")
-            return
-
-        print_flush(f"發現 {len(targets)} 檔下市/無效股票，準備清理...")
-        # 刪除
-        placeholders = ','.join(['?']*len(targets))
-        cur.execute(f"DELETE FROM stock_history WHERE code IN ({placeholders})", list(targets))
-        deleted = cur.rowcount
-        cur.execute(f"DELETE FROM stock_snapshot WHERE code IN ({placeholders})", list(targets))
-        cur.execute(f"DELETE FROM institutional_investors WHERE code IN ({placeholders})", list(targets))
-        conn.commit()
-    print_flush(f"✓ 已清理 {deleted} 筆歷史資料")
 
 def step5_download_quotes(silent_header=False):
     """步驟5: 下載今日行情 (TPEx/TWSE/大盤)"""
@@ -8282,6 +8255,7 @@ def step6_verify_and_backfill(data=None, resume=False, skip_downloads=False, ski
                 if not is_new_stock and not l_date_str:
                     if min_date_int:
                         try:
+                            import twstock
                             stock_info = twstock.codes.get(code)
                             if stock_info and stock_info.start:
                                 list_date = datetime.strptime(stock_info.start, '%Y/%m/%d')
@@ -10643,314 +10617,6 @@ class CloudSync:
         except Exception as e:
             print_flush(f"\n❌ 上傳錯誤: {e}")
 
-# ==============================
-# 系統維護函數
-# ==============================
-def backup_menu():
-    """資料庫備份與還原選單"""
-    while True:
-        print_flush("\n" + "="*60)
-        print_flush("【資料庫備份與還原】")
-        print_flush("="*60)
-        print_flush("[1] 備份資料庫")
-        print_flush("[2] 還原資料庫")
-        print_flush("[3] 列出現有備份")
-        print_flush("[0] 返回")
-        
-        choice = read_single_key("請選擇: ")
-        
-        if choice == '1':
-            try:
-                import shutil
-                timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
-                backup_file = BACKUP_DIR / f"taiwan_stock_backup_{timestamp}.db"
-                shutil.copy2(DB_FILE, backup_file)
-                print_flush(f"✓ 備份成功: {backup_file}")
-            except Exception as e:
-                print_flush(f"❌ 備份失敗: {e}")
-        
-        elif choice == '2':
-            backups = sorted(BACKUP_DIR.glob("*.db"), reverse=True)
-            
-            if not backups:
-                print_flush("❌ 沒有可用的備份檔案")
-                continue
-            
-            print_flush("\n可用備份:")
-            for i, b in enumerate(backups[:10], 1):
-                size_mb = b.stat().st_size / (1024*1024)
-                print_flush(f"  [{i}] {b.name} ({size_mb:.2f} MB)")
-            
-            try:
-                idx = int(input("請選擇要還原的備份 (輸入數字): ").strip()) - 1
-                
-                if 0 <= idx < len(backups):
-                    import shutil
-                    shutil.copy2(backups[idx], DB_FILE)
-                    print_flush(f"✓ 還原成功: {backups[idx].name}")
-                else:
-                    print_flush("❌ 無效的選擇")
-            except Exception as e:
-                print_flush(f"❌ 還原失敗: {e}")
-        
-        elif choice == '3':
-            backups = sorted(BACKUP_DIR.glob("*.db"), reverse=True)
-            
-            if not backups:
-                print_flush("❌ 沒有備份檔案")
-            else:
-                print_flush(f"\n找到 {len(backups)} 個備份:")
-                for b in backups[:20]:
-                    size_mb = b.stat().st_size / (1024*1024)
-                    print_flush(f"  • {b.name} ({size_mb:.2f} MB)")
-        
-        elif choice == '0':
-            break
-
-def check_db_nulls():
-    """檢查資料庫空值率 (排除新上市股票影響)"""
-    print_flush("\n[檢查] 資料庫空值率分析 (快照表)...")
-    
-    try:
-        with db_manager.get_connection() as conn:
-            cursor = conn.cursor()
-            
-            # 0. 預先載入上市日期
-            list_date_map = {}
-            try:
-                cursor.execute("SELECT code, list_date FROM stock_meta")
-                for r in cursor.fetchall():
-                    if r[1]: list_date_map[r[0]] = r[1]
-            except:
-                pass
-
-            cursor.execute("PRAGMA table_info(stock_snapshot)")
-            columns = [row[1] for row in cursor.fetchall()]
-            
-            cursor.execute("SELECT COUNT(*) FROM stock_snapshot")
-            total_rows = cursor.fetchone()[0]
-            
-            if total_rows == 0:
-                print_flush("❌ 快照表無數據")
-                return
-
-            print_flush(f"分析範圍: 最新快照 ({total_rows} 筆)")
-            print_flush("-" * 60)
-            print_flush(f"{'欄位名稱':<20} | {'空值率%':<12} | {'狀態':<10}")
-            print_flush("-" * 60)
-            
-            # 定義長天期指標所需的最小天數
-            required_days_map = {
-                'ma200': 200, 'wma200': 200, 'vwap200': 200, 'ma200_prev': 200, 'wma200_prev': 200,
-                'ma120': 120, 'wma120': 120, 'ma120_prev': 120, 'wma120_prev': 120,
-                'ma60': 60, 'wma60': 60, 'vwap60': 60, 'vol_ma60': 60, 'ma60_prev': 60, 'wma60_prev': 60,
-                'ma25': 25, 'ma25_slope': 25,
-                'ma20': 20, 'wma20': 20, 'vwap20': 20, 'ma20_prev': 20, 'wma20_prev': 20, 'vwap20_prev': 20,
-                'ma3': 3, 'wma3': 3, 'ma3_prev': 3, 'wma3_prev': 3,
-                'rsi': 14, 'rsi12': 12, 'mfi14': 14, 'mfi14_prev': 14,
-                'macd': 26, 'macd_signal': 26, 'macd_diff': 26,
-                'kdj_k': 9, 'kdj_d': 9, 'kdj_j': 9,
-                'week_k': 35, 'week_d': 35, # 週線需要更多日資料
-                'month_k': 150, 'month_d': 150 # 月線需要更多日資料
-            }
-
-            for col in columns:
-                if col in ['code', 'name', 'date']:
-                    continue
-                
-                # 白名單驗證
-                if col not in columns:
-                    continue
-                
-                # 查詢空值的股票代碼
-                cursor.execute(f"SELECT code FROM stock_snapshot WHERE {col} IS NULL")
-                null_codes = [r[0] for r in cursor.fetchall()]
-                raw_null_count = len(null_codes)
-                
-                if raw_null_count == 0:
-                    print_flush(f"{col:<20} | 0.00%       | OK")
-                    continue
-
-                # 分析空值原因 (是否為新股)
-                real_missing_count = 0
-                new_stock_count = 0
-                req_days = required_days_map.get(col, 0)
-                
-                for code in null_codes:
-                    is_new_stock = False
-                    if req_days > 0:
-                        l_date_str = list_date_map.get(code)
-                        if l_date_str:
-                            try:
-                                l_date = datetime.strptime(l_date_str, '%Y-%m-%d')
-                                days_since = (datetime.now() - l_date).days
-                                # 寬限期: 需求天數 * 1.5 (考慮假日)
-                                if days_since < req_days * 1.5:
-                                    is_new_stock = True
-                            except:
-                                pass
-                    
-                    if is_new_stock:
-                        new_stock_count += 1
-                    else:
-                        real_missing_count += 1
-                
-                # 計算調整後的空值率 (只計算真正缺失的)
-                real_null_pct = (real_missing_count / total_rows) * 100
-                
-                status = "OK"
-                if real_null_pct > 20:
-                    if col in ['pe', 'yield']:
-                        status = "無 (虧損/無股利)"
-                    else:
-                        status = "缺資料 (!)"
-                elif real_null_pct > 0:
-                    if col in ['pe', 'yield']:
-                         status = "部分無 (正常)"
-                    else:
-                        status = "部分缺"
-                elif new_stock_count > 0:
-                    status = "OK (含新股)"
-                
-                # 顯示邏輯: 如果有新股被排除，顯示註記
-                display_pct = f"{real_null_pct:.2f}%"
-                if new_stock_count > 0 and real_missing_count == 0:
-                     display_pct = "0.00%*"
-                
-                print_flush(f"{col:<20} | {display_pct:<10} | {status}")
-            
-            # 額外檢查: 成交金額 (最新交易日，排除成交量為0的股票)
-            try:
-                cursor.execute("""
-                    SELECT COUNT(*) FROM stock_history 
-                    WHERE date_int = (SELECT MAX(date_int) FROM stock_history)
-                    AND volume > 0 
-                    AND (amount IS NULL OR amount = 0)
-                """)
-                amount_null = cursor.fetchone()[0]
-                amount_pct = (amount_null / total_rows) * 100
-                st = "OK" if amount_pct == 0 else "缺資料 (!)"
-                print_flush(f"{'amount (最新)':<20} | {amount_pct:<10.2f}% | {st}")
-            except:
-                print_flush(f"{'amount (最新)':<20} | {'N/A':<10} | 檢查失敗")
-
-            # 額外檢查: 法人資料 (最新交易日)
-            try:
-                cursor.execute("SELECT MAX(date_int) FROM institutional_investors")
-                max_inst_date = cursor.fetchone()[0]
-                if max_inst_date:
-                    cursor.execute(f"""
-                        SELECT COUNT(*) FROM stock_snapshot
-                        WHERE code NOT IN (
-                            SELECT code FROM institutional_investors WHERE date_int = {max_inst_date}
-                        )
-                    """)
-                    inst_null = cursor.fetchone()[0]
-                    inst_pct = (inst_null / total_rows) * 100
-                    st = "無交易 (正常)" if inst_pct > 0 else "OK"
-                    print_flush(f"{'法人資料 (最新)':<20} | {inst_pct:<10.2f}% | {st}")
-                else:
-                    print_flush(f"{'法人資料 (最新)':<20} | {'100.00%':<10} | 無資料")
-            except:
-                print_flush(f"{'法人資料 (最新)':<20} | {'N/A':<10} | 檢查失敗")
-            
-            # 額外檢查: 融資融券資料
-            try:
-                cursor.execute("SELECT COUNT(DISTINCT date_int) FROM margin_data")
-                margin_days = cursor.fetchone()[0]
-                target_days = 450
-                margin_pct = ((target_days - margin_days) / target_days) * 100 if margin_days < target_days else 0
-                st = "OK" if margin_days >= target_days else f"差 {target_days - margin_days} 天"
-                print_flush(f"{'融資融券 (天數)':<20} | {margin_days:<10} | {st}")
-            except:
-                print_flush(f"{'融資融券 (天數)':<20} | {'N/A':<10} | 檢查失敗")
-            
-            # 額外檢查: 大盤指數資料
-            try:
-                cursor.execute("SELECT COUNT(DISTINCT date_int) FROM market_index")
-                index_days = cursor.fetchone()[0]
-                target_days = 450
-                st = "OK" if index_days >= target_days else f"差 {target_days - index_days} 天"
-                print_flush(f"{'大盤指數 (天數)':<20} | {index_days:<10} | {st}")
-            except:
-                print_flush(f"{'大盤指數 (天數)':<20} | {'N/A':<10} | 檢查失敗")
-                
-            print_flush("-" * 60)
-            print_flush("說明:")
-            print_flush("1. [0.00%*] 代表空值皆來自「新上市股票」(上市天數不足以計算該指標)，屬正常現象。")
-            print_flush("2. [PE/Yield] 空值代表公司虧損或不發股利，屬正常現象。")
-            print_flush("3. [法人資料] 空值代表當日三大法人無買賣紀錄，屬正常現象。")
-            print_flush("4. [Amount] 已排除成交量為 0 之股票。")
-            
-            print_flush("\n" + "="*50)
-            ans = input("是否立即執行 [1]~[7] 完整更新以修復缺失數據？ (y/N, 預設n): ").strip().lower()
-            
-            if ans == 'y':
-                step2_download_lists()
-                updated_codes = set()
-                
-                s2 = step2_download_tpex_daily()
-                if isinstance(s2, set):
-                    updated_codes.update(s2)
-                
-                s3 = step3_download_twse_daily()
-                if isinstance(s3, set):
-                    updated_codes.update(s3)
-                
-                step5_clean_delisted()
-                step4_check_data_gaps()
-                data = step4_load_data()
-                step6_verify_and_backfill(data, resume=True)
-                step7_calc_indicators(data, force=True)
-                
-                global GLOBAL_INDICATOR_CACHE
-                if GLOBAL_INDICATOR_CACHE:
-                    GLOBAL_INDICATOR_CACHE.clear()
-                print_flush("[OK] 系統快取已清除，更新完成")
-            else:
-                print_flush("[INFO] 已跳過更新")
-            
-    except Exception as e:
-        print_flush(f"❌ 檢查失敗: {e}")
-
-def delete_data_by_date():
-    """刪除指定日期的資料"""
-    print_flush("\n【刪除指定日期資料】")
-    print_flush("-" * 40)
-    
-    try:
-        date_str = input("請輸入要刪除的日期 (格式: YYYY-MM-DD): ").strip()
-        
-        try:
-            datetime.strptime(date_str, "%Y-%m-%d")
-        except ValueError:
-            print_flush("❌ 日期格式錯誤，請使用 YYYY-MM-DD 格式")
-            return
-        
-        date_int = int(date_str.replace('-', ''))
-        
-        with db_manager.get_connection() as conn:
-            cur = conn.cursor()
-            
-            # 統一使用新三表架構
-            cur.execute("SELECT COUNT(*) FROM stock_history WHERE date_int=?", (date_int,))
-            count_history = cur.fetchone()[0]
-        
-        if count_history == 0:
-            print_flush(f"⚠ 日期 {date_str} 沒有任何資料")
-            return
-        
-        print_flush(f"[INFO] 刪除 {date_str} 的資料 ({count_history} 筆)")
-        
-        with db_manager.get_connection() as conn:
-            cur = conn.cursor()
-            cur.execute("DELETE FROM stock_history WHERE date_int=?", (date_int,))
-            conn.commit()
-        
-        print_flush(f"[OK] 已刪除 {date_str} 的所有資料")
-    
-    except Exception as e:
-        print_flush(f"❌ 刪除失敗: {e}")
 
 # ==============================
 # 選單系統
@@ -12357,8 +12023,7 @@ def data_management_menu():
         'b': step10_check_gaps,
         'c': step11_verify_backfill,
         'd': step12_calc_indicators,
-        'e': step8_sync_supabase,
-        'f': batch_calculate_vsbc
+        'e': step8_sync_supabase
     }
     
     while True:
@@ -12378,10 +12043,9 @@ def data_management_menu():
         print_flush("[a] Step 9: 下載集保大戶資料")
         print_flush("[b] Step 10: 檢查數據缺失")
         print_flush("[c] Step 11: 驗證一致性並補漏")
-        print_flush("[d] Step 12: 計算技術指標")
+        print_flush("[d] Step 12: 計算技術指標 (含 VSBC)")
         print_flush("[e] 同步資料到 Supabase")
         print_flush("-" * 60)
-        print_flush("[f] 重新計算 VSBC 分數 (已整合至 Step 12)")
         print_flush("[0] 返回主選單")
         
         ch = read_single_key().lower()
@@ -12701,26 +12365,34 @@ def check_db_nulls():
                 print_flush(f"  {status} {col}: {count:,} 空值 ({pct:.2f}%)")
             
             # ========== 2. 近期交易日缺漏 ==========
-            print_flush("\n【2. 近期 60 天交易日缺漏】")
+            print_flush("\n【2. 近期 450 天交易日缺漏】")
             
-            # 取得 stock_history 中最近的交易日
-            cur.execute("SELECT DISTINCT date_int FROM stock_history ORDER BY date_int DESC LIMIT 60")
+            # 取得 stock_history 中最近的交易日 (450天)
+            cur.execute("SELECT DISTINCT date_int FROM stock_history ORDER BY date_int DESC LIMIT 450")
             recent_dates = [row[0] for row in cur.fetchall()]
             
-            # 檢查每天的資料量
-            low_count_days = []
-            for d in recent_dates[:30]:  # 只顯示最近 30 天
-                cur.execute("SELECT COUNT(*) FROM stock_history WHERE date_int = ?", (d,))
-                cnt = cur.fetchone()[0]
-                if cnt < 1000:  # 少於 1000 筆視為異常
-                    low_count_days.append((d, cnt))
-            
-            if low_count_days:
-                print_flush(f"  ⚠ 發現 {len(low_count_days)} 天資料量異常少:")
-                for d, c in low_count_days[:10]:
-                    print_flush(f"    - {d}: {c} 筆")
+            if not recent_dates:
+                print_flush("  ⚠ 無交易日資料")
             else:
-                print_flush("  ✓ 無缺漏")
+                # 優化: 一次查詢所有日期的資料量
+                date_str_list = ",".join(map(str, recent_dates))
+                cur.execute(f"SELECT date_int, COUNT(*) FROM stock_history WHERE date_int IN ({date_str_list}) GROUP BY date_int")
+                date_counts = {row[0]: row[1] for row in cur.fetchall()}
+                
+                low_count_days = []
+                for d in recent_dates:
+                    cnt = date_counts.get(d, 0)
+                    if cnt < 1000:  # 少於 1000 筆視為異常
+                        low_count_days.append((d, cnt))
+                
+                if low_count_days:
+                    print_flush(f"  ⚠ 發現 {len(low_count_days)} 天資料量異常少:")
+                    for d, c in low_count_days[:10]:
+                        print_flush(f"    - {d}: {c} 筆")
+                    if len(low_count_days) > 10:
+                        print_flush(f"    ... 等共 {len(low_count_days)} 天")
+                else:
+                    print_flush("  ✓ 無缺漏")
             
             # ========== 3. 法人資料缺漏 ==========
             print_flush("\n【3. 法人資料缺漏 (institutional_investors)】")
@@ -12729,19 +12401,22 @@ def check_db_nulls():
             if row[0]:
                 print_flush(f"  資料範圍: {row[0]} ~ {row[1]} ({row[2]} 天)")
                 
-                # 檢查最近 30 天
-                missing_inst = []
-                for d in recent_dates[:30]:
-                    cur.execute("SELECT COUNT(*) FROM institutional_investors WHERE date_int = ?", (d,))
-                    if cur.fetchone()[0] == 0:
-                        missing_inst.append(d)
-                
-                if missing_inst:
-                    print_flush(f"  ⚠ 最近 30 天缺少 {len(missing_inst)} 天:")
-                    for d in missing_inst[:10]:
-                        print_flush(f"    - {d}")
-                else:
-                    print_flush("  ✓ 最近 30 天無缺漏")
+                # 檢查最近 450 天 (優化: 使用 EXCEPT 或 NOT IN)
+                if recent_dates:
+                    date_str_list = ",".join(map(str, recent_dates))
+                    cur.execute(f"SELECT DISTINCT date_int FROM institutional_investors WHERE date_int IN ({date_str_list})")
+                    inst_dates = set(row[0] for row in cur.fetchall())
+                    
+                    missing_inst = [d for d in recent_dates if d not in inst_dates]
+                    
+                    if missing_inst:
+                        print_flush(f"  ⚠ 最近 450 天缺少 {len(missing_inst)} 天:")
+                        for d in missing_inst[:10]:
+                            print_flush(f"    - {d}")
+                        if len(missing_inst) > 10:
+                            print_flush(f"    ... 等共 {len(missing_inst)} 天")
+                    else:
+                        print_flush("  ✓ 最近 450 天無缺漏")
             else:
                 print_flush("  ⚠ 表為空")
             
@@ -12752,18 +12427,21 @@ def check_db_nulls():
             if row[0]:
                 print_flush(f"  資料範圍: {row[0]} ~ {row[1]} ({row[2]} 天)")
                 
-                missing_margin = []
-                for d in recent_dates[:30]:
-                    cur.execute("SELECT COUNT(*) FROM margin_data WHERE date_int = ?", (d,))
-                    if cur.fetchone()[0] == 0:
-                        missing_margin.append(d)
-                
-                if missing_margin:
-                    print_flush(f"  ⚠ 最近 30 天缺少 {len(missing_margin)} 天:")
-                    for d in missing_margin[:10]:
-                        print_flush(f"    - {d}")
-                else:
-                    print_flush("  ✓ 最近 30 天無缺漏")
+                if recent_dates:
+                    date_str_list = ",".join(map(str, recent_dates))
+                    cur.execute(f"SELECT DISTINCT date_int FROM margin_data WHERE date_int IN ({date_str_list})")
+                    margin_dates = set(row[0] for row in cur.fetchall())
+                    
+                    missing_margin = [d for d in recent_dates if d not in margin_dates]
+                    
+                    if missing_margin:
+                        print_flush(f"  ⚠ 最近 450 天缺少 {len(missing_margin)} 天:")
+                        for d in missing_margin[:10]:
+                            print_flush(f"    - {d}")
+                        if len(missing_margin) > 10:
+                            print_flush(f"    ... 等共 {len(missing_margin)} 天")
+                    else:
+                        print_flush("  ✓ 最近 450 天無缺漏")
             else:
                 print_flush("  ⚠ 表為空")
             
@@ -13148,6 +12826,7 @@ def fetch_realtime_data(code, name):
     """
     print_flush(f"=== {datetime.now().strftime('%Y-%m-%d %H:%M:%S')} 即時股價 ({code} {name}) ===")
     try:
+        import twstock
         stock_realtime = twstock.realtime.get(code)
         # [Guard Clause] 檢查是否成功
         if not stock_realtime.get('success'):
@@ -13218,6 +12897,7 @@ def handle_chart_interaction(code, name):
 def _handle_stock_query(code):
     """處理個股查詢 - 完整版（即時 + 歷史多天）"""
     # 取得股票名稱
+    import twstock
     name = code
     if code in twstock.codes:
         stock_info = twstock.codes[code]
