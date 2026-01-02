@@ -20,6 +20,43 @@ export function TechnicalChart({ code, name, onHoverData, isFullScreen = false }
     const [hoverIdx, setHoverIdx] = useState(-1);
     const [shareholderThreshold, setShareholderThreshold] = useState(1000);
 
+    // Fetch Data
+    useEffect(() => {
+        if (!code) return;
+
+        const fetchData = async () => {
+            try {
+                const res = await fetch(`${API_BASE_URL}/api/stocks/${code}/history?limit=500`);
+                const json = await res.json();
+                if (json.success && json.data && json.data.history) {
+                    const formatted = json.data.history.map(d => ({
+                        time: d.date_int ? `${String(d.date_int).slice(0, 4)}-${String(d.date_int).slice(4, 6)}-${String(d.date_int).slice(6, 8)}` : '',
+                        open: d.open,
+                        high: d.high,
+                        low: d.low,
+                        close: d.close,
+                        value: d.volume, // Volume
+                        amount: d.amount,
+                        tdcc: d.tdcc_count,
+                        large: d.large_shareholder_pct,
+                        foreign: d.foreign_buy,
+                        trust: d.trust_buy,
+                        dealer: d.dealer_buy
+                    })).sort((a, b) => new Date(a.time) - new Date(b.time));
+
+                    setChartData(formatted);
+                    if (onHoverData && formatted.length > 0) {
+                        onHoverData(formatted[formatted.length - 1], formatted.length > 1 ? formatted[formatted.length - 2] : null);
+                    }
+                }
+            } catch (err) {
+                console.error("Fetch history failed", err);
+            }
+        };
+
+        fetchData();
+    }, [code, onHoverData]);
+
     const indicatorConfig = [
         { name: 'MA20', color: '#f97316' },
         { name: 'MA60', color: '#a855f7' },

@@ -128,34 +128,22 @@ def main():
     print(f"  ✓ Found {len(inst_records)} institutional records.")
     upload_batch(supabase, "institutional_investors", inst_records)
 
-    # 3. Upload Stock Data (Snapshot)
-    print("\n[3] Uploading latest 'stock_data' (snapshot)...")
-    if max_date:
-        cursor.execute("""
-            SELECT h.code, m.name, h.date_int, h.open, h.high, h.low, h.close, h.volume
-            FROM stock_history h
-            JOIN stock_meta m ON h.code = m.code
-            WHERE h.date_int = ?
-        """, (max_date,))
-        rows = cursor.fetchall()
-        
-        snapshot_records = []
-        for row in rows:
-            d_str = str(row['date_int'])
-            date_fmt = f"{d_str[:4]}-{d_str[4:6]}-{d_str[6:8]}"
-            snapshot_records.append({
-                "code": row['code'],
-                "name": row['name'],
-                "date": date_fmt,
-                "open": row['open'],
-                "high": row['high'],
-                "low": row['low'],
-                "close": row['close'],
-                "volume": row['volume']
-            })
-            
-        print(f"  ✓ Found {len(snapshot_records)} snapshot records.")
-        upload_batch(supabase, "stock_data", snapshot_records)
+    # 3. Upload Stock Snapshot (Indicators)
+    print("\n[3] Uploading 'stock_snapshot' (Real-time & Indicators)...")
+    cursor.execute("SELECT * FROM stock_snapshot")
+    rows = cursor.fetchall()
+    snapshot_records = [dict(row) for row in rows]
+    
+    print(f"  ✓ Found {len(snapshot_records)} snapshot records.")
+    upload_batch(supabase, "stock_snapshot", snapshot_records)
+
+    # 4. Upload Stock Meta (Basic Info)
+    print("\n[4] Uploading 'stock_meta'...")
+    cursor.execute("SELECT * FROM stock_meta")
+    rows = cursor.fetchall()
+    meta_records = [dict(row) for row in rows]
+    print(f"  ✓ Found {len(meta_records)} meta records.")
+    upload_batch(supabase, "stock_meta", meta_records)
 
     conn.close()
     print("\n✅ Restore complete!")
