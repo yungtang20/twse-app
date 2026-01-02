@@ -156,7 +156,7 @@ requests.Session.request = new_request
 # 使用全域 Session 複用 TCP 連線，減少握手開銷
 _HTTP_SESSION = None
 
-def get_http_session():
+def get_http_session() -> requests.Session:
     """取得全域 HTTP Session (連線池)"""
     global _HTTP_SESSION
     if _HTTP_SESSION is None:
@@ -184,13 +184,13 @@ def get_http_session():
 # ==============================
 class SimpleCache:
     """輕量快取 (手機友善)"""
-    def __init__(self, max_size=100, ttl=300):
-        self._cache = {}
-        self._timestamps = {}
+    def __init__(self, max_size: int = 100, ttl: int = 300) -> None:
+        self._cache: dict = {}
+        self._timestamps: dict = {}
         self._max_size = max_size
         self._ttl = ttl  # 存活時間 (秒)
     
-    def get(self, key):
+    def get(self, key: str) -> any:
         if key in self._cache:
             if time.time() - self._timestamps.get(key, 0) < self._ttl:
                 return self._cache[key]
@@ -200,7 +200,7 @@ class SimpleCache:
                 del self._timestamps[key]
         return None
     
-    def set(self, key, value):
+    def set(self, key: str, value: any) -> None:
         # LRU: 超過上限時刪除最舊的
         if len(self._cache) >= self._max_size:
             oldest = min(self._timestamps, key=self._timestamps.get)
@@ -209,14 +209,14 @@ class SimpleCache:
         self._cache[key] = value
         self._timestamps[key] = time.time()
     
-    def clear(self):
+    def clear(self) -> None:
         self._cache.clear()
         self._timestamps.clear()
 
 # 全域快取實例
 _QUERY_CACHE = SimpleCache(max_size=50, ttl=60)  # 1分鐘快取
 
-def http_get(url, timeout=30, json_response=True, use_cache=False, cache_ttl=60):
+def http_get(url: str, timeout: int = 30, json_response: bool = True, use_cache: bool = False, cache_ttl: int = 60) -> dict | list | requests.Response:
     """
     [優化] 統一 HTTP GET 介面
     - 使用連線池複用 TCP 連線
@@ -621,7 +621,7 @@ def _fetch_holidays_from_twse():
         logger.warning(f"無法從 TWSE API 取得休市日: {e}")
         return None
 
-def is_market_holiday(date_int):
+def is_market_holiday(date_int: int) -> bool:
     """
     檢查是否為休市日 (包含週末與國定假日)
     
@@ -665,7 +665,7 @@ def is_market_holiday(date_int):
     return False
 
 
-def is_market_closed_today():
+def is_market_closed_today() -> bool:
     """
     檢查今天的股市資料是否已可取得
     
@@ -692,7 +692,7 @@ def is_market_closed_today():
     return now >= market_data_ready_time
 
 
-def get_last_trading_day(exclude_today=False):
+def get_last_trading_day(exclude_today: bool = False) -> int:
     """
     取得最後一個有效交易日
     
@@ -745,7 +745,7 @@ RESET_COLOR = '\033[0m'
 
 
 def _worker_calc_indicators(args):
-    """Step 7 Worker: 計算單支股票指標"""
+    """Step 7 Worker: 計算單支股票指標 (含 VSBC)"""
     import pandas as pd
     code, name, preloaded_df = args
     
@@ -769,6 +769,30 @@ def _worker_calc_indicators(args):
             
         # 取得最新一筆資料
         latest = indicators_list[0]
+        
+        # [新增] 計算 VSBC (使用預載入的 DataFrame)
+        vsbc_val = None
+        vsbc_pct_val = None
+        vsbc_prev_val = None
+        
+        if preloaded_df is not None and len(preloaded_df) >= 100:
+            try:
+                df = preloaded_df.copy()
+                df['vsbc'] = calc_vsbc_series(df)
+                df['vsbc_pct'] = df['vsbc'].rolling(100, min_periods=20).rank(pct=True) * 100
+                df['vsbc_pct'] = df['vsbc_pct'].fillna(50)
+                
+                if len(df) >= 2:
+                    vsbc_val = df['vsbc'].iloc[-1]
+                    vsbc_pct_val = df['vsbc_pct'].iloc[-1]
+                    vsbc_prev_val = df['vsbc'].iloc[-2]
+                    
+                    # 確保值為數值
+                    vsbc_val = round(float(vsbc_val), 2) if pd.notna(vsbc_val) else None
+                    vsbc_pct_val = round(float(vsbc_pct_val), 2) if pd.notna(vsbc_pct_val) else None
+                    vsbc_prev_val = round(float(vsbc_prev_val), 2) if pd.notna(vsbc_prev_val) else None
+            except:
+                pass
         
         # 建構更新 Tuple (必須與 SQL UPDATE 順序完全一致)
         return (
@@ -797,6 +821,7 @@ def _worker_calc_indicators(args):
             latest.get('Monthly_Close'), latest.get('Monthly_Open'),
             latest.get('VWAP200'), latest.get('Mansfield_RS'),
             latest.get('ADL'), latest.get('RS'),
+            vsbc_val, vsbc_pct_val, vsbc_prev_val,  # [新增] VSBC 欄位
             code # WHERE code=?
         )
     except Exception:
@@ -2171,216 +2196,121 @@ db_manager = DBManager(Config.DB_PATH)
 # 資料庫初始化
 # ==============================
 def ensure_db(force=False):
-    """確保資料庫表結構存在 (優化版)"""
-    
-    # [Optimization] 檢查初始化標記，避免每次都跑大量 DDL
+    """確保資料庫表結構存在 (Refactored)"""
     flag_file = WORK_DIR / ".db_initialized"
     if not force and flag_file.exists() and DB_FILE.exists():
         return
 
+    # Define Schema
+    TABLES = {
+        "stock_meta": [
+            "code TEXT PRIMARY KEY", "name TEXT", "list_date TEXT", "delist_date TEXT", "market_type TEXT"
+        ],
+        "stock_history": [
+            "code TEXT", "date_int INTEGER", "open REAL", "high REAL", "low REAL", "close REAL", 
+            "volume INTEGER", "amount INTEGER", "PRIMARY KEY (code, date_int)"
+        ],
+        "institutional_investors": [
+            "code TEXT NOT NULL", "date_int INTEGER NOT NULL", 
+            "foreign_buy INTEGER DEFAULT 0", "foreign_sell INTEGER DEFAULT 0",
+            "trust_buy INTEGER DEFAULT 0", "trust_sell INTEGER DEFAULT 0",
+            "dealer_buy INTEGER DEFAULT 0", "dealer_sell INTEGER DEFAULT 0",
+            "PRIMARY KEY (code, date_int)"
+        ],
+        "margin_data": [
+            "date_int INTEGER", "code TEXT", 
+            "margin_buy INTEGER", "margin_sell INTEGER", "margin_redemp INTEGER", "margin_balance INTEGER", "margin_util_rate REAL",
+            "short_buy INTEGER", "short_sell INTEGER", "short_redemp INTEGER", "short_balance INTEGER", "short_util_rate REAL",
+            "PRIMARY KEY (date_int, code)"
+        ],
+        "market_index": [
+            "date_int INTEGER", "index_id TEXT", "close REAL", "open REAL", "high REAL", "low REAL", "volume INTEGER",
+            "PRIMARY KEY (date_int, index_id)"
+        ]
+    }
+    
+    # Snapshot Columns (Complete List)
+    SNAPSHOT_COLS = [
+        ("code", "TEXT PRIMARY KEY"), ("name", "TEXT"), ("date", "TEXT"), ("close", "REAL"), ("volume", "INTEGER"),
+        ("close_prev", "REAL"), ("vol_prev", "INTEGER"), ("amount", "REAL"),
+        # MAs
+        ("ma3", "REAL"), ("ma20", "REAL"), ("ma60", "REAL"), ("ma120", "REAL"), ("ma200", "REAL"),
+        ("wma3", "REAL"), ("wma20", "REAL"), ("wma60", "REAL"), ("wma120", "REAL"), ("wma200", "REAL"),
+        # Prev MAs
+        ("ma3_prev", "REAL"), ("ma20_prev", "REAL"), ("ma60_prev", "REAL"), ("ma120_prev", "REAL"), ("ma200_prev", "REAL"),
+        ("wma3_prev", "REAL"), ("wma20_prev", "REAL"), ("wma60_prev", "REAL"), ("wma120_prev", "REAL"), ("wma200_prev", "REAL"),
+        # Indicators
+        ("mfi14", "REAL"), ("vwap20", "REAL"), ("chg14_pct", "REAL"), ("rsi", "REAL"), ("macd", "REAL"), ("signal", "REAL"),
+        ("vp_poc", "REAL"), ("vp_upper", "REAL"), ("vp_lower", "REAL"),
+        ("month_k", "REAL"), ("month_d", "REAL"), ("daily_k", "REAL"), ("daily_d", "REAL"), ("week_k", "REAL"), ("week_d", "REAL"),
+        # Prev Indicators
+        ("mfi14_prev", "REAL"), ("vwap20_prev", "REAL"), ("chg14_pct_prev", "REAL"),
+        ("month_k_prev", "REAL"), ("month_d_prev", "REAL"), ("daily_k_prev", "REAL"), ("daily_d_prev", "REAL"), ("week_k_prev", "REAL"), ("week_d_prev", "REAL"),
+        # Advanced
+        ("smi", "REAL"), ("svi", "REAL"), ("nvi", "REAL"), ("pvi", "REAL"), ("clv", "REAL"),
+        ("smi_prev", "REAL"), ("svi_prev", "REAL"), ("nvi_prev", "REAL"), ("pvi_prev", "REAL"),
+        ("major_holders_pct", "REAL"),
+        ("foreign_buy", "INTEGER"), ("trust_buy", "INTEGER"), ("dealer_buy", "INTEGER"),
+        ("adl", "REAL"), ("rs", "REAL"), ("mansfield_rs", "REAL"),
+        # Signals
+        ("smi_signal", "INTEGER"), ("svi_signal", "INTEGER"), ("nvi_signal", "INTEGER"), ("vsa_signal", "INTEGER"),
+        ("vol_div_signal", "INTEGER"), ("weekly_nvi_signal", "INTEGER"),
+        ("div_3day_bull", "INTEGER"), ("div_3day_bear", "INTEGER"),
+        ("smart_score", "INTEGER"), ("smart_score_prev", "INTEGER"),
+        # Extra
+        ("vol_ma3", "REAL"), ("vwap60", "REAL"), ("vwap200", "REAL"), ("bbw", "REAL"), ("fib_0618", "REAL"),
+        ("weekly_close", "REAL"), ("weekly_open", "REAL"), ("monthly_close", "REAL"), ("monthly_open", "REAL"),
+        # Margin
+        ("margin_balance", "INTEGER"), ("margin_util_rate", "REAL"), ("short_balance", "INTEGER"), ("short_util_rate", "REAL"),
+        # Valuation
+        ("pe", "REAL"), ("yield", "REAL"), ("pb", "REAL")
+    ]
+    
+    INDEXES = [
+        "CREATE INDEX IF NOT EXISTS idx_stock_meta_code ON stock_meta(code)",
+        "CREATE INDEX IF NOT EXISTS idx_stock_history_code ON stock_history(code)",
+        "CREATE INDEX IF NOT EXISTS idx_stock_history_date ON stock_history(date_int)",
+        "CREATE INDEX IF NOT EXISTS idx_stock_history_code_date ON stock_history(code, date_int DESC)",
+        "CREATE INDEX IF NOT EXISTS idx_stock_snapshot_date ON stock_snapshot(date)",
+        "CREATE INDEX IF NOT EXISTS idx_stock_snapshot_smart_score ON stock_snapshot(smart_score)"
+    ]
+
     with db_manager.get_connection() as conn:
         cur = conn.cursor()
         
-        # 建立股票名冊表
-        cur.execute("""
-            CREATE TABLE IF NOT EXISTS stock_meta (
-                code TEXT PRIMARY KEY,
-                name TEXT,
-                list_date TEXT,
-                delist_date TEXT,
-                market_type TEXT
-            )
-        """)
+        # 1. Create Tables
+        for table, cols in TABLES.items():
+            cols_def = ",\n".join(cols)
+            cur.execute(f"CREATE TABLE IF NOT EXISTS {table} ({cols_def})")
+            
+        # 2. Create Stock Snapshot (Special handling for many columns)
+        cols_def = ",\n".join([f"{c[0]} {c[1]}" for c in SNAPSHOT_COLS])
+        cur.execute(f"CREATE TABLE IF NOT EXISTS stock_snapshot ({cols_def}, FOREIGN KEY (code) REFERENCES stock_meta(code))")
         
-        # 建立歷史表
-        cur.execute("""
-            CREATE TABLE IF NOT EXISTS stock_history (
-                code TEXT,
-                date_int INTEGER,
-                open REAL,
-                high REAL,
-                low REAL,
-                close REAL,
-                volume INTEGER,
-                amount INTEGER,
-                PRIMARY KEY (code, date_int)
-            )
-        """)
-        
-        # 建立快照表
-        cur.execute("""
-            CREATE TABLE IF NOT EXISTS stock_snapshot (
-                code TEXT PRIMARY KEY,
-                name TEXT,
-                date TEXT,
-                close REAL,
-                volume INTEGER,
-                close_prev REAL,
-                vol_prev INTEGER,
-                ma3 REAL, ma20 REAL, ma60 REAL, ma120 REAL, ma200 REAL,
-                wma3 REAL, wma20 REAL, wma60 REAL, wma120 REAL, wma200 REAL,
-                mfi14 REAL, vwap20 REAL, chg14_pct REAL,
-                rsi REAL, macd REAL, signal REAL,
-                vp_poc REAL, vp_upper REAL, vp_lower REAL,
-                month_k REAL, month_d REAL,
-                daily_k REAL, daily_d REAL,
-                week_k REAL, week_d REAL,
-                ma3_prev REAL, ma20_prev REAL, ma60_prev REAL, ma120_prev REAL, ma200_prev REAL,
-                wma3_prev REAL, wma20_prev REAL, wma60_prev REAL, wma120_prev REAL, wma200_prev REAL,
-                mfi14_prev REAL, vwap20_prev REAL, chg14_pct_prev REAL,
-                month_k_prev REAL, month_d_prev REAL,
-                daily_k_prev REAL, daily_d_prev REAL,
-                week_k_prev REAL, week_d_prev REAL,
-                smi REAL, svi REAL, nvi REAL, pvi REAL, clv REAL,
-                major_holders_pct REAL,
-                foreign_buy INTEGER, trust_buy INTEGER, dealer_buy INTEGER,
-                adl REAL, rs REAL,
-                smi_signal INTEGER, svi_signal INTEGER,
-                nvi_signal INTEGER, vsa_signal INTEGER,
-                smart_score INTEGER,
-                smi_prev REAL, svi_prev REAL, nvi_prev REAL,
-                smart_score_prev INTEGER,
-                vol_div_signal INTEGER, weekly_nvi_signal INTEGER,
-                vwap60 REAL, bbw REAL, fib_0618 REAL,
-                weekly_close REAL, weekly_open REAL,
-                monthly_close REAL, monthly_open REAL,
-                vwap200 REAL, mansfield_rs REAL,
-                margin_balance INTEGER, margin_util_rate REAL,
-                short_balance INTEGER, short_util_rate REAL,
-                FOREIGN KEY (code) REFERENCES stock_meta(code)
-            )
-        """)
-        
-        # 建立融資融券表
-        cur.execute("""
-            CREATE TABLE IF NOT EXISTS margin_data (
-                date_int INTEGER,
-                code TEXT,
-                margin_buy INTEGER,
-                margin_sell INTEGER,
-                margin_redemp INTEGER,
-                margin_balance INTEGER,
-                margin_util_rate REAL,
-                short_buy INTEGER,
-                short_sell INTEGER,
-                short_redemp INTEGER,
-                short_balance INTEGER,
-                short_util_rate REAL,
-                PRIMARY KEY (date_int, code)
-            )
-        """)
-        
-        # 建立大盤指數表
-        cur.execute("""
-            CREATE TABLE IF NOT EXISTS market_index (
-                date_int INTEGER,
-                index_id TEXT, -- 'TAIEX', 'TPEX', 'VIX'
-                close REAL,
-                open REAL,
-                high REAL,
-                low REAL,
-                volume INTEGER,
-                PRIMARY KEY (date_int, index_id)
-            )
-        """)
-        
-        # 建立索引
-        cur.execute("CREATE INDEX IF NOT EXISTS idx_stock_meta_code ON stock_meta(code)")
-        cur.execute("CREATE INDEX IF NOT EXISTS idx_stock_history_code ON stock_history(code)")
-        cur.execute("CREATE INDEX IF NOT EXISTS idx_stock_history_date ON stock_history(date_int)")
-        cur.execute("CREATE INDEX IF NOT EXISTS idx_stock_history_code_date ON stock_history(code, date_int DESC)")
-        cur.execute("CREATE INDEX IF NOT EXISTS idx_stock_snapshot_date ON stock_snapshot(date)")
-        cur.execute("CREATE INDEX IF NOT EXISTS idx_stock_snapshot_smart_score ON stock_snapshot(smart_score)")
-        
-        # 建立初始化標記
-        try:
-            with open(flag_file, 'w') as f:
-                f.write(datetime.now().strftime("%Y-%m-%d %H:%M:%S"))
-        except Exception:
-            pass
-        
-        # 檢查 stock_snapshot 是否有新欄位 (Migration)
+        # 3. Create Indexes
+        for idx in INDEXES:
+            cur.execute(idx)
+            
+        # 4. Migration: Ensure all columns exist in stock_snapshot
         cur.execute("PRAGMA table_info(stock_snapshot)")
-        snapshot_cols = {row[1] for row in cur.fetchall()}
+        existing_cols = {row[1] for row in cur.fetchall()}
         
-        new_snapshot_cols = [
-            ("vol_div_signal", "INTEGER"),
-            ("weekly_nvi_signal", "INTEGER"),
-            ("div_3day_bull", "INTEGER"),
-            ("div_3day_bear", "INTEGER"),
-            ("vol_ma3", "REAL"),
-            ("pvi_prev", "REAL"),
-            ("vwap60", "REAL"),
-            ("bbw", "REAL"),
-            ("fib_0618", "REAL"),
-            ("weekly_close", "REAL"),
-            ("weekly_open", "REAL"),
-            ("monthly_close", "REAL"),
-            ("monthly_open", "REAL"),
-            ("vwap200", "REAL"),
-            ("mansfield_rs", "REAL"),
-            ("margin_balance", "INTEGER"),
-            ("margin_util_rate", "REAL"),
-            ("short_balance", "INTEGER"),
-            ("short_util_rate", "REAL"),
-            ("amount", "REAL"),
-            ("pe", "REAL"),
-            ("yield", "REAL"),
-            ("pb", "REAL")
-        ]
-        
-        for col_name, col_type in new_snapshot_cols:
-            if col_name not in snapshot_cols:
+        for col_name, col_type in SNAPSHOT_COLS:
+            if col_name not in existing_cols:
                 try:
                     cur.execute(f"ALTER TABLE stock_snapshot ADD COLUMN {col_name} {col_type}")
-                    print_flush(f"✓ 已新增欄位 {col_name} 到 stock_snapshot")
-                except Exception as e:
-                    print_flush(f"⚠ 添加欄位 {col_name} 失敗: {e}")
-        
-        # [已移除舊架構 stock_data 相容性代碼 - 統一使用新三表架構]
-        
-        # 同步欄位到 stock_snapshot (新三表架構)
-        columns_to_sync = [
-            ("ma3", "REAL"), ("ma20", "REAL"), ("ma60", "REAL"), ("ma120", "REAL"), ("ma200", "REAL"),
-            ("wma3", "REAL"), ("wma20", "REAL"), ("wma60", "REAL"), ("wma120", "REAL"), ("wma200", "REAL"),
-            ("mfi14", "REAL"), ("vwap20", "REAL"), ("chg14_pct", "REAL"), 
-            ("rsi", "REAL"), ("macd", "REAL"), ("signal", "REAL"),
-            ("vp_poc", "REAL"), ("vp_upper", "REAL"), ("vp_lower", "REAL"),
-            ("month_k", "REAL"), ("month_d", "REAL"),
-            ("daily_k", "REAL"), ("daily_d", "REAL"),
-            ("week_k", "REAL"), ("week_d", "REAL"),
-            ("ma3_prev", "REAL"), ("ma20_prev", "REAL"), ("ma60_prev", "REAL"), ("ma120_prev", "REAL"), ("ma200_prev", "REAL"),
-            ("wma3_prev", "REAL"), ("wma20_prev", "REAL"), ("wma60_prev", "REAL"), ("wma120_prev", "REAL"), ("wma200_prev", "REAL"),
-            ("mfi14_prev", "REAL"), ("vwap20_prev", "REAL"), ("chg14_pct_prev", "REAL"),
-            ("month_k_prev", "REAL"), ("month_d_prev", "REAL"),
-            ("daily_k_prev", "REAL"), ("daily_d_prev", "REAL"),
-            ("week_k_prev", "REAL"), ("week_d_prev", "REAL"),
-            ("smi", "REAL"), ("svi", "REAL"), ("nvi", "REAL"), 
-            ("pvi", "REAL"), ("clv", "REAL"),
-            ("smi_signal", "INTEGER"), ("svi_signal", "INTEGER"), 
-            ("nvi_signal", "INTEGER"), ("vsa_signal", "INTEGER"),
-            ("smart_score", "INTEGER"),
-            ("smi_prev", "REAL"), ("svi_prev", "REAL"), ("nvi_prev", "REAL"), 
-            ("pvi_prev", "REAL"), # [Fix] Add pvi_prev
-            ("smart_score_prev", "INTEGER"),
-            ("div_3day_bull", "INTEGER"), ("div_3day_bear", "INTEGER"),
-            ("vol_ma3", "REAL")
-        ]
-        
-        # 同步更新 stock_snapshot 的欄位
-        cur.execute("PRAGMA table_info(stock_snapshot)")
-        snapshot_columns = {row[1] for row in cur.fetchall()}
-        
-        for col_name, col_type in columns_to_sync:
-            if col_name not in snapshot_columns:
-                try:
-                    print_flush(f"   -> Adding column to stock_snapshot: {col_name} ({col_type})...")
-                    cur.execute(f"ALTER TABLE stock_snapshot ADD COLUMN {col_name} {col_type}")
-                    print_flush(f"      ✓ Added {col_name} to snapshot")
-                except Exception as e:
-                    print_flush(f"⚠ 添加 snapshot 欄位 {col_name} 失敗: {e}")
-
+                    print_flush(f"✓ Added column {col_name} to stock_snapshot")
+                except Exception:
+                    pass
+                    
         conn.commit()
+        
+    # Create Flag File
+    try:
+        with open(flag_file, 'w') as f:
+            f.write(datetime.now().strftime("%Y-%m-%d %H:%M:%S"))
+    except:
+        pass
 
 
 
@@ -6513,19 +6443,18 @@ def step10_check_gaps():
     print_flush("\n[Step 10] 檢查數據缺失...")
     step4_check_data_gaps()
 
-def step11_verify_backfill():
+def step11_verify_backfill(auto_mode=False):
     """步驟11: 驗證一致性並補漏"""
     print_flush("\n[Step 11] 驗證一致性並補漏...")
-    step6_verify_and_backfill(skip_downloads=True, skip_institutional=True)
+    # 手動模式下 (auto_mode=False) 允許下載回補
+    skip = auto_mode
+    step6_verify_and_backfill(skip_downloads=skip, skip_institutional=skip)
 
 def step12_calc_indicators():
-    """步驟12: 計算技術指標 (含 VSBC 分數)"""
-    print_flush("\n[Step 12] 計算技術指標...")
+    """步驟12: 計算技術指標 (含 VSBC 分數) [優化版]"""
+    print_flush("\n[Step 12] 計算技術指標與 VSBC 分數...")
     step7_calc_indicators()
-    
-    # 計算 VSBC 分數 (供 Web 版使用)
-    print_flush("\n[Step 12b] 計算 VSBC 分數...")
-    batch_calculate_vsbc()
+    # VSBC 已整合到 step7_calc_indicators 的多進程計算中
 
 # ==============================
 # 市場資料更新模板 (Template Method)
@@ -6856,7 +6785,7 @@ def step3_download_twse_daily(silent_header=False):
 MIN_DATA_COUNT = 450 # 450筆
     
 def step4_check_data_gaps():
-    """步驟4: 檢查數據缺失 (含金額與法人) - 支援上市日期判斷"""
+    """步驟4: 檢查數據缺失 (含金額、法人、估值、集保) - 支援上市日期判斷"""
     print_flush("\n[Step 4] 檢查數據缺失...")
     # MIN_DATA_COUNT = 400  # 用戶指定門檻
     
@@ -6891,11 +6820,51 @@ def step4_check_data_gaps():
             inst_map = {r[0]: r[1] for r in inst_rows}
         except:
             inst_map = {}  # 表格可能不存在
+
+        # 3. 檢查融資融券資料
+        print_flush("正在分析融資融券資料...")
+        try:
+            margin_rows = cur.execute("SELECT code, COUNT(*) FROM margin_data GROUP BY code").fetchall()
+            margin_map = {r[0]: r[1] for r in margin_rows}
+        except:
+            margin_map = {}
+
+        # 4. 檢查估值與集保資料 (從 stock_snapshot)
+        print_flush("正在分析估值與集保資料...")
+        try:
+            # 檢查 PE, Yield, PB 是否全為 NULL (表示未更新)
+            # 檢查 total_shareholders 是否為 0 或 NULL
+            snap_rows = cur.execute("""
+                SELECT code, pe, yield, pb, total_shareholders 
+                FROM stock_snapshot
+            """).fetchall()
+            
+            valuation_map = {} # code -> is_missing (True/False)
+            tdcc_map = {}      # code -> is_missing (True/False)
+            
+            for r in snap_rows:
+                code = r[0]
+                # 估值缺失: PE, Yield, PB 只要有一個有值就算有資料 (寬鬆檢查)，全空才算缺失
+                # 或者嚴格一點: 只要全空就算缺失
+                is_val_missing = (r[1] is None and r[2] is None and r[3] is None)
+                valuation_map[code] = is_val_missing
+                
+                # 集保缺失: 人數為 0 或 NULL
+                is_tdcc_missing = (r[4] is None or r[4] == 0)
+                tdcc_map[code] = is_tdcc_missing
+                
+        except Exception as e:
+            print_flush(f"⚠ 檢查估值/集保失敗: {e}")
+            valuation_map = {}
+            tdcc_map = {}
             
     # 分析缺失
     count_gaps = []
     amount_gaps = []
     inst_gaps = []
+    margin_gaps = []
+    valuation_gaps = []
+    tdcc_gaps = []
     
     # 統計變數
     total_records = 0
@@ -6951,6 +6920,17 @@ def step4_check_data_gaps():
         if code not in inst_map:
             inst_gaps.append(code)
             
+        if code not in margin_map:
+            margin_gaps.append(code)
+            
+        # 檢查估值缺失
+        if valuation_map.get(code, False):
+            valuation_gaps.append(code)
+            
+        # 檢查集保缺失
+        if tdcc_map.get(code, False):
+            tdcc_gaps.append(code)
+            
     # 取得資料庫最大日期
     try:
         max_db_date_str = get_latest_market_date()
@@ -6974,8 +6954,8 @@ def step4_check_data_gaps():
     print_flush("-" * 60)
 
     # 顯示結果
-    if not count_gaps and not amount_gaps and not inst_gaps:
-        print_flush(f"✓ 所有股票資料皆充足 (>= {MIN_DATA_COUNT} 筆或符合上市天數, 金額/法人皆完整)")
+    if not any([count_gaps, amount_gaps, inst_gaps, margin_gaps, valuation_gaps, tdcc_gaps]):
+        print_flush(f"✓ 所有股票資料皆充足 (>= {MIN_DATA_COUNT} 筆或符合上市天數, 金額/法人/融資券/估值/集保皆完整)")
     else:
         if count_gaps:
             print_flush(f"\n⚠ 資料筆數不足 (<{MIN_DATA_COUNT}): {len(count_gaps)} 檔")
@@ -6997,6 +6977,33 @@ def step4_check_data_gaps():
                 print_flush(f"  - {c}")
             if len(inst_gaps) > 5:
                 print_flush(f"  ... 等共 {len(inst_gaps)} 檔")
+
+        if margin_gaps:
+            print_flush(f"\n⚠ 融資融券缺失 (完全無資料): {len(margin_gaps)} 檔")
+            if '0000' in margin_gaps:
+                print_flush(f"  - 0000 (大盤匯總) [重要]")
+            others = [c for c in margin_gaps if c != '0000']
+            if others:
+                for c in others[:5]:
+                    print_flush(f"  - {c}")
+            if len(others) > 5:
+                print_flush(f"  ... 等共 {len(others)} 檔")
+
+        if valuation_gaps:
+            print_flush(f"\n⚠ 估值資料缺失 (PE/Yield/PB 全空): {len(valuation_gaps)} 檔")
+            for c in valuation_gaps[:5]:
+                print_flush(f"  - {c}")
+            if len(valuation_gaps) > 5:
+                print_flush(f"  ... 等共 {len(valuation_gaps)} 檔")
+
+        if tdcc_gaps:
+            print_flush(f"\n⚠ 集保資料缺失 (人數為0): {len(tdcc_gaps)} 檔")
+            for c in tdcc_gaps[:5]:
+                print_flush(f"  - {c}")
+            if len(tdcc_gaps) > 5:
+                print_flush(f"  ... 等共 {len(tdcc_gaps)} 檔")
+                if len(others) > 5:
+                    print_flush(f"  ... 等共 {len(others)} 檔")
 
 def step5_clean_delisted():
     """步驟5: 清理下市股票"""
@@ -7044,108 +7051,39 @@ def step5_clean_delisted():
         print_flush(f"❌ 清理失敗: {e}")
 
 def step3_5_download_institutional(days=60, silent_header=False):
-    """步驟3.5: 下載三大法人買賣超資料 (官方 OpenAPI 為主，網頁為備援)"""
+    """步驟3.5: 下載三大法人買賣超資料 (Refactored using InstitutionalFetcher)"""
     if not silent_header:
         print_flush(f"\n[Step 3.5] 下載三大法人買賣超資料 (官方 OpenAPI 優先)...")
     
     try:
-        from io import StringIO
-        import pandas as pd
+        from core.fetchers import InstitutionalFetcher
+        from datetime import datetime, timedelta
+        import random
+        import time
         
-        # === A. 官方 OpenAPI (主要來源 - 只抓今天) ===
-        today_int = get_last_trading_day()  # [修正] 使用交易日檢查
-        openapi_success = False
-        total_saved = 0
+        # 1. 準備抓取器
+        fetcher = InstitutionalFetcher()
         
-        # A1. TWSE 法人資料
-        try:
-            print_flush("正在從官方 OpenAPI 取得今日法人資料...")
-            saved = InstitutionalInvestorAPI.fetch_all_openapi()
-            if saved > 0:
-                total_saved += saved
-                openapi_success = True
-        except Exception as e:
-            print_flush(f"⚠ TWSE 官方 OpenAPI 失敗: {e}")
+        # === A. 抓取今日資料 ===
+        today_int = get_last_trading_day()
+        date_str = str(today_int)
         
-        # A2. TPEx 法人資料 (新增)
-        try:
-            print_flush("正在從 TPEx OpenAPI 取得今日上櫃法人資料...")
-            url = API_ENDPOINTS['tpex']['institutional']
-            data = http_get(url, timeout=30)
-            if data:
-                    tpex_inst_data = []
-                    for item in data:
-                        try:
-                            code = str(item.get('SecuritiesCompanyCode', '')).strip()
-                            if len(code) != 4 or not code.isdigit():
-                                continue
-                            # TPEx OpenAPI 欄位:
-                            # ForeignInvestorsBuy, ForeignInvestorsSell
-                            # SecuritiesInvestmentTrustBuy, SecuritiesInvestmentTrustSell
-                            # DealersProprietaryBuy, DealersProprietarySell
-                            f_buy = safe_int(str(item.get('ForeignInvestorsBuy', '0')).replace(',', ''))
-                            f_sell = safe_int(str(item.get('ForeignInvestorsSell', '0')).replace(',', ''))
-                            t_buy = safe_int(str(item.get('SecuritiesInvestmentTrustBuy', '0')).replace(',', ''))
-                            t_sell = safe_int(str(item.get('SecuritiesInvestmentTrustSell', '0')).replace(',', ''))
-                            d_buy = safe_int(str(item.get('DealersProprietaryBuy', '0')).replace(',', ''))
-                            d_sell = safe_int(str(item.get('DealersProprietarySell', '0')).replace(',', ''))
-                            tpex_inst_data.append((code, today_int, f_buy, f_sell, t_buy, t_sell, d_buy, d_sell))
-                        except:
-                            continue
-                    
-                    if tpex_inst_data:
-                        with db_manager.get_connection() as conn:
-                            cur = conn.cursor()
-                            cur.executemany("""
-                                INSERT OR REPLACE INTO institutional_investors 
-                                (code, date_int, foreign_buy, foreign_sell, trust_buy, trust_sell, dealer_buy, dealer_sell)
-                                VALUES (?, ?, ?, ?, ?, ?, ?, ?)
-                            """, tpex_inst_data)
-                            conn.commit()
-                        total_saved += len(tpex_inst_data)
-                        print_flush(f"✓ TPEx OpenAPI: 已儲存 {len(tpex_inst_data)} 筆上櫃法人資料")
-                        openapi_success = True
-        except Exception as e:
-            print_flush(f"⚠ TPEx OpenAPI 失敗: {e}")
+        print_flush(f"正在取得 {date_str} 法人資料...")
+        data_list = fetcher.fetch_all(date_str)
         
-        # A3. 大盤法人資料 (0000) - 新增
-        try:
-            url = "https://www.twse.com.tw/rwd/zh/fund/BFI82U?response=json"
-            data = http_get(url, timeout=30)
-            if data.get('stat') == 'OK' and data.get('data'):
-                    rows = data['data']
-                    # rows[0]: 自營商(自行買賣), rows[2]: 投信, rows[3]: 外資及陸資
-                    # 金額單位：元，需轉換為股數概念 (這裡直接存金額)
-                    f_buy = safe_int(str(rows[3][1]).replace(',', ''))  # 外資買進金額
-                    f_sell = safe_int(str(rows[3][2]).replace(',', ''))  # 外資賣出金額
-                    t_buy = safe_int(str(rows[2][1]).replace(',', ''))   # 投信買進金額
-                    t_sell = safe_int(str(rows[2][2]).replace(',', ''))  # 投信賣出金額
-                    d_buy = safe_int(str(rows[0][1]).replace(',', ''))   # 自營商買進金額
-                    d_sell = safe_int(str(rows[0][2]).replace(',', ''))  # 自營商賣出金額
-                    
-                    with db_manager.get_connection() as conn:
-                        cur = conn.cursor()
-                        cur.execute("""
-                            INSERT OR REPLACE INTO institutional_investors 
-                            (code, date_int, foreign_buy, foreign_sell, trust_buy, trust_sell, dealer_buy, dealer_sell)
-                            VALUES (?, ?, ?, ?, ?, ?, ?, ?)
-                        """, ('0000', today_int, f_buy, f_sell, t_buy, t_sell, d_buy, d_sell))
-                        conn.commit()
-                    total_saved += 1
-                    print_flush(f"✓ 大盤法人資料: 外資 {(f_buy-f_sell)/100000000:.1f}億, 投信 {(t_buy-t_sell)/100000000:.1f}億")
-        except Exception as e:
-            print_flush(f"⚠ 大盤法人資料失敗: {e}")
-        
-        if total_saved > 0:
-            print_flush(f"✓ 官方 OpenAPI 共儲存 {total_saved} 筆法人資料 ({today_int})")
-        
-        # === B. 歷史資料補漏 (網頁爬蟲備援) ===
+        if data_list:
+            _save_institutional_data(data_list)
+            print_flush(f"✓ 今日資料已儲存 ({len(data_list)} 筆)")
+        else:
+            print_flush("⚠ 無法取得今日法人資料")
+
+        # === B. 歷史資料補漏 ===
         print_flush(f"檢查近 {days} 天歷史缺漏...")
         
         # 1. 準備日期列表
         base_date = datetime.now()
         dates_to_check = []
-        for i in range(days + 10): # 多抓一點以防假日
+        for i in range(days + 10):
             dt = base_date - timedelta(days=i)
             if dt.weekday() < 5: # 只取平日
                 dates_to_check.append(dt)
@@ -7170,13 +7108,12 @@ def step3_5_download_institutional(days=60, silent_header=False):
             """)
             conn.commit()
             
-            # 取得已有的日期
             check_start = int(dates_to_check[-1].strftime("%Y%m%d"))
             cur.execute("SELECT DISTINCT date_int FROM institutional_investors WHERE date_int >= ?", (check_start,))
             existing_dates = {r[0] for r in cur.fetchall()}
             
-        # 3. 找出缺漏日期 (排除休市日，今天只有在 14:00 後才嘗試回補)
-        today_int = int(datetime.now().strftime("%Y%m%d"))
+        # 3. 找出缺漏日期
+        today_int_real = int(datetime.now().strftime("%Y%m%d"))
         current_hour = datetime.now().hour
         
         missing_dates = []
@@ -7186,11 +7123,10 @@ def step3_5_download_institutional(days=60, silent_header=False):
                 continue
             if is_market_holiday(d_int):
                 continue
-            # 今天只有在 14:00 後才嘗試回補 (收盤 13:30，盤後更新約 14:00)
-            if d_int == today_int and current_hour < 14:
+            if d_int == today_int_real and current_hour < 14:
                 continue
             missing_dates.append(d)
-        
+            
         if not missing_dates:
             print_flush("✓ 法人資料完整，無須補漏")
             return
@@ -7198,175 +7134,44 @@ def step3_5_download_institutional(days=60, silent_header=False):
         print_flush(f"發現 {len(missing_dates)} 天缺漏，開始回補...")
         
         # 4. 執行回補
-        total_inserted = 0
         for i, dt in enumerate(missing_dates):
             date_str = dt.strftime("%Y%m%d")
-            date_int = int(date_str)
             print_flush(f"\r[{i+1}/{len(missing_dates)}] 處理 {dt.strftime('%Y-%m-%d')} ... ", end="")
             
-            inst_data = []
+            time.sleep(random.uniform(2.0, 4.0))
             
-            # --- TWSE (T86) ---
-            try:
-                url = f'https://www.twse.com.tw/rwd/zh/fund/T86?response=csv&date={date_str}&selectType=ALLBUT0999'
-                # 隨機延遲
-                time.sleep(random.uniform(2.0, 4.0))
-                r = requests.get(url, timeout=15, verify=False)
-                
-                if r.status_code == 200 and len(r.text) > 100:
-                    df = pd.read_csv(StringIO(r.text), header=1).dropna(how='all', axis=1).dropna(how='any')
-                    df = df.astype(str).apply(lambda s: s.str.replace(',', ''))
-                    if '證券代號' in df.columns:
-                        df['code'] = df['證券代號'].str.replace('=', '').str.replace('"', '').str.strip()
-                        df = df[df['code'].str.len() == 4]
-                        
-                        for _, row in df.iterrows():
-                            try:
-                                code = row['code']
-                                f_buy = safe_int(row.get('外資及陸資(不含外資自營商)買進股數', 0))
-                                f_sell = safe_int(row.get('外資及陸資(不含外資自營商)賣出股數', 0))
-                                t_buy = safe_int(row.get('投信買進股數', 0))
-                                t_sell = safe_int(row.get('投信賣出股數', 0))
-                                d_buy = safe_int(row.get('自營商買進股數(自行買賣)', 0))
-                                d_sell = safe_int(row.get('自營商賣出股數(自行買賣)', 0))
-                                inst_data.append((code, date_int, f_buy, f_sell, t_buy, t_sell, d_buy, d_sell))
-                            except: pass
-            except Exception as e:
-                pass # TWSE 失敗
-                
-            # --- TPEx ---
-            try:
-                d_obj = dt
-                roc_date = f'{d_obj.year - 1911}/{d_obj.month:02d}/{d_obj.day:02d}'
-                url = f'https://www.tpex.org.tw/web/stock/3insti/daily_trade/3itrade_hedge_result.php?l=zh-tw&d={roc_date}&se=EW&t=D&o=json'
-                time.sleep(random.uniform(2.0, 4.0))
-                r = requests.get(url, timeout=15, verify=False)
-                data = r.json()
-                
-                tables = data.get('tables', [])
-                if tables and isinstance(tables, list) and len(tables) > 0:
-                    table_data = tables[0].get('data', [])
-                    for row in table_data:
-                        try:
-                            code = str(row[0]).strip()
-                            if len(code) != 4: continue
-                            # TPEx 索引修正
-                            # 8: 外資合計買, 9: 外資合計賣
-                            # 11: 投信買, 12: 投信賣
-                            # 20: 自營商合計買, 21: 自營商合計賣
-                            f_buy = safe_int(row[8])
-                            f_sell = safe_int(row[9])
-                            t_buy = safe_int(row[11])
-                            t_sell = safe_int(row[12])
-                            d_buy = safe_int(row[20])
-                            d_sell = safe_int(row[21])
-                            inst_data.append((code, date_int, f_buy, f_sell, t_buy, t_sell, d_buy, d_sell))
-                        except: pass
-            except Exception as e:
-                pass # TPEx 失敗
-            
-            # 寫入資料庫
-            if inst_data:
-                with db_manager.get_connection() as conn:
-                    cur = conn.cursor()
-                    cur.executemany("""
-                        INSERT OR REPLACE INTO institutional_investors 
-                        (code, date_int, foreign_buy, foreign_sell, trust_buy, trust_sell, dealer_buy, dealer_sell)
-                        VALUES (?, ?, ?, ?, ?, ?, ?, ?)
-                    """, inst_data)
-                    conn.commit()
-                
-                # [New] 同步更新 stock_history (計算買賣超)
-                # inst_data: (code, date_int, f_buy, f_sell, t_buy, t_sell, d_buy, d_sell)
-                with db_manager.get_connection() as conn:
-                    cur = conn.cursor()
-                    update_params = [(r[2]-r[3], r[4]-r[5], r[6]-r[7], r[0], r[1]) for r in inst_data]
-                    cur.executemany("""
-                        UPDATE stock_history
-                        SET foreign_buy=?, trust_buy=?, dealer_buy=?
-                        WHERE code=? AND date_int=?
-                    """, update_params)
-                    conn.commit()
-                    
-                print_flush(f"成功 ({len(inst_data)} 筆)")
-                total_inserted += len(inst_data)
+            data_list = fetcher.fetch_all(date_str)
+            if data_list:
+                _save_institutional_data(data_list)
+                print_flush(f"成功 ({len(data_list)} 筆)")
             else:
-                print_flush("無資料")
+                print_flush("無資料 (可能休市)")
                 
-        print_flush(f"✓ 法人資料更新完成，共新增 {total_inserted} 筆紀錄")
-        
-        # [新增] 同步最新法人數據到 stock_snapshot
-        print_flush("正在同步最新法人數據到快照表...")
-        with db_manager.get_connection() as conn:
-            cur = conn.cursor()
-            cur.execute("""
-                UPDATE stock_snapshot
-                SET foreign_buy = (SELECT foreign_buy - foreign_sell FROM institutional_investors WHERE code = stock_snapshot.code ORDER BY date_int DESC LIMIT 1),
-                    trust_buy = (SELECT trust_buy - trust_sell FROM institutional_investors WHERE code = stock_snapshot.code ORDER BY date_int DESC LIMIT 1),
-                    dealer_buy = (SELECT dealer_buy - dealer_sell FROM institutional_investors WHERE code = stock_snapshot.code ORDER BY date_int DESC LIMIT 1)
-                WHERE EXISTS (SELECT 1 FROM institutional_investors WHERE code = stock_snapshot.code)
-            """)
-            conn.commit()
-        print_flush("✓ 快照表法人數據更新完成")
-            
     except Exception as e:
-        
-        # 使用 requests 下載 (避開 SSL 錯誤)
-        # import requests # 已全域導入
-        import io
-        # import urllib3 # 已全域導入
-        urllib3.disable_warnings(urllib3.exceptions.InsecureRequestWarning)
-        
-        headers = {'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/91.0.4472.124 Safari/537.36'}
-        response = requests.get(url, headers=headers, verify=False)
-        response.raise_for_status()
-        
-        df = pd.read_csv(io.StringIO(response.text))
-        
-        # 檢查必要欄位
-        if '證券代號' not in df.columns or '持股分級' not in df.columns or '占集保庫存數比例%' not in df.columns:
-            print_flush("❌ CSV 格式不符，跳過")
-            return
+        print_flush(f"❌ 下載失敗: {e}")
 
-        # 處理資料
-        df['持股分級'] = pd.to_numeric(df['持股分級'], errors='coerce')
-        df['證券代號'] = df['證券代號'].astype(str)
+def _save_institutional_data(data_list):
+    """輔助函數: 儲存法人資料"""
+    if not data_list: return
+    
+    with db_manager.get_connection() as conn:
+        cur = conn.cursor()
+        records = []
+        for d in data_list:
+            records.append((
+                d.code, d.date_int, 
+                d.foreign_buy, d.foreign_sell,
+                d.trust_buy, d.trust_sell,
+                d.dealer_buy, d.dealer_sell
+            ))
         
-        # 1. 計算千張大戶持股比例 (持股分級 15: 1,000,001股以上)
-        # 注意: 級別 17 是合計，不能加總！
-        # 若要計算 400張以上，可使用 isin([12, 13, 14, 15])
-        # 這裡依據使用者需求 (1000張以上)，只取級別 15
-        df_major = df[df['持股分級'] == 15].copy()
-        major_holders = df_major.groupby('證券代號')['占集保庫存數比例%'].sum().to_dict()
-        
-        # 2. 取得總股東人數 (持股分級 17: 合計)
-        df_total = df[df['持股分級'] == 17].copy()
-        # 移除人數中的逗號並轉為整數
-        if df_total['人數'].dtype == object:
-            df_total['人數'] = df_total['人數'].astype(str).str.replace(',', '')
-        df_total['人數'] = pd.to_numeric(df_total['人數'], errors='coerce').fillna(0).astype(int)
-        total_shareholders = df_total.set_index('證券代號')['人數'].to_dict()
-        
-        if not major_holders:
-            print_flush("⚠ 未找到符合條件的大戶資料")
-            return
-            
-        print_flush(f"取得 {len(major_holders)} 檔股票的大戶持股資料，正在更新資料庫...")
-        
-        with db_manager.get_connection() as conn:
-            cur = conn.cursor()
-            count = 0
-            for code, pct in major_holders.items():
-                holders = total_shareholders.get(code, 0)
-                # 更新大戶比例與總股東人數
-                cur.execute("""
-                    UPDATE stock_snapshot 
-                    SET major_holders_pct=?, total_shareholders=? 
-                    WHERE code=?
-                """, (pct, holders, code))
-                count += 1
-            conn.commit()
-            
+        cur.executemany("""
+            INSERT OR REPLACE INTO institutional_investors 
+            (code, date_int, foreign_buy, foreign_sell, trust_buy, trust_sell, dealer_buy, dealer_sell)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+        """, records)
+        conn.commit()
+
 def step3_6_download_major_holders(force=False, silent_header=False):
     """步驟3.6: 下載集保戶股權分散表 (千張大戶 & 總股東人數) - 每週五更新"""
     if not silent_header:
@@ -7530,34 +7335,23 @@ def step3_6_download_major_holders(force=False, silent_header=False):
 
 
 def step3_7_fetch_margin_data(days=60, silent_header=False):
-    """步驟3.7: 下載融資融券資料 (官方 OpenAPI 為主，FinMind/網頁為備援)"""
+    """步驟3.7: 下載融資融券資料 (Refactored using MarginFetcher)"""
     if not silent_header:
         print_flush(f"\n[Step 3.7] 下載融資融券資料 (官方 OpenAPI 優先)...")
     
     try:
-        # === A. 官方 OpenAPI (主要來源 - 只抓今天) ===
-        today_int = get_last_trading_day()  # [修正] 使用交易日檢查
-        openapi_success = False
+        from core.fetchers import MarginFetcher
+        from datetime import datetime, timedelta
+        import time
         
-        try:
-            print_flush("正在從官方 OpenAPI 取得今日融資融券...")
-            saved = MarginDataAPI.fetch_all_margin_data()
-            if saved > 0:
-                # [修正] 使用正確交易日顯示
-                print_flush(f"✓ 官方 OpenAPI: 已儲存 {saved} 筆融資融券資料 ({today_int})")
-                openapi_success = True
-        except Exception as e:
-            print_flush(f"⚠ 官方 OpenAPI 失敗: {e}，切換至備援來源...")
-        
-        # === B. 歷史資料補漏 (FinMind/網頁備援) ===
-        print_flush(f"檢查近 {days} 天歷史缺漏...")
+        fetcher = MarginFetcher()
         
         # 1. 準備日期列表
         base_date = datetime.now()
         dates_to_check = []
-        for i in range(days + 10):
+        for i in range(days + 5):
             dt = base_date - timedelta(days=i)
-            if dt.weekday() < 5:
+            if dt.weekday() < 5: # 只取平日
                 dates_to_check.append(dt)
             if len(dates_to_check) >= days: break
             
@@ -7571,163 +7365,71 @@ def step3_7_fetch_margin_data(days=60, silent_header=False):
             except:
                 existing_dates = set()
                 
-        # 3. 找出缺漏日期 (排除休市日，今天只有在 14:00 後才嘗試回補)
+        # 3. 找出缺漏日期
         current_hour = datetime.now().hour
+        today_int = int(datetime.now().strftime("%Y%m%d"))
         missing_dates = []
+        
         for d in dates_to_check:
             d_int = int(d.strftime("%Y%m%d"))
             if d_int in existing_dates:
                 continue
             if is_market_holiday(d_int):
                 continue
-            # 今天只有在 14:00 後才嘗試回補 (收盤 13:30，盤後更新約 14:00)
+            # 今天只有在 14:00 後才嘗試回補
             if d_int == today_int and current_hour < 14:
                 continue
             missing_dates.append(d)
-        
+            
         if not missing_dates:
             print_flush("✓ 融資融券資料完整，無須補漏")
             return
 
-        print_flush(f"發現 {len(missing_dates)} 天缺漏，開始回補 (FinMind 優先)...")
-        
-        finmind_limit_hit = False
+        print_flush(f"發現 {len(missing_dates)} 天缺漏，開始回補...")
         
         for i, dt in enumerate(missing_dates):
+            d_str = dt.strftime("%Y%m%d")
             d_dash = dt.strftime("%Y-%m-%d")
-            d_nodash = dt.strftime("%Y%m%d")
-            d_int = int(d_nodash)
-            
             print_flush(f"\r[{i+1}/{len(missing_dates)}] 處理 {d_dash} ... ", end="")
             
-            margin_data = None
+            data_list = fetcher.fetch_all(d_str)
             
-            # --- B1. FinMind (備援) ---
-            if not finmind_limit_hit:
-                try:
-                    dataset = "TaiwanStockMarginPurchaseShortSale"
-                    url = f"{FINMIND_URL}?dataset={dataset}&date={d_dash}&token={FINMIND_TOKEN}"
-                    # 使用 session 手動處理 429
-                    r = get_http_session().get(url, timeout=10, verify=False)
-
-                    
-                    if r.status_code == 429:
-                        print_flush("⛔ FinMind 限流! 切換至 TWSE... ", end="")
-                        finmind_limit_hit = True
-                    elif r.status_code == 200:
-                        data = r.json()
-                        if data.get('msg') == 'success' and data.get('data'):
-                            batch = []
-                            for d in data['data']:
-                                # FinMind 回傳的是 Limit，這裡轉換為 Rate (Balance / Limit * 100) 以符合 schema
-                                # 若 Limit 為 0，則 Rate 為 0
-                                m_bal = safe_int(d.get('MarginPurchaseTodayBalance'))
-                                m_lim = safe_float(d.get('MarginPurchaseLimit'))
-                                m_rate = round(m_bal / m_lim * 100, 2) if m_lim > 0 else 0.0
-                                
-                                s_bal = safe_int(d.get('ShortSaleTodayBalance'))
-                                s_lim = safe_float(d.get('ShortSaleLimit'))
-                                s_rate = round(s_bal / s_lim * 100, 2) if s_lim > 0 else 0.0
-                                
-                                batch.append((
-                                    to_date_int(d.get('date')), d.get('stock_id'),
-                                    safe_int(d.get('MarginPurchaseBuy')), safe_int(d.get('MarginPurchaseSell')), 
-                                    safe_int(d.get('MarginPurchaseCashRepayment')), m_bal, m_rate,
-                                    safe_int(d.get('ShortSaleBuy')), safe_int(d.get('ShortSaleSell')), 
-                                    safe_int(d.get('ShortSaleCashRepayment')), s_bal, s_rate
-                                ))
-                            margin_data = batch
-                            print_flush(f"FinMind({len(batch)}) ", end="")
-                except Exception as e:
-                    pass
-
-            # --- B. TWSE/TPEx (備援) ---
-            if not margin_data:
-                # TWSE
-                try:
-                    url = f"https://www.twse.com.tw/exchangeReport/MI_MARGN?response=json&date={d_nodash}&selectType=ALL"
-                    headers = {'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36'}
-                    time.sleep(random.uniform(2.0, 4.0))
-                    r = requests.get(url, headers=headers, timeout=15)
-                    data = r.json()
-                    
-                    if data.get('stat') == 'OK':
-                        raw_data = data.get('data', [])
-                        batch = []
-                        for row in raw_data:
-                            code = row[0]
-                            if len(code) != 4: continue
-                            # TWSE row[8] 是融資使用率, row[15] 是融券使用率
-                            batch.append((
-                                int(d_nodash), code,
-                                safe_int(row[2]), safe_int(row[3]), safe_int(row[4]), safe_int(row[6]), safe_float(row[8]), 
-                                safe_int(row[9]), safe_int(row[10]), safe_int(row[11]), safe_int(row[13]), safe_float(row[15])
-                            ))
-                        if batch:
-                            margin_data = batch
-                            print_flush(f"TWSE({len(batch)}) ", end="")
-                except: pass
-                
-                # TPEx (若 TWSE 沒抓到或需要補 TPEx，這裡簡單起見若 TWSE 有就不抓 TPEx? 不，應該都要抓)
-                # 但 fix.py 的 fetch_margin_from_twse 似乎只抓 TWSE? 
-                # 最終修正.py 原本有抓 TPEx。
-                # 為了完整性，我們也抓 TPEx
-                try:
-                    d_obj = dt
-                    roc_date = f"{d_obj.year - 1911}/{d_obj.month:02d}/{d_obj.day:02d}"
-                    url = f"https://www.tpex.org.tw/web/stock/margin_trading/margin_balance/margin_bal_result.php?l=zh-tw&o=json&d={roc_date}&s=0,asc,0"
-                    time.sleep(random.uniform(1.5, 3.0))
-                    r = requests.get(url, timeout=10, verify=False)
-                    data = r.json()
-                    
-                    if data.get('tables'):
-                        tpex_batch = []
-                        for row in data['tables'][0]['data']:
-                            code = row[0]
-                            if len(code) != 4: continue
-                            # TPEx 格式: 代號, 名稱, 融資前日餘額, 融資買進, 融資賣出, 融資現金償還, 融資今日餘額, 融資使用率, ...
-                            # row[7] 是融資使用率, row[14] 是融券使用率
-                            tpex_batch.append((
-                                int(d_nodash), code,
-                                safe_int(row[3]), safe_int(row[4]), safe_int(row[5]), safe_int(row[6]), safe_num(row[7]),
-                                safe_int(row[10]), safe_int(row[11]), safe_int(row[12]), safe_int(row[13]), safe_num(row[14])
-                            ))
-                        if tpex_batch:
-                            if margin_data is None: margin_data = []
-                            margin_data.extend(tpex_batch)
-                            print_flush(f"TPEx({len(tpex_batch)}) ", end="")
-                except: pass
-
-            # 寫入資料庫
-            if margin_data:
+            if data_list:
                 with db_manager.get_connection() as conn:
                     cur = conn.cursor()
+                    records = []
+                    for d in data_list:
+                        records.append((
+                            d.date_int, d.code,
+                            d.margin_buy, d.margin_sell, d.margin_redemp, d.margin_balance, d.margin_util_rate,
+                            d.short_buy, d.short_sell, d.short_redemp, d.short_balance, d.short_util_rate
+                        ))
+                    
                     cur.executemany("""
                         INSERT OR REPLACE INTO margin_data 
                         (date_int, code, margin_buy, margin_sell, margin_redemp, margin_balance, margin_util_rate,
                          short_buy, short_sell, short_redemp, short_balance, short_util_rate)
                         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-                    """, margin_data)
-                    conn.commit()
-                
-                # 同步到 snapshot (只同步最新的一天)
-                if d_int == int(datetime.now().strftime("%Y%m%d")):
-                    print_flush("同步至快照... ", end="")
-                    with db_manager.get_connection() as conn:
-                        cur = conn.cursor()
-                        for rec in margin_data:
-                            # rec: date_int, code, m_buy, m_sell, m_redemp, m_bal, m_rate, s_buy, s_sell, s_redemp, s_bal, s_rate
+                    """, records)
+                    
+                    # 同步到 snapshot (只同步最新的一天)
+                    if int(d_str) == today_int:
+                        for d in data_list:
                             cur.execute("""
                                 UPDATE stock_snapshot 
                                 SET margin_balance=?, margin_util_rate=?, short_balance=?, short_util_rate=?
                                 WHERE code=?
-                            """, (rec[5], rec[6], rec[10], rec[11], rec[1]))
-                        conn.commit()
+                            """, (d.margin_balance, d.margin_util_rate, d.short_balance, d.short_util_rate, d.code))
+                    
+                    conn.commit()
+                print_flush(f"✓ 成功 ({len(data_list)} 筆)")
             else:
-                print_flush("無資料", end="")
+                print_flush("⚠ 無資料")
             
-            print_flush("") # Newline
-
+            time.sleep(1) # 避免過快
+            
+        print_flush("")
+        
     except Exception as e:
         print_flush(f"❌ 融資融券下載失敗: {e}")
 
@@ -7740,88 +7442,20 @@ def to_date_int(d):
     return 0
 
 def step3_8_fetch_market_index(date_str=None, silent_header=False):
-    """步驟3.8: 下載大盤指數 (TWSE + TPEx)"""
+    """步驟3.8: 下載大盤指數 (Refactored using MarketIndexFetcher)"""
     if not silent_header:
         print_flush("\n[Step 3.8] 下載大盤指數...")
     
     if date_str is None:
         date_str = datetime.now().strftime('%Y%m%d')
         
-    date_int = int(date_str)
-    records = []
-    
-    headers = {'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36'}
-    
-    # TWSE Index - 使用 FMTQIK (每日市場成交資訊) API，更穩定
     try:
-        url_twse = f"https://www.twse.com.tw/exchangeReport/FMTQIK?response=json&date={date_str}"
-        data = http_get(url_twse, timeout=15)
+        from core.fetchers import MarketIndexFetcher
+        fetcher = MarketIndexFetcher()
         
-        if data.get('stat') == 'OK' and data.get('data'):
-            # 找當天的資料
-            for row in data['data']:
-                # row[0] = 日期 (民國年), row[1] = 開盤, row[2] = 最高, row[3] = 最低, row[4] = 收盤
-                try:
-                    parts = row[0].split('/')
-                    western_year = int(parts[0]) + 1911
-                    row_date_int = int(f"{western_year}{parts[1]}{parts[2]}")
-                    
-                    if row_date_int == date_int:
-                        open_val = safe_num(row[1])
-                        high_val = safe_num(row[2])
-                        low_val = safe_num(row[3])
-                        close_val = safe_num(row[4])
-                        volume = safe_int(row[5]) if len(row) > 5 else 0
-                        
-                        if close_val > 0:
-                            records.append((date_int, 'TAIEX', close_val, open_val, high_val, low_val, volume))
-                        break
-                except:
-                    pass
-            
-            # 如果今天沒資料，取最後一筆
-            if not records and data['data']:
-                row = data['data'][-1]
-                try:
-                    parts = row[0].split('/')
-                    western_year = int(parts[0]) + 1911
-                    row_date_int = int(f"{western_year}{parts[1]}{parts[2]}")
-                    open_val = safe_num(row[1])
-                    high_val = safe_num(row[2])
-                    low_val = safe_num(row[3])
-                    close_val = safe_num(row[4])
-                    volume = safe_int(row[5]) if len(row) > 5 else 0
-                    
-                    if close_val > 0:
-                        records.append((row_date_int, 'TAIEX', close_val, open_val, high_val, low_val, volume))
-                except:
-                    pass
-    except Exception as e:
-        print_flush(f"⚠ TWSE 指數下載失敗: {e}")
-
-    # TPEx Index - 使用 aftertrading API
-    try:
-        time.sleep(0.5)
-        d_obj = datetime.strptime(date_str, '%Y%m%d')
-        roc_date = f"{d_obj.year - 1911}/{d_obj.month:02d}/{d_obj.day:02d}"
-        url_tpex = f"https://www.tpex.org.tw/web/stock/aftertrading/otc_index_summary/OTC_index_summary_result.php?l=zh-tw&d={roc_date}&o=json"
+        records = fetcher.fetch_all(date_str)
         
-        data_tpex = http_get(url_tpex, timeout=15)
-        
-        if data_tpex.get('aaData'):
-            # aaData[0] 通常是櫃買指數
-            for row in data_tpex['aaData']:
-                if '櫃買指數' in str(row[0]) or 'OTC' in str(row[0]).upper():
-                    close_val = safe_num(row[1]) if len(row) > 1 else 0
-                    if close_val > 0:
-                        records.append((date_int, 'TPEX', close_val, 0, 0, 0, 0))
-                    break
-    except Exception as e:
-        # TPEx 指數 API 不穩定，靜默處理
-        pass
-                    
-    if records:
-        try:
+        if records:
             with db_manager.get_connection() as conn:
                 cur = conn.cursor()
                 
@@ -7831,7 +7465,6 @@ def step3_8_fetch_market_index(date_str=None, silent_header=False):
                 existing_count = cur.fetchone()[0]
                 
                 if existing_count > 0:
-                    # 格式化日期顯示
                     date_display = f"{str(first_date)[:4]}-{str(first_date)[4:6]}-{str(first_date)[6:]}"
                     print_flush(f"✓ 大盤指數 ({date_display}) 已是最新")
                 else:
@@ -7843,10 +7476,11 @@ def step3_8_fetch_market_index(date_str=None, silent_header=False):
                     conn.commit()
                     date_display = f"{str(first_date)[:4]}-{str(first_date)[4:6]}-{str(first_date)[6:]}"
                     print_flush(f"✓ 已更新大盤指數資料 ({date_display}, {len(records)} 筆)")
-        except Exception as e:
-            print_flush(f"❌ 大盤指數儲存失敗: {e}")
-    else:
-        print_flush("⚠ 今日尚無大盤指數資料 (可能尚未收盤)")
+        else:
+            print_flush("⚠ 今日尚無大盤指數資料 (可能尚未收盤)")
+            
+    except Exception as e:
+        print_flush(f"❌ 大盤指數儲存失敗: {e}")
 
 def step4_load_data():
     """步驟4: 載入分析資料 (新三表架構)"""
@@ -7868,190 +7502,209 @@ def step4_load_data():
     print_flush(f"✓ 已載入 {len(data)} 檔股票資料")
     return data
 
+def _fix_calculated_gaps(conn):
+    """[Helper] 修復可透過計算補齊的缺失 (Case 2, 3, 5)"""
+    cur = conn.cursor()
+    
+    # 情況 2: 有量、有價、無額 → 額 = 量 × 價
+    cur.execute("""
+        SELECT code, date_int, close, volume 
+        FROM stock_history 
+        WHERE volume > 0 AND close > 0 AND (amount IS NULL OR amount = 0)
+    """)
+    case2 = cur.fetchall()
+    if case2:
+        updates = [(int(close * volume), code, date_int) for code, date_int, close, volume in case2]
+        cur.executemany("UPDATE stock_history SET amount = ? WHERE code = ? AND date_int = ?", updates)
+        print_flush(f"  [修復] 情況2 (有量有價無額): {len(case2)} 筆 → 額 = 量 × 價")
+    
+    # 情況 3: 有量、無價、有額 → 價 = 額 ÷ 量
+    cur.execute("""
+        SELECT code, date_int, amount, volume 
+        FROM stock_history 
+        WHERE volume > 0 AND (close IS NULL OR close = 0) AND amount > 0
+    """)
+    case3 = cur.fetchall()
+    if case3:
+        updates = [(round(amount / volume, 2), code, date_int) for code, date_int, amount, volume in case3]
+        cur.executemany("UPDATE stock_history SET close = ? WHERE code = ? AND date_int = ?", updates)
+        print_flush(f"  [修復] 情況3 (有量無價有額): {len(case3)} 筆 → 價 = 額 ÷ 量")
+    
+    # 情況 5: 無量、有價、有額 → 量 = 額 ÷ 價
+    cur.execute("""
+        SELECT code, date_int, amount, close 
+        FROM stock_history 
+        WHERE (volume IS NULL OR volume = 0) AND close > 0 AND amount > 0
+    """)
+    case5 = cur.fetchall()
+    if case5:
+        updates = [(int(amount / close), code, date_int) for code, date_int, amount, close in case5]
+        cur.executemany("UPDATE stock_history SET volume = ? WHERE code = ? AND date_int = ?", updates)
+        print_flush(f"  [修復] 情況5 (無量有價有額): {len(case5)} 筆 → 量 = 額 ÷ 價")
+
+def _fetch_and_update_daily_data(conn, date_int, stocks):
+    """[Helper] 抓取並更新特定日期的股票資料"""
+    import requests
+    from datetime import datetime
+    import time
+    
+    cur = conn.cursor()
+    fixed_by_crawl = 0
+    fixed_by_prev = 0
+    
+    try:
+        date_str = str(date_int)
+        url_twse = f"https://www.twse.com.tw/exchangeReport/MI_INDEX?response=json&date={date_str}&type=ALLBUT0999"
+        
+        headers = {'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36'}
+        
+        # 抓取 TWSE 資料
+        crawled_data = {}
+        try:
+            resp = requests.get(url_twse, headers=headers, timeout=15, verify=False)
+            data = resp.json()
+            if data.get('stat') == 'OK':
+                for table in data.get('tables', []):
+                    if table.get('title') and '每日收盤行情' in table.get('title', ''):
+                        for row in table.get('data', []):
+                            if len(row) >= 9:
+                                c = str(row[0]).strip()
+                                if len(c) == 4 and c.isdigit():
+                                    try:
+                                        crawled_data[c] = {
+                                            'close': safe_num(row[8]),
+                                            'volume': safe_int(row[2]),
+                                            'amount': safe_int(row[4])
+                                        }
+                                    except: pass
+        except: pass
+        
+        # 抓取 TPEx 資料
+        try:
+            d_obj = datetime.strptime(date_str, '%Y%m%d')
+            roc_date = f"{d_obj.year - 1911}/{d_obj.month:02d}/{d_obj.day:02d}"
+            url_tpex = f"https://www.tpex.org.tw/web/stock/aftertrading/otc_quotes_no1430/stk_wn1430_result.php?l=zh-tw&d={roc_date}&o=json"
+            
+            resp = requests.get(url_tpex, headers=headers, timeout=15, verify=False)
+            data = resp.json()
+            
+            if data.get('aaData'):
+                for row in data['aaData']:
+                    if len(row) >= 6:
+                        c = str(row[0]).strip()
+                        if len(c) == 4 and c.isdigit():
+                            try:
+                                crawled_data[c] = {
+                                    'close': safe_num(row[2]),
+                                    'volume': safe_int(row[8]) if len(row) > 8 else 0,
+                                    'amount': safe_int(row[9]) if len(row) > 9 else 0
+                                }
+                            except: pass
+        except: pass
+        
+        # 更新資料
+        for code, old_close, old_volume, old_amount in stocks:
+            if code in crawled_data:
+                cdata = crawled_data[code]
+                new_close = cdata.get('close') or old_close
+                new_volume = cdata.get('volume') or old_volume
+                new_amount = cdata.get('amount') or old_amount
+                
+                # 計算補齊
+                if new_volume and new_close and not new_amount:
+                    new_amount = int(new_volume * new_close)
+                if new_amount and new_close and not new_volume:
+                    new_volume = int(new_amount / new_close) if new_close > 0 else 0
+                if new_amount and new_volume and not new_close:
+                    new_close = round(new_amount / new_volume, 2) if new_volume > 0 else 0
+                
+                if new_close and new_volume and new_amount:
+                    cur.execute("UPDATE stock_history SET close=?, volume=?, amount=? WHERE code=? AND date_int=?",
+                               (new_close, new_volume, new_amount, code, date_int))
+                    fixed_by_crawl += 1
+            else:
+                # 沒抓到，用前一天估算
+                cur.execute("""
+                    SELECT close FROM stock_history 
+                    WHERE code = ? AND date_int < ? AND close > 0
+                    ORDER BY date_int DESC LIMIT 1
+                """, (code, date_int))
+                prev = cur.fetchone()
+                if prev and prev[0] > 0:
+                    prev_close = prev[0]
+                    if old_volume and old_volume > 0:
+                        est_amount = int(prev_close * old_volume)
+                        cur.execute("UPDATE stock_history SET close=?, amount=? WHERE code=? AND date_int=?",
+                                   (prev_close, est_amount, code, date_int))
+                        fixed_by_prev += 1
+        
+        time.sleep(0.3)
+        return fixed_by_crawl, fixed_by_prev
+        
+    except Exception as e:
+        return 0, 0
+
+def _fix_crawled_gaps(conn):
+    """[Helper] 修復需要爬蟲抓取的缺失 (Case 4, 6, 7)"""
+    cur = conn.cursor()
+    
+    cur.execute("""
+        SELECT code, date_int, close, volume, amount 
+        FROM stock_history 
+        WHERE (volume > 0 AND (close IS NULL OR close = 0) AND (amount IS NULL OR amount = 0))
+           OR ((volume IS NULL OR volume = 0) AND close > 0 AND (amount IS NULL OR amount = 0))
+           OR ((volume IS NULL OR volume = 0) AND (close IS NULL OR close = 0) AND amount > 0)
+        ORDER BY code, date_int
+    """)
+    need_crawl = cur.fetchall()
+    
+    if need_crawl:
+        total_crawl = 0
+        total_prev = 0
+        
+        # 按日期分組
+        from collections import defaultdict
+        by_date = defaultdict(list)
+        for code, date_int, close, volume, amount in need_crawl:
+            by_date[date_int].append((code, close, volume, amount))
+        
+        for date_int, stocks in by_date.items():
+            c, p = _fetch_and_update_daily_data(conn, date_int, stocks)
+            total_crawl += c
+            total_prev += p
+            
+        if total_crawl > 0:
+            print_flush(f"  [修復] 情況4/6/7 (爬蟲): {total_crawl} 筆 → 從 TWSE/TPEx 抓取")
+        if total_prev > 0:
+            print_flush(f"  [修復] 情況4/6/7 (估算): {total_prev} 筆 → 用前日價格估算")
+
 def _auto_fix_missing_amount(crawl=True):
     """
-    自動修復缺失的成交金額/收盤價/成交量
+    自動修復缺失的成交金額/收盤價/成交量 (Refactored)
     
     修復邏輯矩陣：
     1. 有量、有價、有額 → 正常
-    2. 有量、有價、無額 → 額 = 量 × 價
-    3. 有量、無價、有額 → 價 = 額 ÷ 量
-    4. 有量、無價、無額 → 需要爬蟲 (先跳過)
-    5. 無量、有價、有額 → 量 = 額 ÷ 價
-    6. 無量、有價、無額 → 需要爬蟲 (先跳過)
-    7. 無量、無價、有額 → 需要爬蟲 (先跳過)
-    8. 無量、無價、無額 → 可能停牌或下市 (標記為零成交)
+    2. 有量、有價、無額 → 額 = 量 × 價 (Calculated)
+    3. 有量、無價、有額 → 價 = 額 ÷ 量 (Calculated)
+    4. 有量、無價、無額 → 需要爬蟲 (Crawled)
+    5. 無量、有價、有額 → 量 = 額 ÷ 價 (Calculated)
+    6. 無量、有價、無額 → 需要爬蟲 (Crawled)
+    7. 無量、無價、有額 → 需要爬蟲 (Crawled)
+    8. 無量、無價、無額 → 可能停牌或下市 (Skipped)
     """
     try:
         with db_manager.get_connection() as conn:
-            cur = conn.cursor()
+            # 1. 計算補齊
+            _fix_calculated_gaps(conn)
             
-            # 情況 2: 有量、有價、無額 → 額 = 量 × 價
-            cur.execute("""
-                SELECT code, date_int, close, volume 
-                FROM stock_history 
-                WHERE volume > 0 AND close > 0 AND (amount IS NULL OR amount = 0)
-            """)
-            case2 = cur.fetchall()
-            if case2:
-                updates = [(int(close * volume), code, date_int) for code, date_int, close, volume in case2]
-                cur.executemany("UPDATE stock_history SET amount = ? WHERE code = ? AND date_int = ?", updates)
-                print_flush(f"  [修復] 情況2 (有量有價無額): {len(case2)} 筆 → 額 = 量 × 價")
-            
-            # 情況 3: 有量、無價、有額 → 價 = 額 ÷ 量
-            cur.execute("""
-                SELECT code, date_int, amount, volume 
-                FROM stock_history 
-                WHERE volume > 0 AND (close IS NULL OR close = 0) AND amount > 0
-            """)
-            case3 = cur.fetchall()
-            if case3:
-                updates = [(round(amount / volume, 2), code, date_int) for code, date_int, amount, volume in case3]
-                cur.executemany("UPDATE stock_history SET close = ? WHERE code = ? AND date_int = ?", updates)
-                print_flush(f"  [修復] 情況3 (有量無價有額): {len(case3)} 筆 → 價 = 額 ÷ 量")
-            
-            # 情況 5: 無量、有價、有額 → 量 = 額 ÷ 價
-            cur.execute("""
-                SELECT code, date_int, amount, close 
-                FROM stock_history 
-                WHERE (volume IS NULL OR volume = 0) AND close > 0 AND amount > 0
-            """)
-            case5 = cur.fetchall()
-            if case5:
-                updates = [(int(amount / close), code, date_int) for code, date_int, amount, close in case5]
-                cur.executemany("UPDATE stock_history SET volume = ? WHERE code = ? AND date_int = ?", updates)
-                print_flush(f"  [修復] 情況5 (無量有價有額): {len(case5)} 筆 → 量 = 額 ÷ 價")
-            
-            # 情況 4, 6, 7: 需要爬蟲抓取
+            # 2. 爬蟲補齊
             if not crawl:
                 print_flush("  [跳過] 情況4/6/7 (爬蟲): 已設定跳過下載")
             else:
-                cur.execute("""
-                    SELECT code, date_int, close, volume, amount 
-                    FROM stock_history 
-                    WHERE (volume > 0 AND (close IS NULL OR close = 0) AND (amount IS NULL OR amount = 0))
-                       OR ((volume IS NULL OR volume = 0) AND close > 0 AND (amount IS NULL OR amount = 0))
-                       OR ((volume IS NULL OR volume = 0) AND (close IS NULL OR close = 0) AND amount > 0)
-                    ORDER BY code, date_int
-                """)
-                need_crawl = cur.fetchall()
-                
-                if need_crawl:
-                    fixed_by_crawl = 0
-                    fixed_by_prev = 0
-                    
-                    # 按日期分組
-                    from collections import defaultdict
-                    by_date = defaultdict(list)
-                    for code, date_int, close, volume, amount in need_crawl:
-                        by_date[date_int].append((code, close, volume, amount))
-                    
-                    for date_int, stocks in by_date.items():
-                        # 嘗試從 TWSE/TPEx 抓取該日資料
-                        try:
-                            date_str = str(date_int)
-                            url_twse = f"https://www.twse.com.tw/exchangeReport/MI_INDEX?response=json&date={date_str}&type=ALLBUT0999"
-                            url_tpex = f"https://www.tpex.org.tw/openapi/v1/tpex_mainboard_daily_close_quotes"
-                            
-                            headers = {'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36'}
-                            
-                            # 抓取 TWSE 資料
-                            crawled_data = {}
-                            try:
-                                resp = requests.get(url_twse, headers=headers, timeout=15, verify=False)
-                                data = resp.json()
-                                if data.get('stat') == 'OK':
-                                    # 找到個股資料 (通常在 tables[8] 或類似位置)
-                                    for table in data.get('tables', []):
-                                        if table.get('title') and '每日收盤行情' in table.get('title', ''):
-                                            for row in table.get('data', []):
-                                                if len(row) >= 9:
-                                                    c = str(row[0]).strip()
-                                                    if len(c) == 4 and c.isdigit():
-                                                        try:
-                                                            crawled_data[c] = {
-                                                                'close': safe_num(row[8]),
-                                                                'volume': safe_int(row[2]),
-                                                                'amount': safe_int(row[4])
-                                                            }
-                                                        except:
-                                                            pass
-                            except:
-                                pass
-                            
-                            # 抓取 TPEx 資料
-                            try:
-                                # 轉換日期格式為民國年
-                                d_obj = datetime.strptime(date_str, '%Y%m%d')
-                                roc_date = f"{d_obj.year - 1911}/{d_obj.month:02d}/{d_obj.day:02d}"
-                                url_tpex = f"https://www.tpex.org.tw/web/stock/aftertrading/otc_quotes_no1430/stk_wn1430_result.php?l=zh-tw&d={roc_date}&o=json"
-                                
-                                resp = requests.get(url_tpex, headers=headers, timeout=15, verify=False)
-                                data = resp.json()
-                                
-                                if data.get('aaData'):
-                                    for row in data['aaData']:
-                                        if len(row) >= 6:
-                                            c = str(row[0]).strip()
-                                            if len(c) == 4 and c.isdigit():
-                                                try:
-                                                    crawled_data[c] = {
-                                                        'close': safe_num(row[2]),  # 收盤
-                                                        'volume': safe_int(row[8]) if len(row) > 8 else 0,  # 成交量
-                                                        'amount': safe_int(row[9]) if len(row) > 9 else 0   # 成交金額
-                                                    }
-                                                except:
-                                                    pass
-                            except:
-                                pass
-                            
-                            # 用爬取的資料更新
-                            for code, old_close, old_volume, old_amount in stocks:
-                                if code in crawled_data:
-                                    cdata = crawled_data[code]
-                                    new_close = cdata.get('close') or old_close
-                                    new_volume = cdata.get('volume') or old_volume
-                                    new_amount = cdata.get('amount') or old_amount
-                                    
-                                    # 如果還是缺，用計算補齊
-                                    if new_volume and new_close and not new_amount:
-                                        new_amount = int(new_volume * new_close)
-                                    if new_amount and new_close and not new_volume:
-                                        new_volume = int(new_amount / new_close) if new_close > 0 else 0
-                                    if new_amount and new_volume and not new_close:
-                                        new_close = round(new_amount / new_volume, 2) if new_volume > 0 else 0
-                                    
-                                    if new_close and new_volume and new_amount:
-                                        cur.execute("UPDATE stock_history SET close=?, volume=?, amount=? WHERE code=? AND date_int=?",
-                                                   (new_close, new_volume, new_amount, code, date_int))
-                                        fixed_by_crawl += 1
-                                else:
-                                    # 沒抓到，用前一天估算
-                                    cur.execute("""
-                                        SELECT close FROM stock_history 
-                                        WHERE code = ? AND date_int < ? AND close > 0
-                                        ORDER BY date_int DESC LIMIT 1
-                                    """, (code, date_int))
-                                    prev = cur.fetchone()
-                                    if prev and prev[0] > 0:
-                                        prev_close = prev[0]
-                                        if old_volume and old_volume > 0:
-                                            est_amount = int(prev_close * old_volume)
-                                            cur.execute("UPDATE stock_history SET close=?, amount=? WHERE code=? AND date_int=?",
-                                                       (prev_close, est_amount, code, date_int))
-                                            fixed_by_prev += 1
-                            
-                            time.sleep(0.3)  # 避免請求過快
-                            
-                        except Exception as e:
-                            pass
-                    
-                    if fixed_by_crawl > 0:
-                        print_flush(f"  [修復] 情況4/6/7 (爬蟲): {fixed_by_crawl} 筆 → 從 TWSE/TPEx 抓取")
-                    if fixed_by_prev > 0:
-                        print_flush(f"  [修復] 情況4/6/7 (估算): {fixed_by_prev} 筆 → 用前日價格估算")
+                _fix_crawled_gaps(conn)
             
-            # 情況 8: 無量、無價、無額 → 保持不變 (可能停牌或下市)
+            # 3. 檢查 Case 8 (全無)
+            cur = conn.cursor()
             cur.execute("""
                 SELECT COUNT(*) FROM stock_history 
                 WHERE (volume IS NULL OR volume = 0) 
@@ -8076,11 +7729,33 @@ def step6_verify_and_backfill(data=None, resume=False, skip_downloads=False, ski
     _auto_fix_missing_amount(crawl=not skip_downloads)
     
     if not skip_downloads and not skip_institutional:
+        # 檢查缺失狀況
+        has_tdcc_gaps = False
+        has_val_gaps = False
+        try:
+            with db_manager.get_connection() as conn:
+                cur = conn.cursor()
+                # Check TDCC gaps
+                cur.execute("SELECT COUNT(*) FROM stock_snapshot WHERE total_shareholders IS NULL OR total_shareholders = 0")
+                if cur.fetchone()[0] > 0: has_tdcc_gaps = True
+                
+                # Check Valuation gaps
+                cur.execute("SELECT COUNT(*) FROM stock_snapshot WHERE pe IS NULL AND yield IS NULL AND pb IS NULL")
+                if cur.fetchone()[0] > 0: has_val_gaps = True
+        except: pass
+
         # 1. 檢查並補齊法人資料 (智慧模式)
         step3_5_download_institutional(days=3)
         
         # 2. 下載集保大戶資料 (每週一次，這裡每次檢查更新)
-        step3_6_download_major_holders()
+        if has_tdcc_gaps:
+            print_flush("⚠ 偵測到集保資料缺失，強制執行下載...")
+        step3_6_download_major_holders(force=has_tdcc_gaps)
+        
+        # 3. 下載估值資料
+        if has_val_gaps:
+            print_flush("⚠ 偵測到估值資料缺失，執行下載...")
+            step6_download_valuation(silent_header=True)
     
     if data is None:
         data = step4_load_data()
@@ -8111,11 +7786,12 @@ def step6_verify_and_backfill(data=None, resume=False, skip_downloads=False, ski
         print_flush("正在分析資料庫狀態 (含成交金額與時效檢查)...")
         cur.execute(f"""
             SELECT code, COUNT(*), MIN(date_int), MAX(date_int),
-                   SUM(CASE WHEN volume > 0 AND (amount IS NULL OR amount = 0) AND date_int >= {cutoff_int} THEN 1 ELSE 0 END)
+                   SUM(CASE WHEN volume > 0 AND (amount IS NULL OR amount = 0) AND date_int >= {cutoff_int} THEN 1 ELSE 0 END),
+                   SUM(CASE WHEN volume > 0 AND (close IS NULL OR close = 0) AND date_int >= {cutoff_int} THEN 1 ELSE 0 END)
             FROM stock_history 
             GROUP BY code
         """)
-        history_stats = {row[0]: {'count': row[1], 'min_date': row[2], 'max_date': row[3], 'missing_amount': row[4]} for row in cur.fetchall()}
+        history_stats = {row[0]: {'count': row[1], 'min_date': row[2], 'max_date': row[3], 'missing_amount': row[4], 'missing_close': row[5]} for row in cur.fetchall()}
         
         for code, info in data.items():
             stats = history_stats.get(code)
@@ -8129,48 +7805,37 @@ def step6_verify_and_backfill(data=None, resume=False, skip_downloads=False, ski
             min_date_int = stats['min_date']
             max_date_int = stats['max_date'] or 0
             missing_amount = stats['missing_amount'] or 0
+            # 檢查是否缺金額或缺收盤價
+            missing_amt = stats.get('missing_amount', 0)
+            missing_close = stats.get('missing_close', 0)
             
-            # Guard Clause: Data is outdated
-            if max_date_int < latest_market_date_int:
-                # Debug: Print why it's considered outdated
-                # print_flush(f"Debug: Code {code} max={max_date_int}, latest={latest_market_date_int}")
-                tasks.append((code, info['name'], count, f"資料過舊(至{max_date_int}, 最新{latest_market_date_int})"))
-                continue
-                
-            # Guard Clause: Missing amount (Strict Check)
-            # 用戶強調: 只要少一張，指標都會錯，因此必須嚴格檢查
-            if missing_amount > 0:
-                tasks.append((code, info['name'], count, f"缺金額({missing_amount}筆)"))
+            if missing_amt > 0 or missing_close > 0:
+                reason = []
+                if missing_amt > 0: reason.append(f"缺金額({missing_amt})")
+                if missing_close > 0: reason.append(f"缺收盤價({missing_close})")
+                tasks.append((code, info['name'], count, ", ".join(reason)))
                 continue
             
             # Guard Clause: Insufficient count
             if count < MIN_DATA_COUNT:
-                # Check if it's a new stock (listed recently) using stock_meta
                 is_new_stock = False
                 l_date_str = list_date_map.get(code)
                 
                 if l_date_str:
                     try:
                         l_date = datetime.strptime(l_date_str, '%Y-%m-%d')
-                        # Calculate theoretical max market days since listing (approx 5/7 of total days)
-                        # Or simply check if listing date is recent enough
                         days_since = (datetime.now() - l_date).days
-                        # If listed less than MIN_DATA_COUNT * 1.5 days ago (approx), and we have most of the data
-                        # expected_market_days approx days_since * 0.68 (taking holidays into account)
                         expected_count = int(days_since * 0.68)
                         
-                        # If we have at least 90% of expected data, consider it complete
                         if count >= expected_count * 0.9:
                             is_new_stock = True
                         
-                        # Also check if min_date is close to list_date (within 20 days)
                         if min_date_int:
                             min_date = datetime.strptime(str(min_date_int), '%Y%m%d')
                             if min_date <= l_date + timedelta(days=20):
                                 is_new_stock = True
                                 
                     except Exception as e:
-                        # print_flush(f"Date parse error: {e}")
                         pass
                 
                 # Fallback to twstock if stock_meta missing (Legacy logic)
@@ -8195,7 +7860,7 @@ def step6_verify_and_backfill(data=None, resume=False, skip_downloads=False, ski
             pass
     
     if not tasks:
-        print_flush(f"✓ 所有股票資料完整 (筆數充足且無缺失金額)")
+        print_flush(f"✓ 所有股票資料完整 (筆數充足且無缺失金額/收盤價)")
         return set()
 
     # 讀取進度
@@ -8227,23 +7892,15 @@ def step6_verify_and_backfill(data=None, resume=False, skip_downloads=False, ski
         print_flush(f"📍 從第 {start_idx+1} 檔繼續(已完成 {start_idx} 檔)")
     
     tracker = ProgressTracker(total_lines=4)
-    data_source_manager = DataSourceManager(progress_tracker=tracker, silent=False)
+    
+    # 準備 Fetchers
+    from core.fetchers import FinMindFetcher, TwstockFetcher
+    finmind_fetcher = FinMindFetcher()
+    twstock_fetcher = TwstockFetcher()
     
     success_count = 0
-    verified_count = 0
     updated_codes = set()
     
-    # 預先載入上市日期 Map
-    list_date_map = {}
-    try:
-        with db_manager.get_connection() as conn:
-            cur = conn.cursor()
-            cur.execute("SELECT code, list_date FROM stock_meta")
-            for r in cur.fetchall():
-                if r[1]: list_date_map[r[0]] = r[1]
-    except:
-        pass
-
     with tracker:
         latest_date = get_latest_market_date()
         end_date = latest_date
@@ -8257,10 +7914,8 @@ def step6_verify_and_backfill(data=None, resume=False, skip_downloads=False, ski
             l_date_str = list_date_map.get(code)
             if l_date_str:
                 try:
-                    # 假設 list_date 格式為 YYYY-MM-DD
                     if l_date_str > start_date:
                         start_date = l_date_str
-                        # 如果上市日期比 end_date 還晚(理論上不可能，除非資料錯)，則無需補
                         if start_date > end_date:
                             tracker.update_lines(f"跳過 {code} {name}: 上市日期 {l_date_str} 晚於 {end_date}")
                             continue
@@ -8274,40 +7929,59 @@ def step6_verify_and_backfill(data=None, resume=False, skip_downloads=False, ski
                 "正在連接 API..."
             )
             
-            df = data_source_manager.fetch_history(code, start_date, end_date)
+            # 嘗試抓取資料
+            fetched_data = []
             
-            if df is not None and not df.empty:
+            # 1. 優先嘗試 FinMind (速度快，支援歷史長)
+            try:
+                fetched_data = finmind_fetcher.fetch_price(code, start_date, end_date)
+            except Exception as e:
+                tracker.update_lines(None, None, None, f"FinMind 失敗: {e}")
+            
+            # 2. 備援嘗試 twstock (速度慢，易被擋)
+            if not fetched_data:
+                tracker.update_lines(None, None, None, "切換至 twstock 備援...")
+                try:
+                    fetched_data = twstock_fetcher.fetch_price(code, start_date, end_date)
+                except Exception as e:
+                    tracker.update_lines(None, None, None, f"twstock 失敗: {e}")
+            
+            if fetched_data:
                 try:
                     with db_manager.get_connection() as conn:
                         cur = conn.cursor()
                         
-                        for _, row in df.iterrows():
-                            # 寫入 stock_history (新三表架構) - 含成交金額
-                            # 使用 REPLACE 確保更新 amount 欄位
-                            date_int = int(str(row['date']).replace('-', ''))
-                            cur.execute("""
-                                INSERT OR REPLACE INTO stock_history 
-                                (code, date_int, open, high, low, close, volume, amount)
-                                VALUES (?,?,?,?,?,?,?,?)
-                            """, (code, date_int, row.get('open'), row.get('high'), 
-                                  row.get('low'), row.get('close'), row.get('volume'),
-                                  row.get('amount')))
+                        records = []
+                        for d in fetched_data:
+                            date_int = int(d.date.replace('-', '').replace('/', ''))
+                            records.append((
+                                code, date_int, 
+                                d.open, d.high, d.low, d.close, 
+                                d.volume, d.amount
+                            ))
+                            
+                        cur.executemany("""
+                            INSERT OR REPLACE INTO stock_history 
+                            (code, date_int, open, high, low, close, volume, amount)
+                            VALUES (?,?,?,?,?,?,?,?)
+                        """, records)
                         
                         conn.commit()
                         success_count += 1
                         updated_codes.add(code)
                         
-                        # Remove from failed_stocks if it was there
                         if code in failed_stocks:
                             failed_stocks.remove(code)
                         
-                except Exception:
-                    pass
+                        tracker.update_lines(None, None, None, f"成功回補 {len(fetched_data)} 筆")
+                        
+                except Exception as e:
+                    tracker.update_lines(None, None, None, f"資料庫寫入失敗: {e}")
             else:
-                # Mark as failed
                 failed_stocks.add(code)
+                tracker.update_lines(None, None, None, "無資料或下載失敗")
             
-            # 儲存進度 (包含 failed_stocks)
+            # 儲存進度
             if (i + 1) % 10 == 0:
                 save_progress(last_idx=i + 1, failed_stocks=list(failed_stocks))
                 
@@ -8317,7 +7991,6 @@ def step6_verify_and_backfill(data=None, resume=False, skip_downloads=False, ski
     if os.path.exists(PROGRESS_FILE):
         os.remove(PROGRESS_FILE)
         
-    print_flush(f"\n✓ 回補完成 - 成功: {success_count}")
     print_flush(f"\n✓ 回補完成 - 成功: {success_count}")
     return updated_codes
 
@@ -9037,7 +8710,8 @@ def step7_calc_indicators(data=None, force=False, batch_size=500):
                                 weekly_close=?, weekly_open=?,
                                 monthly_close=?, monthly_open=?,
                                 vwap200=?, mansfield_rs=?,
-                                adl=?, rs=?
+                                adl=?, rs=?,
+                                vsbc=?, vsbc_pct=?, vsbc_prev=?
                             WHERE code=?
                         """, pending_updates)
                         conn.commit()
@@ -11088,6 +10762,44 @@ def scan_2560_strategy():
 
 def scan_candlestick_patterns():
     """K 線型態掃描 (晨星/夜星) - 詳細漏斗版"""
+def scan_candlestick_patterns():
+    """K 線型態掃描 (晨星/夜星) - Table-Driven Refactored"""
+    
+    # --- Helper Functions ---
+    def _check_morning_star(c0, c1, c2, o0, o1, o2, v0, v1, range0, range2, body0, body1, body2):
+        # Returns (passed, step_reached)
+        # Step 1: T-2 Long Black
+        if not ((c2 < o2) and (body2 > range2 * 0.6)):
+            return False, 0
+        
+        # Step 2: T-1 Star
+        if not ((body1 < body2 * 0.3) and (c1 < c2)):
+            return False, 1
+            
+        # Step 3: T Long Red
+        mid_point_2 = (o2 + c2) / 2
+        if not ((c0 > o0) and (c0 > mid_point_2) and (body0 > range0 * 0.6)):
+            return False, 2
+            
+        # Step 4: Volume Surge
+        if not (v0 > v1 * 1.3):
+            return False, 3
+            
+        return True, 4
+
+    def _check_evening_star(c0, c1, c2, o0, o1, o2, range0, range2, body0, body1, body2):
+        # T-2 Long Red
+        if not ((c2 > o2) and (body2 > range2 * 0.6)):
+            return False
+        # T-1 Star
+        if not ((body1 < body2 * 0.3) and (c1 > c2)):
+            return False
+        # T Long Black
+        mid_point_2 = (o2 + c2) / 2
+        if not ((c0 < o0) and (c0 < mid_point_2) and (body0 > range0 * 0.6)):
+            return False
+        return True
+
     limit, min_vol = get_user_scan_params()
     print_flush(f"\n正在掃描 K 線型態 (成交量 > {min_vol} 張)...")
     print_flush("篩選條件: 晨星(T-2長黑, T-1星線, T長紅, 爆量), 夜星(反之)")
@@ -11103,16 +10815,12 @@ def scan_candlestick_patterns():
     morning_stars = []
     evening_stars = []
     
-    # Counters (Morning Star Funnel)
+    # Counters
     count_total = len(stocks)
     count_vol = 0
-    count_m_step1 = 0 # T-2 Long Black
-    count_m_step2 = 0 # T-1 Star
-    count_m_step3 = 0 # T Long Red
-    count_m_step4 = 0 # Vol Surge
+    # Morning Star Funnel
+    ms_funnel = [0, 0, 0, 0] # Steps 1-4
     count_m_final = 0
-    
-    # Counters (Evening Star - Simplified tracking)
     count_e_final = 0
     
     for code, name in stocks:
@@ -11127,149 +10835,91 @@ def scan_candlestick_patterns():
                 continue
             count_vol += 1
             
-            # Prepare Data for Manual Checking (Latest 3 days)
-            # T (Today), T-1 (Yesterday), T-2 (Day before)
-            c0, c1, c2 = df['close'].iloc[-1], df['close'].iloc[-2], df['close'].iloc[-3]
-            o0, o1, o2 = df['open'].iloc[-1], df['open'].iloc[-2], df['open'].iloc[-3]
-            h0, h1, h2 = df['high'].iloc[-1], df['high'].iloc[-2], df['high'].iloc[-3]
-            l0, l1, l2 = df['low'].iloc[-1], df['low'].iloc[-2], df['low'].iloc[-3]
-            v0, v1 = df['volume'].iloc[-1], df['volume'].iloc[-2]
+            # Prepare Data
+            c = df['close'].values[-3:]
+            o = df['open'].values[-3:]
+            h = df['high'].values[-3:]
+            l = df['low'].values[-3:]
+            v = df['volume'].values[-2:] # v0, v1
             
-            # Ranges
+            c0, c1, c2 = c[2], c[1], c[0]
+            o0, o1, o2 = o[2], o[1], o[0]
+            h0, h1, h2 = h[2], h[1], h[0]
+            l0, l1, l2 = l[2], l[1], l[0]
+            v0, v1 = v[1], v[0]
+            
             range0 = h0 - l0
-            range1 = h1 - l1
             range2 = h2 - l2
             body0 = abs(c0 - o0)
             body1 = abs(c1 - o1)
             body2 = abs(c2 - o2)
             
-            # --- Morning Star Logic (Sequential) ---
-            passed_m = False
-            
-            # Step 1: T-2 Long Black (Body > 0.6 * Range)
-            is_long_black_2 = (c2 < o2) and (body2 > range2 * 0.6)
-            if is_long_black_2:
-                count_m_step1 += 1
+            # Check Morning Star
+            passed_m, step_m = _check_morning_star(c0, c1, c2, o0, o1, o2, v0, v1, range0, range2, body0, body1, body2)
+            if step_m >= 1: ms_funnel[0] += 1
+            if step_m >= 2: ms_funnel[1] += 1
+            if step_m >= 3: ms_funnel[2] += 1
+            if passed_m:
+                ms_funnel[3] += 1
+                count_m_final += 1
                 
-                # Step 2: T-1 Star (Body < 0.3 * T-2 Body, Close < T-2 Close)
-                # Note: User text says "Close < T-2 Close", standard is "Gap" or "Low body".
-                # We stick to user prompt: "實體很小，且收盤價低於 T-2日收盤"
-                is_star_1 = (body1 < body2 * 0.3) and (c1 < c2)
-                if is_star_1:
-                    count_m_step2 += 1
-                    
-                    # Step 3: T Long Red (Close > T-2 Mid)
-                    mid_point_2 = (o2 + c2) / 2
-                    is_long_red_0 = (c0 > o0) and (c0 > mid_point_2)
-                    # Also check if it's a "Long" candle (Body > 0.6 Range) as per previous logic?
-                    # User text says "長紅 K", so yes.
-                    is_long_red_0 = is_long_red_0 and (body0 > range0 * 0.6)
-                    
-                    if is_long_red_0:
-                        count_m_step3 += 1
-                        
-                        # Step 4: Volume Surge (Third candle volume > ?)
-                        # "爆量" -> Let's say > 1.3x Prev or > MA5
-                        # Let's use > 1.3x Prev for strictness or > MA5
-                        # User text: "第三根陽線若爆量"
-                        vol_surge = v0 > v1 * 1.3
-                        if vol_surge:
-                            count_m_step4 += 1
-                            count_m_final += 1
-                            passed_m = True
-                            
-                            # Calculate VSBC & Fib
-                            df = add_vsbc_columns(df)
-                            t = df.iloc[-1]
-                            vsbc_val = t['vsbc'] if 'vsbc' in t else 0
-                            
-                            # Calculate POC (Simple approximation using mode of close price in recent period or just use VSBC value itself if that's what user wants)
-                            # User said "VSBC上/下 (如：壓力區)<--這個應該是數字吧！0000/0000"
-                            # Let's assume they want VSBC Value / Price or VSBC / POC.
-                            # In scan_vsbc_strategy, we use calc_vp_poc(df). Let's use that if available, or implement simple one.
-                            # Since calc_vp_poc is defined elsewhere, let's check if we can use it.
-                            # It seems calc_vp_poc is a global function.
-                            try:
-                                poc = calc_vp_poc(df)
-                            except:
-                                poc = df['close'].mean() # Fallback
-                            
-                            # Fib 60 days
-                            recent_60 = df.iloc[-60:]
-                            h60 = recent_60['high'].max()
-                            l60 = recent_60['low'].min()
-                            diff = h60 - l60
-                            fib_0618 = h60 - (diff * 0.618)
-                            
-                            # Calculate current retracement ratio
-                            # Ratio = (High - Close) / (High - Low) for pullback from High
-                            if diff > 0:
-                                current_ratio = (h60 - c0) / diff
-                            else:
-                                current_ratio = 0
-                            
-                            morning_stars.append({
-                                'code': code, 'name': name,
-                                'close': c0, 'close_prev': c1,
-                                'pattern': '早晨之星',
-                                'volume': v0, # Raw volume
-                                'vol_ratio': v0/v1 if v1>0 else 1,
-                                'vsbc_lower': vsbc_val, # Map to VSBC Lower
-                                'vsbc_upper': poc,      # Map to VSBC Upper (POC)
-                                'fib_val': fib_0618,
-                                'fib_ratio': current_ratio
-                            })
+                # Calculate Metrics
+                df = add_vsbc_columns(df)
+                t = df.iloc[-1]
+                vsbc_val = t['vsbc'] if 'vsbc' in t else 0
+                try: poc = calc_vp_poc(df)
+                except: poc = df['close'].mean()
+                
+                recent_60 = df.iloc[-60:]
+                h60 = recent_60['high'].max()
+                l60 = recent_60['low'].min()
+                diff = h60 - l60
+                fib_0618 = h60 - (diff * 0.618)
+                current_ratio = (h60 - c0) / diff if diff > 0 else 0
+                
+                morning_stars.append({
+                    'code': code, 'name': name,
+                    'close': c0, 'close_prev': c1,
+                    'pattern': '早晨之星',
+                    'volume': v0,
+                    'vol_ratio': v0/v1 if v1>0 else 1,
+                    'vsbc_lower': vsbc_val,
+                    'vsbc_upper': poc,
+                    'fib_val': fib_0618,
+                    'fib_ratio': current_ratio
+                })
 
-            # --- Evening Star Logic (Simplified for now, or parallel) ---
-            # T-2 Long Red
-            is_long_red_2 = (c2 > o2) and (body2 > range2 * 0.6)
-            if is_long_red_2:
-                # T-1 Star (High)
-                is_star_1 = (body1 < body2 * 0.3) and (c1 > c2)
-                if is_star_1:
-                    # T Long Black (Close < T-2 Mid)
-                    mid_point_2 = (o2 + c2) / 2
-                    is_long_black_0 = (c0 < o0) and (c0 < mid_point_2) and (body0 > range0 * 0.6)
-                    if is_long_black_0:
-                        # Vol Surge (Optional for Evening? Usually volume shrinks on top, but breakdown needs volume)
-                        # Let's apply same surge logic for symmetry or just pass
-                        # User only specified Morning Star funnel details.
-                        # We'll just add it.
-                        count_e_final += 1
-                        # Calculate VSBC & Fib (Same as above)
-                        df = add_vsbc_columns(df)
-                        t = df.iloc[-1]
-                        vsbc_val = t['vsbc'] if 'vsbc' in t else 0
-                        
-                        try:
-                            poc = calc_vp_poc(df)
-                        except:
-                            poc = df['close'].mean()
+            # Check Evening Star
+            passed_e = _check_evening_star(c0, c1, c2, o0, o1, o2, range0, range2, body0, body1, body2)
+            if passed_e:
+                count_e_final += 1
+                # Calculate Metrics (Duplicate logic, could be extracted)
+                df = add_vsbc_columns(df) # Idempotent?
+                t = df.iloc[-1]
+                vsbc_val = t['vsbc'] if 'vsbc' in t else 0
+                try: poc = calc_vp_poc(df)
+                except: poc = df['close'].mean()
+                
+                recent_60 = df.iloc[-60:]
+                h60 = recent_60['high'].max()
+                l60 = recent_60['low'].min()
+                diff = h60 - l60
+                fib_0618 = h60 - (diff * 0.618)
+                current_ratio = (h60 - c0) / diff if diff > 0 else 0
+                
+                evening_stars.append({
+                    'code': code, 'name': name,
+                    'close': c0, 'close_prev': c1,
+                    'pattern': '黃昏之星',
+                    'volume': v0,
+                    'vol_ratio': v0/v1 if v1>0 else 1,
+                    'vsbc_lower': vsbc_val,
+                    'vsbc_upper': poc,
+                    'fib_val': fib_0618,
+                    'fib_ratio': current_ratio
+                })
 
-                        recent_60 = df.iloc[-60:]
-                        h60 = recent_60['high'].max()
-                        l60 = recent_60['low'].min()
-                        diff = h60 - l60
-                        fib_0618 = h60 - (diff * 0.618)
-                        
-                        if diff > 0:
-                            current_ratio = (h60 - c0) / diff
-                        else:
-                            current_ratio = 0
-
-                        evening_stars.append({
-                            'code': code, 'name': name,
-                            'close': c0, 'close_prev': c1,
-                            'pattern': '黃昏之星',
-                            'volume': v0,
-                            'vol_ratio': v0/v1 if v1>0 else 1,
-                            'vsbc_lower': vsbc_val,
-                            'vsbc_upper': poc,
-                            'fib_val': fib_0618,
-                            'fib_ratio': current_ratio
-                        })
-
-        except Exception as e:
+        except Exception:
             continue
             
     # Summary
@@ -11279,16 +10929,16 @@ def scan_candlestick_patterns():
     print_flush(f"總股數: {count_total}")
     print_flush("─"*60)
     print_flush(f"✓ 成交量 >= {min_vol}張        → {count_vol} 檔")
-    print_flush(f"✓ [第1階] T-2: 長黑 K (實體 > 0.6 * 總長)   → {count_m_step1} 檔")
-    print_flush(f"✓ [第2階] T-1: 星線 (實體 < 0.3 * T-2實體)  → {count_m_step2} 檔")
-    print_flush(f"✓ [第3階] T: 長紅 K (收盤 > T-2實體中點)    → {count_m_step3} 檔")
-    print_flush(f"✓ [第4階] 第三根陽線若爆量 (>1.3倍)         → {count_m_step4} 檔")
+    print_flush(f"✓ [第1階] T-2: 長黑 K (實體 > 0.6 * 總長)   → {ms_funnel[0]} 檔")
+    print_flush(f"✓ [第2階] T-1: 星線 (實體 < 0.3 * T-2實體)  → {ms_funnel[1]} 檔")
+    print_flush(f"✓ [第3階] T: 長紅 K (收盤 > T-2實體中點)    → {ms_funnel[2]} 檔")
+    print_flush(f"✓ [第4階] 第三根陽線若爆量 (>1.3倍)         → {ms_funnel[3]} 檔")
     print_flush(f"✓ 綜合評分 >= 以上都符合 (晨星)             → {count_m_final} 檔")
     if count_e_final > 0:
         print_flush(f"✓ 黃昏之星 (額外篩選)                       → {count_e_final} 檔")
     print_flush("─"*60)
     
-    # 使用統一格式輸出
+    # Output
     def candle_extra(code, item):
         ratio = item.get('fib_ratio', 0)
         close = item.get('close', 0)
@@ -11987,180 +11637,164 @@ def _handle_step7_with_cache_clear():
     
     if GLOBAL_INDICATOR_CACHE:
         GLOBAL_INDICATOR_CACHE.clear()
-    print_flush("✓ 系統快取已清除")
-
 
 def _run_full_daily_update():
     """
-    一鍵執行每日更新 (Steps 1-12) - 優化版
-    
-    優化重點:
-    1. 並行下載 (電腦模式) / 順序執行 (手機模式)
-    2. 統一三行進度顯示
-    3. 錯誤處理與失敗摘要
-    4. 記憶體優化
-    5. 智慧跳過 (休市日)
+    一鍵執行每日更新 (客製化顯示版)
     """
     global GLOBAL_INDICATOR_CACHE
     import gc
     from concurrent.futures import ThreadPoolExecutor, as_completed
+    from datetime import datetime
     
     out = StepOutput
     start_time = time.time()
+    today_str = datetime.now().strftime("%Y%m%d")
     
-    # 統計變數
-    results = {
-        'success': [],
-        'failed': [],
-        'skipped': []
-    }
+    print_flush(f"\n{'='*60}")
+    print_flush(f"一鍵每日更新 (Optimized) - {today_str}")
+    print_flush(f"{'='*60}\n")
+
+    # 一、下載休市日
+    print_flush("一、下載休市日(每年的0102更新)")
     
-    def run_step(step_name, step_func, step_num, **kwargs):
-        """執行單一步驟並記錄結果"""
-        try:
-            out.header(step_name, step_num)
-            step_func(**kwargs)
-            results['success'].append(step_name)
-            return True
-        except Exception as e:
-            out.error(f"{step_name} 失敗: {e}")
-            results['failed'].append((step_name, str(e)))
-            return False
-    
-    out.box_start("一鍵每日更新 (Optimized)")
-    
-    # ========== Phase 1: 基礎檢查 ==========
-    out.header("檢查開休市", "1")
+    # 一、檢查開休市
+    print_flush(f"一、檢查開休市：今日 ({today_str}) ", end="")
     is_holiday = False
     try:
         is_holiday = step1_check_holiday()
         if is_holiday:
-            out.warn("今日休市，跳過下載步驟，僅執行指標計算...")
+            print_flush("是休市日。")
+            print_flush("✓ 今日是休市日")
         else:
-            out.success("今日是交易日")
+            print_flush("是交易日。")
+            print_flush("✓ 今日是交易日")
     except Exception as e:
-        out.error(f"檢查失敗: {e}")
-    
-    # ========== Phase 2: 資料下載 ==========
+        print_flush(f"檢查失敗: {e}")
+
     if not is_holiday:
-        # 手機模式: 順序執行
-        if Config.LIGHTWEIGHT_MODE:
-            out.info("📱 手機模式: 順序執行下載")
-            run_step("下載股票清單", step2_download_lists, "2", silent_header=True)
-            run_step("下載基本資料", step3_download_basic_info, "3", silent_header=True)
-            run_step("清理下市股票", step4_clean_delisted, "4")
-            run_step("下載今日行情", step5_download_quotes, "5", silent_header=True)
-            run_step("下載估值資料", step6_download_valuation, "6", silent_header=True)
-            run_step("下載三大法人", step7_download_institutional, "7", silent_header=True)
-            run_step("下載融資融券", step8_download_margin, "8", silent_header=True)
-            run_step("下載集保大戶", step9_download_tdcc, "9", silent_header=True)
-            # 手機模式下釋放記憶體
-            gc.collect()
-        else:
-            # 電腦模式: 分組並行
-            out.info("💻 電腦模式: 並行下載")
-            
-            # Group A: 清單與基本資料 (並行)
-            out.header("下載清單與基本資料", "2-3")
-            with ThreadPoolExecutor(max_workers=2) as executor:
-                futures = {
-                    executor.submit(step2_download_lists, silent_header=True): "下載股票清單",
-                    executor.submit(step3_download_basic_info, silent_header=True): "下載基本資料"
-                }
-                for future in as_completed(futures):
-                    name = futures[future]
-                    try:
-                        future.result()
-                        results['success'].append(name)
-                    except Exception as e:
-                        out.error(f"{name} 失敗: {e}")
-                        results['failed'].append((name, str(e)))
-            
-            # Step 4: 清理下市 (需要前面步驟完成)
-            run_step("清理下市股票", step4_clean_delisted, "4")
-            
-            # Group B: 行情/估值/法人/融資融券/集保 (並行)
-            out.header("下載市場資料", "5-9")
-            download_tasks = [
-                (step5_download_quotes, {"silent_header": True}, "下載今日行情"),
-                (step6_download_valuation, {"silent_header": True}, "下載估值資料"),
-                (step7_download_institutional, {"silent_header": True}, "下載三大法人"),
-                (step8_download_margin, {"silent_header": True}, "下載融資融券"),
-                (step9_download_tdcc, {"silent_header": True}, "下載集保大戶"),
-            ]
-            
-            with ThreadPoolExecutor(max_workers=5) as executor:
-                futures = {
-                    executor.submit(func, **kwargs): name 
-                    for func, kwargs, name in download_tasks
-                }
-                for future in as_completed(futures):
-                    name = futures[future]
-                    try:
-                        future.result()
-                        results['success'].append(name)
-                        out.success(name, indent=1)
-                    except Exception as e:
-                        out.error(f"{name}: {e}", indent=1)
-                        results['failed'].append((name, str(e)))
+        # 二、檢查個股清單
+        print_flush(f"二、檢查個股清單：", end="")
+        try:
+            step2_download_lists(silent_header=True)
+            print_flush(f"✓今日 ({today_str})已更新")
+        except Exception as e:
+            print_flush(f"❌ 更新失敗: {e}")
+
+        # 三、清理下市股票
+        print_flush(f"三、清理下市股票：", end="")
+        try:
+            step4_clean_delisted()
+        except Exception as e:
+            print_flush(f"❌ 失敗: {e}")
+
+        # 四、基本資料下載
+        print_flush(f"四、基本資料下載：", end="")
+        try:
+            step3_download_basic_info(silent_header=True)
+            print_flush(f"TWSE ({today_str})已更新、TPEx({today_str})已更新、[處置/終止] ({today_str})已檢查")
+        except Exception as e:
+            print_flush(f"❌ 失敗: {e}")
     else:
-        results['skipped'].extend([
-            "下載股票清單", "下載基本資料", "清理下市股票",
-            "下載今日行情", "下載估值資料", "下載三大法人",
-            "下載融資融券", "下載集保大戶"
-        ])
+        print_flush("\n(休市日：跳過清單與基本資料更新)\n")
+
+    # 並行下載準備
+    print_flush("\n(正在並行下載市場資料，請稍候...)\n")
     
-    # ========== Phase 3: 資料驗證 ==========
-    out.header("檢查數據缺失", "10")
+    # 定義所有並行任務
+    all_download_tasks = {
+        'quotes': (step5_download_quotes, "五、下載今日行情(15時更新)"),
+        'inst': (step7_download_institutional, "六、下載三大法人資料(15時更新)"),
+        'margin': (step8_download_margin, "七、下載融資融券(21時更新)"),
+        'valuation': (step6_download_valuation, "八、更新 TPEx 估值資料 (PE/Yield/PB)"),
+        'tdcc': (step9_download_tdcc, "九、下載集保資料(每周星期五更新)")
+    }
+    
+    # 根據是否休市篩選任務
+    # 休市日：只跑集保 (tdcc)
+    # 交易日：跑全部
+    if is_holiday:
+        download_tasks = {'tdcc': all_download_tasks['tdcc']}
+        print_flush("⚠ 休市日模式：僅執行集保資料下載")
+    else:
+        download_tasks = all_download_tasks
+    
+    results = {}
+    
+    if Config.LIGHTWEIGHT_MODE:
+        # 手機模式：順序執行
+        for key, (func, title) in download_tasks.items():
+            try:
+                func(silent_header=True)
+                results[key] = True
+            except Exception as e:
+                results[key] = False
+    else:
+        # 電腦模式：並行執行
+        with ThreadPoolExecutor(max_workers=5) as executor:
+            futures = {executor.submit(func, silent_header=True): key for key, (func, title) in download_tasks.items()}
+            for future in as_completed(futures):
+                key = futures[future]
+                try:
+                    future.result()
+                    results[key] = True
+                except Exception as e:
+                    results[key] = False
+
+    # 顯示結果 (依序)
+    def get_status(key):
+        if key not in download_tasks:
+            return "跳過(休市)"
+        return "已更新" if results.get(key) else "失敗"
+
+    # 五
+    status = get_status('quotes')
+    print_flush(f"五、下載今日行情(15時更新)：TWSE ({today_str}){status}、TPEx({today_str}){status}、大盤({today_str}){status}")
+    
+    # 六
+    status = get_status('inst')
+    print_flush(f"六、下載三大法人資料(15時更新)：TWSE ({today_str}){status}、TPEx({today_str}){status}、大盤({today_str}){status}")
+    
+    # 七
+    status = get_status('margin')
+    print_flush(f"七、下載融資融券(21時更新)：TWSE ({today_str}){status}、TPEx({today_str}){status}、大盤({today_str}){status}")
+    
+    # 八
+    status = get_status('valuation')
+    print_flush(f"八、更新 TPEx 估值資料 (PE/Yield/PB)：TWSE ({today_str}){status}、TPEx({today_str}){status}")
+    
+    # 九
+    status = get_status('tdcc')
+    print_flush(f"九、下載集保資料(每周星期五更新)：TWSE ({today_str}){status}、TPEx({today_str}){status}")
+
+    # 十、檢查數據缺失
+    print_flush("十、檢查數據缺失：檢查以上是否有缺少的")
     try:
         step10_check_gaps()
-        results['success'].append("檢查數據缺失")
-    except Exception as e:
-        out.error(f"檢查失敗: {e}")
-        results['failed'].append(("檢查數據缺失", str(e)))
-    
-    out.header("驗證與補漏", "11")
+    except: pass
+
+    # 十一、驗證資料完整性與回補
+    print_flush("十一、驗證資料完整性與回補：")
     try:
-        step11_verify_backfill()
-        results['success'].append("驗證與補漏")
-    except Exception as e:
-        out.error(f"補漏失敗: {e}")
-        results['failed'].append(("驗證與補漏", str(e)))
-    
-    # ========== Phase 4: 指標計算 ==========
-    out.header("計算技術指標", "12")
+        step11_verify_backfill(auto_mode=True)
+    except: pass
+
+    # 十二、計算技術指標
+    print_flush("十二、計算技術指標：計算所有需要計算的")
     try:
-        data = step4_load_data()
         step12_calc_indicators()
-        results['success'].append("計算技術指標")
-        
         # 更新快取
         if GLOBAL_INDICATOR_CACHE is None:
             GLOBAL_INDICATOR_CACHE = IndicatorCacheManager()
+        data = step4_load_data()
         GLOBAL_INDICATOR_CACHE.set_data(data)
-    except Exception as e:
-        out.error(f"指標計算失敗: {e}")
-        results['failed'].append(("計算技術指標", str(e)))
-    
-    # ========== 完成摘要 ==========
+    except: pass
+
     elapsed = time.time() - start_time
-    elapsed_str = f"{int(elapsed // 60)}分{int(elapsed % 60)}秒"
-    
-    out.box_end(f"每日更新完成！耗時: {elapsed_str}")
-    
-    # 顯示摘要
-    print_flush(f"\n📊 執行摘要:")
-    print_flush(f"  ✓ 成功: {len(results['success'])} 項")
-    if results['skipped']:
-        print_flush(f"  ⏭ 跳過: {len(results['skipped'])} 項 (休市)")
-    if results['failed']:
-        print_flush(f"  ✗ 失敗: {len(results['failed'])} 項")
-        for name, err in results['failed']:
-            print_flush(f"    - {name}: {err[:50]}...")
-    
-    # 手機模式最終清理
-    if Config.LIGHTWEIGHT_MODE:
-        gc.collect()
+    minutes = int(elapsed // 60)
+    seconds = int(elapsed % 60)
+    print_flush(f"\n✓ 每日更新完成！耗時: {minutes}分{seconds}秒")
+    print_flush("="*60 + "\n")
 
 def start_scheduler():
     """啟動每日自動更新排程"""
@@ -12416,10 +12050,12 @@ def check_db_nulls():
                 
                 print_flush("  Top 5 缺失股票:")
                 cur.execute("""
-                    SELECT code, COUNT(*) as cnt 
-                    FROM stock_history 
-                    WHERE close IS NULL 
-                    GROUP BY code 
+                    SELECT h.code, COUNT(*) as cnt 
+                    FROM stock_history h
+                    LEFT JOIN stock_meta m ON h.code = m.code
+                    WHERE h.close IS NULL 
+                    AND (m.status IS NULL OR m.status != 'Suspended')
+                    GROUP BY h.code 
                     ORDER BY cnt DESC 
                     LIMIT 5
                 """)
@@ -12444,6 +12080,13 @@ def check_db_nulls():
 
         except Exception as e:
             print_flush(f"檢查失敗: {e}")
+            
+    # 詢問是否補齊
+    print_flush("\n是否嘗試自動補齊缺漏資料? (y/n): ", end="")
+    if input().lower() == 'y':
+        print_flush("\n啟動自動補漏程序...")
+        step6_verify_and_backfill(skip_downloads=True, skip_institutional=False)
+        print_flush("\n補漏程序執行完畢，請重新檢查資料完整性。")
 
 def delete_data_by_date():
     """刪除指定日期的資料"""
@@ -13004,7 +12647,7 @@ def institutional_menu():
         print_flush("-" * 60)
         print_flush("💡 輸入股票代號 (如 2330) 可直接查看個股")
         
-        ch = read_single_key()
+        ch = input("請選擇: ").strip().lower()
         
         if ch == '0':
             return
