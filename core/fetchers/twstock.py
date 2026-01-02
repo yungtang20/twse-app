@@ -20,9 +20,27 @@ class TwstockFetcher(BaseFetcher):
         self._twstock = None
     
     def _get_twstock(self):
-        """延遲載入 twstock"""
+        """延遲載入 twstock 並套用 Patch"""
         if self._twstock is None:
             import twstock
+            
+            # [Patch] 修復 TWSE/TPEx 回傳欄位數變更導致的錯誤
+            # Error: Data.__new__() takes 10 positional arguments but 11 were given
+            
+            def patch_make_datatuple(original_method):
+                def patched_method(self, data):
+                    # 只取前 9 個欄位 (符合 DATATUPLE 定義)
+                    if len(data) > 9:
+                        data = data[:9]
+                    return original_method(self, data)
+                return patched_method
+
+            if hasattr(twstock.stock.TWSEFetcher, '_make_datatuple'):
+                twstock.stock.TWSEFetcher._make_datatuple = patch_make_datatuple(twstock.stock.TWSEFetcher._make_datatuple)
+                
+            if hasattr(twstock.stock.TPEXFetcher, '_make_datatuple'):
+                twstock.stock.TPEXFetcher._make_datatuple = patch_make_datatuple(twstock.stock.TPEXFetcher._make_datatuple)
+
             self._twstock = twstock
         return self._twstock
     
@@ -33,6 +51,10 @@ class TwstockFetcher(BaseFetcher):
         end_date: Optional[str] = None
     ) -> List[StockPrice]:
         """抓取股價資料"""
+        # Guard Clause: 跳過非個股代碼 (如 0000 大盤指數)
+        if not code or len(code) != 4 or not code.isdigit() or code == '0000':
+            return []
+            
         twstock = self._get_twstock()
         
         # 計算起始年月
@@ -72,7 +94,18 @@ class TwstockFetcher(BaseFetcher):
             return result
             
         except Exception as e:
-            self.log(f"[twstock] 抓取失敗 {code}: {e}")
+            # 針對櫃買中心 (TPEx) 的特殊處理
+            is_tpex = False
+            try:
+                if code in twstock.codes and twstock.codes[code].market == '上櫃':
+                    is_tpex = True
+            except:
+                pass
+                
+            if is_tpex and ("Expecting value" in str(e) or "404" in str(e)):
+                self.log(f"[twstock] 抓取失敗 {code}: 櫃買中心網站改版，API 目前失效 (預期中)")
+            else:
+                self.log(f"[twstock] 抓取失敗 {code}: {e}")
             return []
     
     def fetch_institutional(

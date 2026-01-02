@@ -745,7 +745,7 @@ RESET_COLOR = '\033[0m'
 
 
 def _worker_calc_indicators(args):
-    """Step 7 Worker: 計算單支股票指標"""
+    """Step 7 Worker: 計算單支股票指標 (含 VSBC)"""
     import pandas as pd
     code, name, preloaded_df = args
     
@@ -769,6 +769,30 @@ def _worker_calc_indicators(args):
             
         # 取得最新一筆資料
         latest = indicators_list[0]
+        
+        # [新增] 計算 VSBC (使用預載入的 DataFrame)
+        vsbc_val = None
+        vsbc_pct_val = None
+        vsbc_prev_val = None
+        
+        if preloaded_df is not None and len(preloaded_df) >= 100:
+            try:
+                df = preloaded_df.copy()
+                df['vsbc'] = calc_vsbc_series(df)
+                df['vsbc_pct'] = df['vsbc'].rolling(100, min_periods=20).rank(pct=True) * 100
+                df['vsbc_pct'] = df['vsbc_pct'].fillna(50)
+                
+                if len(df) >= 2:
+                    vsbc_val = df['vsbc'].iloc[-1]
+                    vsbc_pct_val = df['vsbc_pct'].iloc[-1]
+                    vsbc_prev_val = df['vsbc'].iloc[-2]
+                    
+                    # 確保值為數值
+                    vsbc_val = round(float(vsbc_val), 2) if pd.notna(vsbc_val) else None
+                    vsbc_pct_val = round(float(vsbc_pct_val), 2) if pd.notna(vsbc_pct_val) else None
+                    vsbc_prev_val = round(float(vsbc_prev_val), 2) if pd.notna(vsbc_prev_val) else None
+            except:
+                pass
         
         # 建構更新 Tuple (必須與 SQL UPDATE 順序完全一致)
         return (
@@ -797,6 +821,7 @@ def _worker_calc_indicators(args):
             latest.get('Monthly_Close'), latest.get('Monthly_Open'),
             latest.get('VWAP200'), latest.get('Mansfield_RS'),
             latest.get('ADL'), latest.get('RS'),
+            vsbc_val, vsbc_pct_val, vsbc_prev_val,  # [新增] VSBC 欄位
             code # WHERE code=?
         )
     except Exception:
@@ -6424,13 +6449,10 @@ def step11_verify_backfill():
     step6_verify_and_backfill(skip_downloads=True, skip_institutional=True)
 
 def step12_calc_indicators():
-    """步驟12: 計算技術指標 (含 VSBC 分數)"""
-    print_flush("\n[Step 12] 計算技術指標...")
+    """步驟12: 計算技術指標 (含 VSBC 分數) [優化版]"""
+    print_flush("\n[Step 12] 計算技術指標與 VSBC 分數...")
     step7_calc_indicators()
-    
-    # 計算 VSBC 分數 (供 Web 版使用)
-    print_flush("\n[Step 12b] 計算 VSBC 分數...")
-    batch_calculate_vsbc()
+    # VSBC 已整合到 step7_calc_indicators 的多進程計算中
 
 # ==============================
 # 市場資料更新模板 (Template Method)
@@ -8567,7 +8589,8 @@ def step7_calc_indicators(data=None, force=False, batch_size=500):
                                 weekly_close=?, weekly_open=?,
                                 monthly_close=?, monthly_open=?,
                                 vwap200=?, mansfield_rs=?,
-                                adl=?, rs=?
+                                adl=?, rs=?,
+                                vsbc=?, vsbc_pct=?, vsbc_prev=?
                             WHERE code=?
                         """, pending_updates)
                         conn.commit()

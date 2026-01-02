@@ -288,7 +288,13 @@ export function TechnicalChart({ code, name, onHoverData, isFullScreen = false }
         if (!refs.main || chartData.length === 0) return;
         try {
             refs.candleSeries.setData(chartData);
-            refs.volumeSeries.setData(chartData);
+            // Volume with color based on price change (up=red, down=green in Taiwan)
+            const volumeData = chartData.map(d => ({
+                time: d.time,
+                value: d.value,
+                color: d.close >= d.open ? '#ef4444' : '#22c55e'
+            }));
+            refs.volumeSeries.setData(volumeData);
             refs.volMA5Series.setData(volumeMA5.map((v, i) => v !== null ? { time: chartData[i].time, value: v } : null).filter(Boolean));
             refs.volMA60Series.setData(volumeMA60.map((v, i) => v !== null ? { time: chartData[i].time, value: v } : null).filter(Boolean));
             setTimeout(() => {

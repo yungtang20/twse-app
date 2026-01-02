@@ -22,6 +22,10 @@ class MarketIndexFetcher(BaseFetcher):
     
     def __init__(self, silent: bool = False):
         super().__init__(silent)
+    
+    def fetch_price(self, code, start_date=None, end_date=None):
+        """MarketIndexFetcher 不支援股價抓取"""
+        return []
         
     def _safe_num(self, value) -> float:
         if value is None: return 0.0

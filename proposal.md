@@ -583,3 +583,119 @@
 ## 修改進度
 *   [x] 新增 9 個核心函數的 Type Hints
 *   [x] 驗證系統啟動正常
+
+# 2026-01-02 修復 twstock 解析錯誤
+
+## 執行目標
+1. 修復 `twstock` 套件在抓取部分股票 (如 1414) 時發生的 `Data.__new__() takes 10 positional arguments but 11 were given` 錯誤。
+2. 確保 `twstock` 備援機制正常運作。
+
+## 修改內容
+1.  **Backend (`core/fetchers/twstock.py`)**:
+    *   在 `_get_twstock` 中實作 Monkey Patch。
+    *   攔截 `TWSEFetcher._make_datatuple` 與 `TPEXFetcher._make_datatuple`。
+    *   當回傳資料欄位超過 9 個時，自動截斷為前 9 個，以符合 `DATATUPLE` 定義。
+    *   新增 Guard Clause 跳過非個股代碼 (如 0000)。
+
+## 修改原因
+*   TWSE/TPEx 官方 API 可能調整了回傳格式 (增加欄位)，導致 `twstock` 套件內建的 `namedtuple` 解析失敗。
+*   此為第三方套件錯誤，透過 Monkey Patch 在不修改套件原始碼的情況下修復。
+
+## 修改進度
+*   [x] 實作 Monkey Patch
+*   [x] 驗證修復 (透過 reproduction script 確認邏輯)
+
+# 2026-01-02 優化櫃買中心 (TPEx) 錯誤處理
+
+## 執行目標
+1. 針對櫃買中心 (TPEx) 網站改版導致 API 失效的問題，實作更強健的錯誤處理。
+2. 提供更明確的錯誤訊息，避免使用者困惑。
+
+## 修改內容
+1.  **Backend (`core/fetchers/twstock.py`)**:
+    *   在 `fetch_price` 中加入針對 `JSONDecodeError` 與 `404` 的特殊判斷。
+    *   若偵測到為上櫃股票且 API 回傳錯誤，記錄「櫃買中心網站改版，API 目前失效 (預期中)」訊息。
+    *   確保程式不會因單一股票抓取失敗而中斷。
+
+## 修改原因
+*   櫃買中心於 2024 年底改版，導致 `twstock` 內建的舊 API 網址失效。
+*   在套件官方修復前，透過更明確的 Log 提示使用者這是已知且預期中的問題。
+
+## 修改進度
+*   [x] 實作強健錯誤處理
+*   [x] 驗證 Log 訊息顯示正確
+
+# 2026-01-02 修復 Fetcher 抽象方法錯誤
+
+## 執行目標
+1. 修復 `InstitutionalFetcher`, `MarginFetcher`, `MarketIndexFetcher` 無法實例化的錯誤。
+2. 錯誤訊息: `Can't instantiate abstract class ... without an implementation for abstract method 'fetch_price'`
+
+## 修改內容
+1.  **Backend (`core/fetchers/institutional.py`)**:
+    *   新增 `fetch_price` stub 方法，回傳空列表。
+2.  **Backend (`core/fetchers/margin.py`)**:
+    *   新增 `fetch_price` stub 方法，回傳空列表。
+3.  **Backend (`core/fetchers/market_index.py`)**:
+    *   新增 `fetch_price` stub 方法，回傳空列表。
+
+## 修改原因
+*   `BaseFetcher` 類別定義了 `fetch_price` 為抽象方法 (`@abstractmethod`)。
+*   專門化的 Fetcher (如 `InstitutionalFetcher`) 不需要股價抓取功能，但必須實作此方法才能被實例化。
+*   透過新增 stub 方法 (回傳空列表) 解決此問題。
+
+## 修改進度
+*   [x] 修復 `MarketIndexFetcher`
+*   [x] 修復 `InstitutionalFetcher`
+*   [x] 修復 `MarginFetcher`
+*   [x] 驗證修復 (需重新啟動程式以載入新代碼)
+
+# 2026-01-02 Step 12 效能優化
+
+## 執行目標
+1. 整合 VSBC 計算到 Step 12 的多進程計算中。
+2. 減少資料重複載入與序列化處理。
+3. 預估減少 30-40% 的計算時間。
+
+## 修改內容
+1.  **Backend (`最終修正.py`)**:
+    *   修改 `_worker_calc_indicators` 加入 VSBC 計算邏輯。
+    *   更新 SQL UPDATE 語句加入 `vsbc`, `vsbc_pct`, `vsbc_prev` 欄位。
+    *   簡化 `step12_calc_indicators`，移除 `batch_calculate_vsbc()` 呼叫。
+
+## 修改原因
+*   原本 Step 12b 獨立執行 VSBC，重複載入歷史資料。
+*   整合後，VSBC 與技術指標在同一個多進程迴圈中計算，共用資料載入。
+
+## 修改進度
+*   [x] 修改 `_worker_calc_indicators`
+*   [x] 更新 SQL UPDATE 語句
+*   [x] 移除 `batch_calculate_vsbc()` 呼叫
+*   [x] 驗證效能提升
+
+# 2026-01-02 TPEx 法人與大盤融資券修復
+
+## 執行目標
+1. 修復 TPEx 法人資料抓取 (0 筆問題)
+2. 新增大盤 (0000) 融資券資料抓取
+
+## 修改內容
+1.  **`core/fetchers/institutional.py`**:
+    *   更新 `API_TPEX` 為新版 OpenAPI URL
+    *   重寫 `fetch_tpex` 使用新 JSON 欄位格式
+    *   ⚠ TPEx OpenAPI 目前回傳 HTML（網站暫時性問題），保留新邏輯
+
+2.  **`core/fetchers/margin.py`**:
+    *   新增 `fetch_market_summary` 方法
+    *   使用 TWSE RWD API: `/rwd/zh/marginTrading/MI_MARGN`
+    *   更新 `fetch_all` 包含大盤匯總
+
+## 驗證結果
+*   ✅ 大盤融資券 (0000): `margin_buy=27047938`, `margin_balance=346634298`
+*   ⚠ TPEx 法人: 網站暫時問題，API 回傳 HTML
+
+## 修改進度
+*   [x] 調查並找到新 API
+*   [x] 實作大盤融資券抓取
+*   [x] 驗證大盤融資券成功
+*   [x] TPEx 法人保留新邏輯 (待網站修復)

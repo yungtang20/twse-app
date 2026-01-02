@@ -17,10 +17,15 @@ class InstitutionalFetcher(BaseFetcher):
     name = "Institutional"
     
     API_TWSE = "https://www.twse.com.tw/rwd/zh/fund/T86?response=json&date={date}&selectType=ALLBUT0999"
-    API_TPEX = "https://www.tpex.org.tw/www/zh-tw/insti/tradingInfo"
+    # 新版 OpenAPI (2024 改版後)
+    API_TPEX = "https://www.tpex.org.tw/openapi/v1/tpex_mainboard_daily_institution_netbuy"
     
     def __init__(self, silent: bool = False):
         super().__init__(silent)
+    
+    def fetch_price(self, code, start_date=None, end_date=None):
+        """InstitutionalFetcher 不支援股價抓取"""
+        return []
     
     def _safe_int(self, value) -> int:
         """安全轉換為整數"""
@@ -92,58 +97,53 @@ class InstitutionalFetcher(BaseFetcher):
             return []
     
     def fetch_tpex(self, date_str: str) -> List[InstitutionalData]:
-        """抓取上櫃法人資料"""
+        """抓取上櫃法人資料 (使用新版 OpenAPI)"""
         try:
-            # TPEx API 需要民國年格式
-            if len(date_str) == 8:
-                year = int(date_str[:4]) - 1911
-                date_tw = f"{year}/{date_str[4:6]}/{date_str[6:8]}"
-            else:
-                parts = date_str.split('-')
-                year = int(parts[0]) - 1911
-                date_tw = f"{year}/{parts[1]}/{parts[2]}"
-            
-            params = {'d': date_tw, 't': 'D', 'o': 'json'}
-            resp = requests.get(self.API_TPEX, params=params, timeout=30, verify=False)
+            resp = requests.get(self.API_TPEX, timeout=30, verify=False)
             
             if resp.status_code != 200:
+                self.log(f"[InstitutionalFetcher] TPEx API 回傳 {resp.status_code}")
                 return []
             
             data = resp.json()
-            if not data.get('aaData'):
+            if not data:
                 return []
             
             result = []
-            for row in data['aaData']:
+            # 新版 OpenAPI 回傳格式為 list of dict
+            # 欄位: "代號", "名稱", "外資及陸資(不含外資自營商)-買進股數", "外資及陸資(不含外資自營商)-賣出股數", "外資及陸資(不含外資自營商)-買賣超股數"
+            # "投信-買進股數", "投信-賣出股數", "投信-買賣超股數"
+            # "自營商-買進股數(自行買賣)", "自營商-賣出股數(自行買賣)", "自營商-買賣超股數(自行買賣)"
+            # "自營商-買進股數(避險)", "自營商-賣出股數(避險)", "自營商-買賣超股數(避險)"
+            for row in data:
                 try:
-                    code = str(row[0]).strip()
+                    code = str(row.get('代號', '')).strip()
                     if len(code) != 4 or not code.isdigit():
                         continue
                     
-                    # TPEx 欄位:
-                    # 0:代號, 1:名稱
-                    # 2:外資買, 3:外資賣, 4:外資淨
-                    # 5:投信買, 6:投信賣, 7:投信淨
-                    # 8:自營(自行)買, 9:自營(自行)賣, 10:自營(自行)淨
-                    # 11:自營(避險)買, 12:自營(避險)賣, 13:自營(避險)淨
-                    # 14:自營(合計)買, 15:自營(合計)賣, 16:自營(合計)淨
+                    # 外資
+                    f_buy = self._safe_int(row.get('外資及陸資(不含外資自營商)-買進股數', 0))
+                    f_sell = self._safe_int(row.get('外資及陸資(不含外資自營商)-賣出股數', 0))
                     
-                    d_buy = 0
-                    d_sell = 0
-                    if len(row) >= 17:
-                        d_buy = self._safe_int(row[14])
-                        d_sell = self._safe_int(row[15])
-                    elif len(row) >= 11:
-                        d_buy = self._safe_int(row[8])
-                        d_sell = self._safe_int(row[9])
-
+                    # 投信
+                    t_buy = self._safe_int(row.get('投信-買進股數', 0))
+                    t_sell = self._safe_int(row.get('投信-賣出股數', 0))
+                    
+                    # 自營商 (自行 + 避險)
+                    d_buy_self = self._safe_int(row.get('自營商-買進股數(自行買賣)', 0))
+                    d_sell_self = self._safe_int(row.get('自營商-賣出股數(自行買賣)', 0))
+                    d_buy_hedge = self._safe_int(row.get('自營商-買進股數(避險)', 0))
+                    d_sell_hedge = self._safe_int(row.get('自營商-賣出股數(避險)', 0))
+                    d_buy = d_buy_self + d_buy_hedge
+                    d_sell = d_sell_self + d_sell_hedge
+                    
                     result.append(InstitutionalData(
                         code=code,
                         date=date_str if '-' in date_str else f"{date_str[:4]}-{date_str[4:6]}-{date_str[6:8]}",
-                        foreign_buy=self._safe_int(row[2]) // 1000,
-                        foreign_sell=self._safe_int(row[3]) // 1000,
-                        trust_buy=self._safe_int(row[5]) // 1000,
-                        trust_sell=self._safe_int(row[6]) // 1000,
+                        foreign_buy=f_buy // 1000,
+                        foreign_sell=f_sell // 1000,
+                        trust_buy=t_buy // 1000,
+                        trust_sell=t_sell // 1000,
                         dealer_buy=d_buy // 1000,
                         dealer_sell=d_sell // 1000
                     ))
