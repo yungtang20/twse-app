@@ -20,6 +20,18 @@ export function TechnicalChart({ code, name, onHoverData, isFullScreen = false }
     const [hoverIdx, setHoverIdx] = useState(-1);
     const [shareholderThreshold, setShareholderThreshold] = useState(1000);
 
+    const indicatorConfig = [
+        { name: 'MA20', color: '#f97316' },
+        { name: 'MA60', color: '#a855f7' },
+        { name: 'MA120', color: '#3b82f6' },
+        { name: 'MA200', color: '#ef4444' },
+        { name: 'VWAP', color: '#eab308' },
+        { name: 'BBW', color: '#6366f1' },
+        { name: 'VP', color: '#14b8a6' },
+        { name: 'VSBC', color: '#ec4899' },
+        { name: 'Fib', color: '#84cc16' }
+    ];
+
     // Calculate Volume MAs
     const volumeMA5 = useMemo(() => calculateMA(chartData, 5, 'value'), [chartData]);
     const volumeMA60 = useMemo(() => calculateMA(chartData, 60, 'value'), [chartData]);

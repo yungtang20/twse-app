@@ -1182,12 +1182,6 @@ def safe_int(value, default=0):
     except (ValueError, TypeError, OverflowError):
         return default
 
-def safe_json_parse(text):
-    """安全解析 JSON"""
-    try:
-        return json.loads(text)
-    except:
-        return None
 
 def roc_to_western_date(roc_date_str):
     """民國日期轉西元日期"""
@@ -5795,27 +5789,6 @@ PRICE_VOLUME_STATUS = {
     (-1, -1): "價跌量縮"
 }
 
-def calculate_trade_setup(close, vp_upper, vp_lower, ma20, tp=0, sl=0):
-    """
-    計算止盈止損 (職責分離)
-    :return: (tp, sl)
-    """
-    if tp == 0:
-        if vp_upper and vp_upper > close:
-            tp = vp_upper
-        else:
-            tp = close * 1.1
-            
-    if sl == 0:
-        if vp_lower and vp_lower < close:
-            sl = vp_lower
-        elif ma20 and close > ma20:
-            sl = ma20
-        else:
-            sl = close * 0.95
-            
-    return tp, sl
-
 
 # ANSI Color Codes
 class Colors:
@@ -6083,57 +6056,6 @@ def format_scan_result(code, name, indicators, show_date=False):
     
     return f"{line1}\n{line2}\n{line3}\n{line4}\n{line5}\n"
 
-
-def reset_color():
-    """重置顏色"""
-    return RESET_COLOR
-
-def get_arrow(curr, prev):
-    """根據當前值和前值獲取箭頭 (Table-Driven)"""
-    if curr is None or prev is None: return ""
-    
-    # Table-Driven: (Condition) -> Symbol
-    # Using a list of tuples for ordered evaluation
-    rules = [
-        (curr > prev, "↑"),
-        (curr < prev, "↓")
-    ]
-    
-    for condition, symbol in rules:
-        if condition: return symbol
-    return "-"
-
-def get_volume_color(ratio):
-    """成交量顏色：量增=紅、量縮=綠、爆量=紫"""
-    if ratio >= 2.0: return "\033[95m"  # 爆量 (紫色)
-    elif ratio > 1.0: return "\033[91m"  # 量增 = 紅色
-    elif ratio < 1.0: return "\033[92m"  # 量縮 = 綠色
-    return "\033[97m"  # 持平 = 白色
-
-def get_trend_color(curr, prev):
-    """根據趨勢獲取顏色 (Table-Driven)"""
-    if curr is None or prev is None: return ""
-    
-    # Table-Driven: (Condition) -> Color
-    rules = [
-        (curr > prev, "\033[91m"), # Red
-        (curr < prev, "\033[92m")  # Green
-    ]
-    
-    for condition, color in rules:
-        if condition: return color
-    return "\033[97m" # White (RESET)
-
-def get_indicator_color(val):
-    """技術指標顏色：只用紅/綠字，不含漲停/跌停判斷"""
-    if val > 0: return Colors.RED      # 上漲 (紅字)
-    elif val < 0: return Colors.GREEN  # 下跌 (綠字)
-    return Colors.RESET                # 0 = White
-
-def get_colored_value(text, change, arrow):
-    """獲取帶顏色的值 (用於技術指標，不觸發漲停色)"""
-    color = get_indicator_color(change)
-    return f"{color}{text}{arrow}{reset_color()}"
 
 
 def format_scan_result_list(code, name, indicators_list):
