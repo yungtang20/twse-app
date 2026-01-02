@@ -24,6 +24,15 @@ export const Settings = () => {
     const fetchStatus = async () => {
         setLoading(true);
         setErrorMsg(null);
+
+        // Check if we're in production (APK) mode - no local backend
+        const isProduction = !import.meta.env.DEV;
+        if (isProduction) {
+            // In production, skip backend API calls
+            setLoading(false);
+            return;
+        }
+
         try {
             const res = await fetch('/api/admin/status');
             if (!res.ok) throw new Error(`HTTP error! status: ${res.status}`);
@@ -40,7 +49,10 @@ export const Settings = () => {
             }
         } catch (error) {
             console.error('Failed to fetch status:', error);
-            setErrorMsg(error.message);
+            // Don't show error in production mode
+            if (!isProduction) {
+                setErrorMsg(error.message);
+            }
         } finally {
             setLoading(false);
         }
@@ -211,6 +223,8 @@ export const Settings = () => {
     };
 
     const fetchSyncMode = async () => {
+        // Skip in production mode
+        if (!import.meta.env.DEV) return;
         try {
             const res = await fetch('/api/admin/sync-mode');
             const data = await res.json();
@@ -227,6 +241,8 @@ export const Settings = () => {
     };
 
     const fetchSyncStatus = async () => {
+        // Skip in production mode
+        if (!import.meta.env.DEV) return;
         try {
             const res = await fetch('/api/admin/sync/status');
             const data = await res.json();

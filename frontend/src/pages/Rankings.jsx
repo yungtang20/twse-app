@@ -1,7 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useMobileView } from "@/context/MobileViewContext";
-import API_BASE_URL from '@/lib/api';
+import { supabase } from '@/lib/supabaseClient';
 
 export const Rankings = () => {
     const navigate = useNavigate();
@@ -36,38 +36,43 @@ export const Rankings = () => {
     const fetchRankings = async () => {
         setLoading(true);
         try {
-            const factor = sortType === 'buy' ? 1 : -1;
-            const fStreak = filterForeign ? parseInt(filterForeign) * factor : 0;
-            const tStreak = filterTrust ? parseInt(filterTrust) * factor : 0;
+            // Use Supabase directly for production compatibility
+            const limit = 10;
+            const offset = (page - 1) * limit;
 
-            const params = {
-                type: 'foreign',
-                sort: sortType,
-                limit: 10,
-                page: page,
-                min_foreign_streak: fStreak,
-                min_trust_streak: tStreak,
-                min_dealer_streak: 0
-            };
+            let query = supabase
+                .from('stock_snapshot')
+                .select('code, name, close, change_pct, volume, foreign_buy, trust_buy, dealer_buy, foreign_holding_pct');
 
-            if (sortColumn) {
-                params.sort_by = sortColumn;
-                params.direction = sortDirection;
-            }
+            // Sort by buy or sell
+            const orderColumn = sortType === 'buy' ? 'foreign_buy' : 'foreign_buy';
+            const ascending = sortType === 'sell';
 
-            const queryParams = new URLSearchParams(params);
-            const res = await fetch(`${API_BASE_URL}/api/rankings/institutional?${queryParams}`);
-            const data = await res.json();
-            if (data.success) {
-                setRankings(data.data);
-                setTotalPages(data.total_pages);
-                if (data.data_date) {
-                    setDataDate(data.data_date);
-                }
-            } else {
+            query = query.order(orderColumn, { ascending })
+                .range(offset, offset + limit - 1);
+
+            const { data, error } = await query;
+
+            if (error) {
+                console.error('Supabase error:', error);
                 setRankings([]);
-                setTotalPages(1);
+                return;
             }
+
+            // Transform data to match expected format
+            const transformed = (data || []).map(d => ({
+                ...d,
+                foreign_streak: 0, // Not available in snapshot
+                trust_streak: 0,
+                foreign_cumulative: d.foreign_buy || 0,
+                trust_cumulative: d.trust_buy || 0,
+                foreign_holding_shares: 0,
+                trust_holding_shares: 0,
+                trust_holding_pct: 0
+            }));
+
+            setRankings(transformed);
+            setTotalPages(10); // Estimate
         } catch (error) {
             console.error('Fetch rankings failed:', error);
             setRankings([]);
