@@ -71,7 +71,7 @@ export function TechnicalChart({ code, name, onHoverData, isFullScreen = false }
         };
 
         fetchData();
-    }, [code, onHoverData]);
+    }, [code]); // eslint-disable-line react-hooks/exhaustive-deps
 
     const indicatorConfig = [
         { name: 'MA20', color: '#f97316' },

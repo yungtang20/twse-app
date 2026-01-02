@@ -517,3 +517,69 @@
 *   [x] 修復前端變數定義
 *   [x] 建立 favicon
 *   [ ] 等待使用者推送代碼至雲端
+
+# 2026-01-02 資料抓取與架構重構
+
+## 執行目標
+1.  統一資料抓取層 (Unified Fetcher Layer)，消除重複代碼。
+2.  重構過長函數 (`step6`, `scan_candlestick_patterns`, `ensure_db`, `step3_7`, `step3_8`)。
+3.  移除過時的 `DataSourceManager`。
+4.  提升代碼模組化與可維護性。
+
+## 修改內容
+1.  **新增 `core/fetchers` 模組**:
+    *   `BaseFetcher`: 抽象基類。
+    *   `FinMindFetcher`: 處理 FinMind API (股價、法人)。
+    *   `TwstockFetcher`: 處理 twstock 套件 (備援股價)。
+    *   `InstitutionalFetcher`: 處理三大法人買賣超 (OpenAPI)。
+    *   `MarginFetcher`: 處理融資融券 (OpenAPI/Web)。
+    *   `MarketIndexFetcher`: 處理大盤指數 (OpenAPI/Web)。
+2.  **重構 `最終修正.py`**:
+    *   `step6_verify_and_backfill`: 改用 `FinMindFetcher` 與 `TwstockFetcher`，移除 `DataSourceManager`。
+    *   `scan_candlestick_patterns`: 採用表驅動法與輔助函數 (`_check_morning_star`, `_check_evening_star`)。
+    *   `ensure_db`: 採用表驅動法定義 Schema，簡化資料庫初始化邏輯。
+    *   `step3_5_download_institutional`: 改用 `InstitutionalFetcher`。
+    *   `step3_7_fetch_margin_data`: 改用 `MarginFetcher`。
+    *   `step3_8_fetch_market_index`: 改用 `MarketIndexFetcher`。
+3.  **移除 `DataSourceManager`**: 徹底移除舊有的資料來源管理器。
+
+## 修改原因
+*   **降低複雜度**: 將龐大的 `最終修正.py` 拆解，邏輯分散至專責類別。
+*   **提高復用性**: Fetcher 可在不同步驟重複使用 (如 `step6` 回補時復用 Fetcher)。
+*   **統一介面**: 所有資料抓取遵循 `BaseFetcher` 介面，易於擴充與測試。
+*   **消除冗餘**: 移除重複的 HTTP 請求代碼與錯誤處理邏輯。
+
+## 修改進度
+*   [x] 建立 `core/fetchers` 架構
+*   [x] 實作所有 Fetchers (`FinMind`, `Twstock`, `Institutional`, `Margin`, `MarketIndex`)
+*   [x] 重構 `step6_verify_and_backfill`
+*   [x] 重構 `scan_candlestick_patterns`
+*   [x] 重構 `ensure_db`
+*   [x] 重構 `step3_5`, `step3_7`, `step3_8`
+*   [x] 驗證系統啟動正常
+
+# 2026-01-02 新增型別提示 (Type Hints)
+
+## 執行目標
+1. 為核心函數新增 Python Type Hints，提升代碼可讀性與 IDE 支援。
+2. 確保手機 (Pydroid 3) 相容性。
+
+## 修改內容
+1.  **Backend (`最終修正.py`)**:
+    *   `get_http_session() -> requests.Session`
+    *   `SimpleCache.__init__(max_size: int, ttl: int) -> None`
+    *   `SimpleCache.get(key: str) -> any`
+    *   `SimpleCache.set(key: str, value: any) -> None`
+    *   `SimpleCache.clear() -> None`
+    *   `http_get(url: str, ...) -> dict | list | requests.Response`
+    *   `is_market_holiday(date_int: int) -> bool`
+    *   `is_market_closed_today() -> bool`
+    *   `get_last_trading_day(exclude_today: bool) -> int`
+
+## 修改原因
+*   提升代碼可讀性，IDE 可自動補全參數與返回值。
+*   Type Hints 不影響執行時效能，手機相容無虞。
+
+## 修改進度
+*   [x] 新增 9 個核心函數的 Type Hints
+*   [x] 驗證系統啟動正常

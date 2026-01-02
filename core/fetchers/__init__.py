@@ -1,16 +1,15 @@
-# -*- coding: utf-8 -*-
-"""
-台灣股市分析系統 - 資料抓取模組
-"""
 from .base import BaseFetcher
 from .finmind import FinMindFetcher
 from .twstock import TwstockFetcher
 from .institutional import InstitutionalFetcher
+from .margin import MarginFetcher
+from .market_index import MarketIndexFetcher
 
 __all__ = [
-    'BaseFetcher',
+    'BaseFetcher', 
     'FinMindFetcher', 
-    'TwstockFetcher',
+    'TwstockFetcher', 
     'InstitutionalFetcher',
+    'MarginFetcher',
+    'MarketIndexFetcher'
 ]
-

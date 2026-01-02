@@ -99,6 +99,14 @@ class DBManager:
             columns = [desc[0] for desc in cursor.description]
             return [dict(zip(columns, row)) for row in cursor.fetchall()]
     
+    def shutdown(self):
+        """關閉資料庫連線"""
+        # SQLite connections are closed in context manager
+        # Supabase client doesn't need explicit close
+        print("✓ DBManager shutdown complete")
+        self._supabase = None
+        self._supabase_initialized = False
+    
     def execute_single(self, query: str, params: tuple = ()) -> Optional[Dict]:
         """執行 SQLite 單一查詢"""
         results = self.execute_query(query, params)

@@ -156,7 +156,7 @@ requests.Session.request = new_request
 # 使用全域 Session 複用 TCP 連線，減少握手開銷
 _HTTP_SESSION = None
 
-def get_http_session():
+def get_http_session() -> requests.Session:
     """取得全域 HTTP Session (連線池)"""
     global _HTTP_SESSION
     if _HTTP_SESSION is None:
@@ -184,13 +184,13 @@ def get_http_session():
 # ==============================
 class SimpleCache:
     """輕量快取 (手機友善)"""
-    def __init__(self, max_size=100, ttl=300):
-        self._cache = {}
-        self._timestamps = {}
+    def __init__(self, max_size: int = 100, ttl: int = 300) -> None:
+        self._cache: dict = {}
+        self._timestamps: dict = {}
         self._max_size = max_size
         self._ttl = ttl  # 存活時間 (秒)
     
-    def get(self, key):
+    def get(self, key: str) -> any:
         if key in self._cache:
             if time.time() - self._timestamps.get(key, 0) < self._ttl:
                 return self._cache[key]
@@ -200,7 +200,7 @@ class SimpleCache:
                 del self._timestamps[key]
         return None
     
-    def set(self, key, value):
+    def set(self, key: str, value: any) -> None:
         # LRU: 超過上限時刪除最舊的
         if len(self._cache) >= self._max_size:
             oldest = min(self._timestamps, key=self._timestamps.get)
@@ -209,14 +209,14 @@ class SimpleCache:
         self._cache[key] = value
         self._timestamps[key] = time.time()
     
-    def clear(self):
+    def clear(self) -> None:
         self._cache.clear()
         self._timestamps.clear()
 
 # 全域快取實例
 _QUERY_CACHE = SimpleCache(max_size=50, ttl=60)  # 1分鐘快取
 
-def http_get(url, timeout=30, json_response=True, use_cache=False, cache_ttl=60):
+def http_get(url: str, timeout: int = 30, json_response: bool = True, use_cache: bool = False, cache_ttl: int = 60) -> dict | list | requests.Response:
     """
     [優化] 統一 HTTP GET 介面
     - 使用連線池複用 TCP 連線
@@ -621,7 +621,7 @@ def _fetch_holidays_from_twse():
         logger.warning(f"無法從 TWSE API 取得休市日: {e}")
         return None
 
-def is_market_holiday(date_int):
+def is_market_holiday(date_int: int) -> bool:
     """
     檢查是否為休市日 (包含週末與國定假日)
     
@@ -665,7 +665,7 @@ def is_market_holiday(date_int):
     return False
 
 
-def is_market_closed_today():
+def is_market_closed_today() -> bool:
     """
     檢查今天的股市資料是否已可取得
     
@@ -692,7 +692,7 @@ def is_market_closed_today():
     return now >= market_data_ready_time
 
 
-def get_last_trading_day(exclude_today=False):
+def get_last_trading_day(exclude_today: bool = False) -> int:
     """
     取得最後一個有效交易日
     
@@ -2171,216 +2171,121 @@ db_manager = DBManager(Config.DB_PATH)
 # 資料庫初始化
 # ==============================
 def ensure_db(force=False):
-    """確保資料庫表結構存在 (優化版)"""
-    
-    # [Optimization] 檢查初始化標記，避免每次都跑大量 DDL
+    """確保資料庫表結構存在 (Refactored)"""
     flag_file = WORK_DIR / ".db_initialized"
     if not force and flag_file.exists() and DB_FILE.exists():
         return
 
+    # Define Schema
+    TABLES = {
+        "stock_meta": [
+            "code TEXT PRIMARY KEY", "name TEXT", "list_date TEXT", "delist_date TEXT", "market_type TEXT"
+        ],
+        "stock_history": [
+            "code TEXT", "date_int INTEGER", "open REAL", "high REAL", "low REAL", "close REAL", 
+            "volume INTEGER", "amount INTEGER", "PRIMARY KEY (code, date_int)"
+        ],
+        "institutional_investors": [
+            "code TEXT NOT NULL", "date_int INTEGER NOT NULL", 
+            "foreign_buy INTEGER DEFAULT 0", "foreign_sell INTEGER DEFAULT 0",
+            "trust_buy INTEGER DEFAULT 0", "trust_sell INTEGER DEFAULT 0",
+            "dealer_buy INTEGER DEFAULT 0", "dealer_sell INTEGER DEFAULT 0",
+            "PRIMARY KEY (code, date_int)"
+        ],
+        "margin_data": [
+            "date_int INTEGER", "code TEXT", 
+            "margin_buy INTEGER", "margin_sell INTEGER", "margin_redemp INTEGER", "margin_balance INTEGER", "margin_util_rate REAL",
+            "short_buy INTEGER", "short_sell INTEGER", "short_redemp INTEGER", "short_balance INTEGER", "short_util_rate REAL",
+            "PRIMARY KEY (date_int, code)"
+        ],
+        "market_index": [
+            "date_int INTEGER", "index_id TEXT", "close REAL", "open REAL", "high REAL", "low REAL", "volume INTEGER",
+            "PRIMARY KEY (date_int, index_id)"
+        ]
+    }
+    
+    # Snapshot Columns (Complete List)
+    SNAPSHOT_COLS = [
+        ("code", "TEXT PRIMARY KEY"), ("name", "TEXT"), ("date", "TEXT"), ("close", "REAL"), ("volume", "INTEGER"),
+        ("close_prev", "REAL"), ("vol_prev", "INTEGER"), ("amount", "REAL"),
+        # MAs
+        ("ma3", "REAL"), ("ma20", "REAL"), ("ma60", "REAL"), ("ma120", "REAL"), ("ma200", "REAL"),
+        ("wma3", "REAL"), ("wma20", "REAL"), ("wma60", "REAL"), ("wma120", "REAL"), ("wma200", "REAL"),
+        # Prev MAs
+        ("ma3_prev", "REAL"), ("ma20_prev", "REAL"), ("ma60_prev", "REAL"), ("ma120_prev", "REAL"), ("ma200_prev", "REAL"),
+        ("wma3_prev", "REAL"), ("wma20_prev", "REAL"), ("wma60_prev", "REAL"), ("wma120_prev", "REAL"), ("wma200_prev", "REAL"),
+        # Indicators
+        ("mfi14", "REAL"), ("vwap20", "REAL"), ("chg14_pct", "REAL"), ("rsi", "REAL"), ("macd", "REAL"), ("signal", "REAL"),
+        ("vp_poc", "REAL"), ("vp_upper", "REAL"), ("vp_lower", "REAL"),
+        ("month_k", "REAL"), ("month_d", "REAL"), ("daily_k", "REAL"), ("daily_d", "REAL"), ("week_k", "REAL"), ("week_d", "REAL"),
+        # Prev Indicators
+        ("mfi14_prev", "REAL"), ("vwap20_prev", "REAL"), ("chg14_pct_prev", "REAL"),
+        ("month_k_prev", "REAL"), ("month_d_prev", "REAL"), ("daily_k_prev", "REAL"), ("daily_d_prev", "REAL"), ("week_k_prev", "REAL"), ("week_d_prev", "REAL"),
+        # Advanced
+        ("smi", "REAL"), ("svi", "REAL"), ("nvi", "REAL"), ("pvi", "REAL"), ("clv", "REAL"),
+        ("smi_prev", "REAL"), ("svi_prev", "REAL"), ("nvi_prev", "REAL"), ("pvi_prev", "REAL"),
+        ("major_holders_pct", "REAL"),
+        ("foreign_buy", "INTEGER"), ("trust_buy", "INTEGER"), ("dealer_buy", "INTEGER"),
+        ("adl", "REAL"), ("rs", "REAL"), ("mansfield_rs", "REAL"),
+        # Signals
+        ("smi_signal", "INTEGER"), ("svi_signal", "INTEGER"), ("nvi_signal", "INTEGER"), ("vsa_signal", "INTEGER"),
+        ("vol_div_signal", "INTEGER"), ("weekly_nvi_signal", "INTEGER"),
+        ("div_3day_bull", "INTEGER"), ("div_3day_bear", "INTEGER"),
+        ("smart_score", "INTEGER"), ("smart_score_prev", "INTEGER"),
+        # Extra
+        ("vol_ma3", "REAL"), ("vwap60", "REAL"), ("vwap200", "REAL"), ("bbw", "REAL"), ("fib_0618", "REAL"),
+        ("weekly_close", "REAL"), ("weekly_open", "REAL"), ("monthly_close", "REAL"), ("monthly_open", "REAL"),
+        # Margin
+        ("margin_balance", "INTEGER"), ("margin_util_rate", "REAL"), ("short_balance", "INTEGER"), ("short_util_rate", "REAL"),
+        # Valuation
+        ("pe", "REAL"), ("yield", "REAL"), ("pb", "REAL")
+    ]
+    
+    INDEXES = [
+        "CREATE INDEX IF NOT EXISTS idx_stock_meta_code ON stock_meta(code)",
+        "CREATE INDEX IF NOT EXISTS idx_stock_history_code ON stock_history(code)",
+        "CREATE INDEX IF NOT EXISTS idx_stock_history_date ON stock_history(date_int)",
+        "CREATE INDEX IF NOT EXISTS idx_stock_history_code_date ON stock_history(code, date_int DESC)",
+        "CREATE INDEX IF NOT EXISTS idx_stock_snapshot_date ON stock_snapshot(date)",
+        "CREATE INDEX IF NOT EXISTS idx_stock_snapshot_smart_score ON stock_snapshot(smart_score)"
+    ]
+
     with db_manager.get_connection() as conn:
         cur = conn.cursor()
         
-        # 建立股票名冊表
-        cur.execute("""
-            CREATE TABLE IF NOT EXISTS stock_meta (
-                code TEXT PRIMARY KEY,
-                name TEXT,
-                list_date TEXT,
-                delist_date TEXT,
-                market_type TEXT
-            )
-        """)
+        # 1. Create Tables
+        for table, cols in TABLES.items():
+            cols_def = ",\n".join(cols)
+            cur.execute(f"CREATE TABLE IF NOT EXISTS {table} ({cols_def})")
+            
+        # 2. Create Stock Snapshot (Special handling for many columns)
+        cols_def = ",\n".join([f"{c[0]} {c[1]}" for c in SNAPSHOT_COLS])
+        cur.execute(f"CREATE TABLE IF NOT EXISTS stock_snapshot ({cols_def}, FOREIGN KEY (code) REFERENCES stock_meta(code))")
         
-        # 建立歷史表
-        cur.execute("""
-            CREATE TABLE IF NOT EXISTS stock_history (
-                code TEXT,
-                date_int INTEGER,
-                open REAL,
-                high REAL,
-                low REAL,
-                close REAL,
-                volume INTEGER,
-                amount INTEGER,
-                PRIMARY KEY (code, date_int)
-            )
-        """)
-        
-        # 建立快照表
-        cur.execute("""
-            CREATE TABLE IF NOT EXISTS stock_snapshot (
-                code TEXT PRIMARY KEY,
-                name TEXT,
-                date TEXT,
-                close REAL,
-                volume INTEGER,
-                close_prev REAL,
-                vol_prev INTEGER,
-                ma3 REAL, ma20 REAL, ma60 REAL, ma120 REAL, ma200 REAL,
-                wma3 REAL, wma20 REAL, wma60 REAL, wma120 REAL, wma200 REAL,
-                mfi14 REAL, vwap20 REAL, chg14_pct REAL,
-                rsi REAL, macd REAL, signal REAL,
-                vp_poc REAL, vp_upper REAL, vp_lower REAL,
-                month_k REAL, month_d REAL,
-                daily_k REAL, daily_d REAL,
-                week_k REAL, week_d REAL,
-                ma3_prev REAL, ma20_prev REAL, ma60_prev REAL, ma120_prev REAL, ma200_prev REAL,
-                wma3_prev REAL, wma20_prev REAL, wma60_prev REAL, wma120_prev REAL, wma200_prev REAL,
-                mfi14_prev REAL, vwap20_prev REAL, chg14_pct_prev REAL,
-                month_k_prev REAL, month_d_prev REAL,
-                daily_k_prev REAL, daily_d_prev REAL,
-                week_k_prev REAL, week_d_prev REAL,
-                smi REAL, svi REAL, nvi REAL, pvi REAL, clv REAL,
-                major_holders_pct REAL,
-                foreign_buy INTEGER, trust_buy INTEGER, dealer_buy INTEGER,
-                adl REAL, rs REAL,
-                smi_signal INTEGER, svi_signal INTEGER,
-                nvi_signal INTEGER, vsa_signal INTEGER,
-                smart_score INTEGER,
-                smi_prev REAL, svi_prev REAL, nvi_prev REAL,
-                smart_score_prev INTEGER,
-                vol_div_signal INTEGER, weekly_nvi_signal INTEGER,
-                vwap60 REAL, bbw REAL, fib_0618 REAL,
-                weekly_close REAL, weekly_open REAL,
-                monthly_close REAL, monthly_open REAL,
-                vwap200 REAL, mansfield_rs REAL,
-                margin_balance INTEGER, margin_util_rate REAL,
-                short_balance INTEGER, short_util_rate REAL,
-                FOREIGN KEY (code) REFERENCES stock_meta(code)
-            )
-        """)
-        
-        # 建立融資融券表
-        cur.execute("""
-            CREATE TABLE IF NOT EXISTS margin_data (
-                date_int INTEGER,
-                code TEXT,
-                margin_buy INTEGER,
-                margin_sell INTEGER,
-                margin_redemp INTEGER,
-                margin_balance INTEGER,
-                margin_util_rate REAL,
-                short_buy INTEGER,
-                short_sell INTEGER,
-                short_redemp INTEGER,
-                short_balance INTEGER,
-                short_util_rate REAL,
-                PRIMARY KEY (date_int, code)
-            )
-        """)
-        
-        # 建立大盤指數表
-        cur.execute("""
-            CREATE TABLE IF NOT EXISTS market_index (
-                date_int INTEGER,
-                index_id TEXT, -- 'TAIEX', 'TPEX', 'VIX'
-                close REAL,
-                open REAL,
-                high REAL,
-                low REAL,
-                volume INTEGER,
-                PRIMARY KEY (date_int, index_id)
-            )
-        """)
-        
-        # 建立索引
-        cur.execute("CREATE INDEX IF NOT EXISTS idx_stock_meta_code ON stock_meta(code)")
-        cur.execute("CREATE INDEX IF NOT EXISTS idx_stock_history_code ON stock_history(code)")
-        cur.execute("CREATE INDEX IF NOT EXISTS idx_stock_history_date ON stock_history(date_int)")
-        cur.execute("CREATE INDEX IF NOT EXISTS idx_stock_history_code_date ON stock_history(code, date_int DESC)")
-        cur.execute("CREATE INDEX IF NOT EXISTS idx_stock_snapshot_date ON stock_snapshot(date)")
-        cur.execute("CREATE INDEX IF NOT EXISTS idx_stock_snapshot_smart_score ON stock_snapshot(smart_score)")
-        
-        # 建立初始化標記
-        try:
-            with open(flag_file, 'w') as f:
-                f.write(datetime.now().strftime("%Y-%m-%d %H:%M:%S"))
-        except Exception:
-            pass
-        
-        # 檢查 stock_snapshot 是否有新欄位 (Migration)
+        # 3. Create Indexes
+        for idx in INDEXES:
+            cur.execute(idx)
+            
+        # 4. Migration: Ensure all columns exist in stock_snapshot
         cur.execute("PRAGMA table_info(stock_snapshot)")
-        snapshot_cols = {row[1] for row in cur.fetchall()}
+        existing_cols = {row[1] for row in cur.fetchall()}
         
-        new_snapshot_cols = [
-            ("vol_div_signal", "INTEGER"),
-            ("weekly_nvi_signal", "INTEGER"),
-            ("div_3day_bull", "INTEGER"),
-            ("div_3day_bear", "INTEGER"),
-            ("vol_ma3", "REAL"),
-            ("pvi_prev", "REAL"),
-            ("vwap60", "REAL"),
-            ("bbw", "REAL"),
-            ("fib_0618", "REAL"),
-            ("weekly_close", "REAL"),
-            ("weekly_open", "REAL"),
-            ("monthly_close", "REAL"),
-            ("monthly_open", "REAL"),
-            ("vwap200", "REAL"),
-            ("mansfield_rs", "REAL"),
-            ("margin_balance", "INTEGER"),
-            ("margin_util_rate", "REAL"),
-            ("short_balance", "INTEGER"),
-            ("short_util_rate", "REAL"),
-            ("amount", "REAL"),
-            ("pe", "REAL"),
-            ("yield", "REAL"),
-            ("pb", "REAL")
-        ]
-        
-        for col_name, col_type in new_snapshot_cols:
-            if col_name not in snapshot_cols:
+        for col_name, col_type in SNAPSHOT_COLS:
+            if col_name not in existing_cols:
                 try:
                     cur.execute(f"ALTER TABLE stock_snapshot ADD COLUMN {col_name} {col_type}")
-                    print_flush(f"✓ 已新增欄位 {col_name} 到 stock_snapshot")
-                except Exception as e:
-                    print_flush(f"⚠ 添加欄位 {col_name} 失敗: {e}")
-        
-        # [已移除舊架構 stock_data 相容性代碼 - 統一使用新三表架構]
-        
-        # 同步欄位到 stock_snapshot (新三表架構)
-        columns_to_sync = [
-            ("ma3", "REAL"), ("ma20", "REAL"), ("ma60", "REAL"), ("ma120", "REAL"), ("ma200", "REAL"),
-            ("wma3", "REAL"), ("wma20", "REAL"), ("wma60", "REAL"), ("wma120", "REAL"), ("wma200", "REAL"),
-            ("mfi14", "REAL"), ("vwap20", "REAL"), ("chg14_pct", "REAL"), 
-            ("rsi", "REAL"), ("macd", "REAL"), ("signal", "REAL"),
-            ("vp_poc", "REAL"), ("vp_upper", "REAL"), ("vp_lower", "REAL"),
-            ("month_k", "REAL"), ("month_d", "REAL"),
-            ("daily_k", "REAL"), ("daily_d", "REAL"),
-            ("week_k", "REAL"), ("week_d", "REAL"),
-            ("ma3_prev", "REAL"), ("ma20_prev", "REAL"), ("ma60_prev", "REAL"), ("ma120_prev", "REAL"), ("ma200_prev", "REAL"),
-            ("wma3_prev", "REAL"), ("wma20_prev", "REAL"), ("wma60_prev", "REAL"), ("wma120_prev", "REAL"), ("wma200_prev", "REAL"),
-            ("mfi14_prev", "REAL"), ("vwap20_prev", "REAL"), ("chg14_pct_prev", "REAL"),
-            ("month_k_prev", "REAL"), ("month_d_prev", "REAL"),
-            ("daily_k_prev", "REAL"), ("daily_d_prev", "REAL"),
-            ("week_k_prev", "REAL"), ("week_d_prev", "REAL"),
-            ("smi", "REAL"), ("svi", "REAL"), ("nvi", "REAL"), 
-            ("pvi", "REAL"), ("clv", "REAL"),
-            ("smi_signal", "INTEGER"), ("svi_signal", "INTEGER"), 
-            ("nvi_signal", "INTEGER"), ("vsa_signal", "INTEGER"),
-            ("smart_score", "INTEGER"),
-            ("smi_prev", "REAL"), ("svi_prev", "REAL"), ("nvi_prev", "REAL"), 
-            ("pvi_prev", "REAL"), # [Fix] Add pvi_prev
-            ("smart_score_prev", "INTEGER"),
-            ("div_3day_bull", "INTEGER"), ("div_3day_bear", "INTEGER"),
-            ("vol_ma3", "REAL")
-        ]
-        
-        # 同步更新 stock_snapshot 的欄位
-        cur.execute("PRAGMA table_info(stock_snapshot)")
-        snapshot_columns = {row[1] for row in cur.fetchall()}
-        
-        for col_name, col_type in columns_to_sync:
-            if col_name not in snapshot_columns:
-                try:
-                    print_flush(f"   -> Adding column to stock_snapshot: {col_name} ({col_type})...")
-                    cur.execute(f"ALTER TABLE stock_snapshot ADD COLUMN {col_name} {col_type}")
-                    print_flush(f"      ✓ Added {col_name} to snapshot")
-                except Exception as e:
-                    print_flush(f"⚠ 添加 snapshot 欄位 {col_name} 失敗: {e}")
-
+                    print_flush(f"✓ Added column {col_name} to stock_snapshot")
+                except Exception:
+                    pass
+                    
         conn.commit()
+        
+    # Create Flag File
+    try:
+        with open(flag_file, 'w') as f:
+            f.write(datetime.now().strftime("%Y-%m-%d %H:%M:%S"))
+    except:
+        pass
 
 
 
@@ -7328,34 +7233,23 @@ def step3_6_download_major_holders(force=False, silent_header=False):
 
 
 def step3_7_fetch_margin_data(days=60, silent_header=False):
-    """步驟3.7: 下載融資融券資料 (官方 OpenAPI 為主，FinMind/網頁為備援)"""
+    """步驟3.7: 下載融資融券資料 (Refactored using MarginFetcher)"""
     if not silent_header:
         print_flush(f"\n[Step 3.7] 下載融資融券資料 (官方 OpenAPI 優先)...")
     
     try:
-        # === A. 官方 OpenAPI (主要來源 - 只抓今天) ===
-        today_int = get_last_trading_day()  # [修正] 使用交易日檢查
-        openapi_success = False
+        from core.fetchers import MarginFetcher
+        from datetime import datetime, timedelta
+        import time
         
-        try:
-            print_flush("正在從官方 OpenAPI 取得今日融資融券...")
-            saved = MarginDataAPI.fetch_all_margin_data()
-            if saved > 0:
-                # [修正] 使用正確交易日顯示
-                print_flush(f"✓ 官方 OpenAPI: 已儲存 {saved} 筆融資融券資料 ({today_int})")
-                openapi_success = True
-        except Exception as e:
-            print_flush(f"⚠ 官方 OpenAPI 失敗: {e}，切換至備援來源...")
-        
-        # === B. 歷史資料補漏 (FinMind/網頁備援) ===
-        print_flush(f"檢查近 {days} 天歷史缺漏...")
+        fetcher = MarginFetcher()
         
         # 1. 準備日期列表
         base_date = datetime.now()
         dates_to_check = []
-        for i in range(days + 10):
+        for i in range(days + 5):
             dt = base_date - timedelta(days=i)
-            if dt.weekday() < 5:
+            if dt.weekday() < 5: # 只取平日
                 dates_to_check.append(dt)
             if len(dates_to_check) >= days: break
             
@@ -7369,163 +7263,71 @@ def step3_7_fetch_margin_data(days=60, silent_header=False):
             except:
                 existing_dates = set()
                 
-        # 3. 找出缺漏日期 (排除休市日，今天只有在 14:00 後才嘗試回補)
+        # 3. 找出缺漏日期
         current_hour = datetime.now().hour
+        today_int = int(datetime.now().strftime("%Y%m%d"))
         missing_dates = []
+        
         for d in dates_to_check:
             d_int = int(d.strftime("%Y%m%d"))
             if d_int in existing_dates:
                 continue
             if is_market_holiday(d_int):
                 continue
-            # 今天只有在 14:00 後才嘗試回補 (收盤 13:30，盤後更新約 14:00)
+            # 今天只有在 14:00 後才嘗試回補
             if d_int == today_int and current_hour < 14:
                 continue
             missing_dates.append(d)
-        
+            
         if not missing_dates:
             print_flush("✓ 融資融券資料完整，無須補漏")
             return
 
-        print_flush(f"發現 {len(missing_dates)} 天缺漏，開始回補 (FinMind 優先)...")
-        
-        finmind_limit_hit = False
+        print_flush(f"發現 {len(missing_dates)} 天缺漏，開始回補...")
         
         for i, dt in enumerate(missing_dates):
+            d_str = dt.strftime("%Y%m%d")
             d_dash = dt.strftime("%Y-%m-%d")
-            d_nodash = dt.strftime("%Y%m%d")
-            d_int = int(d_nodash)
-            
             print_flush(f"\r[{i+1}/{len(missing_dates)}] 處理 {d_dash} ... ", end="")
             
-            margin_data = None
+            data_list = fetcher.fetch_all(d_str)
             
-            # --- B1. FinMind (備援) ---
-            if not finmind_limit_hit:
-                try:
-                    dataset = "TaiwanStockMarginPurchaseShortSale"
-                    url = f"{FINMIND_URL}?dataset={dataset}&date={d_dash}&token={FINMIND_TOKEN}"
-                    # 使用 session 手動處理 429
-                    r = get_http_session().get(url, timeout=10, verify=False)
-
-                    
-                    if r.status_code == 429:
-                        print_flush("⛔ FinMind 限流! 切換至 TWSE... ", end="")
-                        finmind_limit_hit = True
-                    elif r.status_code == 200:
-                        data = r.json()
-                        if data.get('msg') == 'success' and data.get('data'):
-                            batch = []
-                            for d in data['data']:
-                                # FinMind 回傳的是 Limit，這裡轉換為 Rate (Balance / Limit * 100) 以符合 schema
-                                # 若 Limit 為 0，則 Rate 為 0
-                                m_bal = safe_int(d.get('MarginPurchaseTodayBalance'))
-                                m_lim = safe_float(d.get('MarginPurchaseLimit'))
-                                m_rate = round(m_bal / m_lim * 100, 2) if m_lim > 0 else 0.0
-                                
-                                s_bal = safe_int(d.get('ShortSaleTodayBalance'))
-                                s_lim = safe_float(d.get('ShortSaleLimit'))
-                                s_rate = round(s_bal / s_lim * 100, 2) if s_lim > 0 else 0.0
-                                
-                                batch.append((
-                                    to_date_int(d.get('date')), d.get('stock_id'),
-                                    safe_int(d.get('MarginPurchaseBuy')), safe_int(d.get('MarginPurchaseSell')), 
-                                    safe_int(d.get('MarginPurchaseCashRepayment')), m_bal, m_rate,
-                                    safe_int(d.get('ShortSaleBuy')), safe_int(d.get('ShortSaleSell')), 
-                                    safe_int(d.get('ShortSaleCashRepayment')), s_bal, s_rate
-                                ))
-                            margin_data = batch
-                            print_flush(f"FinMind({len(batch)}) ", end="")
-                except Exception as e:
-                    pass
-
-            # --- B. TWSE/TPEx (備援) ---
-            if not margin_data:
-                # TWSE
-                try:
-                    url = f"https://www.twse.com.tw/exchangeReport/MI_MARGN?response=json&date={d_nodash}&selectType=ALL"
-                    headers = {'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36'}
-                    time.sleep(random.uniform(2.0, 4.0))
-                    r = requests.get(url, headers=headers, timeout=15)
-                    data = r.json()
-                    
-                    if data.get('stat') == 'OK':
-                        raw_data = data.get('data', [])
-                        batch = []
-                        for row in raw_data:
-                            code = row[0]
-                            if len(code) != 4: continue
-                            # TWSE row[8] 是融資使用率, row[15] 是融券使用率
-                            batch.append((
-                                int(d_nodash), code,
-                                safe_int(row[2]), safe_int(row[3]), safe_int(row[4]), safe_int(row[6]), safe_float(row[8]), 
-                                safe_int(row[9]), safe_int(row[10]), safe_int(row[11]), safe_int(row[13]), safe_float(row[15])
-                            ))
-                        if batch:
-                            margin_data = batch
-                            print_flush(f"TWSE({len(batch)}) ", end="")
-                except: pass
-                
-                # TPEx (若 TWSE 沒抓到或需要補 TPEx，這裡簡單起見若 TWSE 有就不抓 TPEx? 不，應該都要抓)
-                # 但 fix.py 的 fetch_margin_from_twse 似乎只抓 TWSE? 
-                # 最終修正.py 原本有抓 TPEx。
-                # 為了完整性，我們也抓 TPEx
-                try:
-                    d_obj = dt
-                    roc_date = f"{d_obj.year - 1911}/{d_obj.month:02d}/{d_obj.day:02d}"
-                    url = f"https://www.tpex.org.tw/web/stock/margin_trading/margin_balance/margin_bal_result.php?l=zh-tw&o=json&d={roc_date}&s=0,asc,0"
-                    time.sleep(random.uniform(1.5, 3.0))
-                    r = requests.get(url, timeout=10, verify=False)
-                    data = r.json()
-                    
-                    if data.get('tables'):
-                        tpex_batch = []
-                        for row in data['tables'][0]['data']:
-                            code = row[0]
-                            if len(code) != 4: continue
-                            # TPEx 格式: 代號, 名稱, 融資前日餘額, 融資買進, 融資賣出, 融資現金償還, 融資今日餘額, 融資使用率, ...
-                            # row[7] 是融資使用率, row[14] 是融券使用率
-                            tpex_batch.append((
-                                int(d_nodash), code,
-                                safe_int(row[3]), safe_int(row[4]), safe_int(row[5]), safe_int(row[6]), safe_num(row[7]),
-                                safe_int(row[10]), safe_int(row[11]), safe_int(row[12]), safe_int(row[13]), safe_num(row[14])
-                            ))
-                        if tpex_batch:
-                            if margin_data is None: margin_data = []
-                            margin_data.extend(tpex_batch)
-                            print_flush(f"TPEx({len(tpex_batch)}) ", end="")
-                except: pass
-
-            # 寫入資料庫
-            if margin_data:
+            if data_list:
                 with db_manager.get_connection() as conn:
                     cur = conn.cursor()
+                    records = []
+                    for d in data_list:
+                        records.append((
+                            d.date_int, d.code,
+                            d.margin_buy, d.margin_sell, d.margin_redemp, d.margin_balance, d.margin_util_rate,
+                            d.short_buy, d.short_sell, d.short_redemp, d.short_balance, d.short_util_rate
+                        ))
+                    
                     cur.executemany("""
                         INSERT OR REPLACE INTO margin_data 
                         (date_int, code, margin_buy, margin_sell, margin_redemp, margin_balance, margin_util_rate,
                          short_buy, short_sell, short_redemp, short_balance, short_util_rate)
                         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-                    """, margin_data)
-                    conn.commit()
-                
-                # 同步到 snapshot (只同步最新的一天)
-                if d_int == int(datetime.now().strftime("%Y%m%d")):
-                    print_flush("同步至快照... ", end="")
-                    with db_manager.get_connection() as conn:
-                        cur = conn.cursor()
-                        for rec in margin_data:
-                            # rec: date_int, code, m_buy, m_sell, m_redemp, m_bal, m_rate, s_buy, s_sell, s_redemp, s_bal, s_rate
+                    """, records)
+                    
+                    # 同步到 snapshot (只同步最新的一天)
+                    if int(d_str) == today_int:
+                        for d in data_list:
                             cur.execute("""
                                 UPDATE stock_snapshot 
                                 SET margin_balance=?, margin_util_rate=?, short_balance=?, short_util_rate=?
                                 WHERE code=?
-                            """, (rec[5], rec[6], rec[10], rec[11], rec[1]))
-                        conn.commit()
+                            """, (d.margin_balance, d.margin_util_rate, d.short_balance, d.short_util_rate, d.code))
+                    
+                    conn.commit()
+                print_flush(f"✓ 成功 ({len(data_list)} 筆)")
             else:
-                print_flush("無資料", end="")
+                print_flush("⚠ 無資料")
             
-            print_flush("") # Newline
-
+            time.sleep(1) # 避免過快
+            
+        print_flush("")
+        
     except Exception as e:
         print_flush(f"❌ 融資融券下載失敗: {e}")
 
@@ -7538,88 +7340,20 @@ def to_date_int(d):
     return 0
 
 def step3_8_fetch_market_index(date_str=None, silent_header=False):
-    """步驟3.8: 下載大盤指數 (TWSE + TPEx)"""
+    """步驟3.8: 下載大盤指數 (Refactored using MarketIndexFetcher)"""
     if not silent_header:
         print_flush("\n[Step 3.8] 下載大盤指數...")
     
     if date_str is None:
         date_str = datetime.now().strftime('%Y%m%d')
         
-    date_int = int(date_str)
-    records = []
-    
-    headers = {'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36'}
-    
-    # TWSE Index - 使用 FMTQIK (每日市場成交資訊) API，更穩定
     try:
-        url_twse = f"https://www.twse.com.tw/exchangeReport/FMTQIK?response=json&date={date_str}"
-        data = http_get(url_twse, timeout=15)
+        from core.fetchers import MarketIndexFetcher
+        fetcher = MarketIndexFetcher()
         
-        if data.get('stat') == 'OK' and data.get('data'):
-            # 找當天的資料
-            for row in data['data']:
-                # row[0] = 日期 (民國年), row[1] = 開盤, row[2] = 最高, row[3] = 最低, row[4] = 收盤
-                try:
-                    parts = row[0].split('/')
-                    western_year = int(parts[0]) + 1911
-                    row_date_int = int(f"{western_year}{parts[1]}{parts[2]}")
-                    
-                    if row_date_int == date_int:
-                        open_val = safe_num(row[1])
-                        high_val = safe_num(row[2])
-                        low_val = safe_num(row[3])
-                        close_val = safe_num(row[4])
-                        volume = safe_int(row[5]) if len(row) > 5 else 0
-                        
-                        if close_val > 0:
-                            records.append((date_int, 'TAIEX', close_val, open_val, high_val, low_val, volume))
-                        break
-                except:
-                    pass
-            
-            # 如果今天沒資料，取最後一筆
-            if not records and data['data']:
-                row = data['data'][-1]
-                try:
-                    parts = row[0].split('/')
-                    western_year = int(parts[0]) + 1911
-                    row_date_int = int(f"{western_year}{parts[1]}{parts[2]}")
-                    open_val = safe_num(row[1])
-                    high_val = safe_num(row[2])
-                    low_val = safe_num(row[3])
-                    close_val = safe_num(row[4])
-                    volume = safe_int(row[5]) if len(row) > 5 else 0
-                    
-                    if close_val > 0:
-                        records.append((row_date_int, 'TAIEX', close_val, open_val, high_val, low_val, volume))
-                except:
-                    pass
-    except Exception as e:
-        print_flush(f"⚠ TWSE 指數下載失敗: {e}")
-
-    # TPEx Index - 使用 aftertrading API
-    try:
-        time.sleep(0.5)
-        d_obj = datetime.strptime(date_str, '%Y%m%d')
-        roc_date = f"{d_obj.year - 1911}/{d_obj.month:02d}/{d_obj.day:02d}"
-        url_tpex = f"https://www.tpex.org.tw/web/stock/aftertrading/otc_index_summary/OTC_index_summary_result.php?l=zh-tw&d={roc_date}&o=json"
+        records = fetcher.fetch_all(date_str)
         
-        data_tpex = http_get(url_tpex, timeout=15)
-        
-        if data_tpex.get('aaData'):
-            # aaData[0] 通常是櫃買指數
-            for row in data_tpex['aaData']:
-                if '櫃買指數' in str(row[0]) or 'OTC' in str(row[0]).upper():
-                    close_val = safe_num(row[1]) if len(row) > 1 else 0
-                    if close_val > 0:
-                        records.append((date_int, 'TPEX', close_val, 0, 0, 0, 0))
-                    break
-    except Exception as e:
-        # TPEx 指數 API 不穩定，靜默處理
-        pass
-                    
-    if records:
-        try:
+        if records:
             with db_manager.get_connection() as conn:
                 cur = conn.cursor()
                 
@@ -7629,7 +7363,6 @@ def step3_8_fetch_market_index(date_str=None, silent_header=False):
                 existing_count = cur.fetchone()[0]
                 
                 if existing_count > 0:
-                    # 格式化日期顯示
                     date_display = f"{str(first_date)[:4]}-{str(first_date)[4:6]}-{str(first_date)[6:]}"
                     print_flush(f"✓ 大盤指數 ({date_display}) 已是最新")
                 else:
@@ -7641,10 +7374,11 @@ def step3_8_fetch_market_index(date_str=None, silent_header=False):
                     conn.commit()
                     date_display = f"{str(first_date)[:4]}-{str(first_date)[4:6]}-{str(first_date)[6:]}"
                     print_flush(f"✓ 已更新大盤指數資料 ({date_display}, {len(records)} 筆)")
-        except Exception as e:
-            print_flush(f"❌ 大盤指數儲存失敗: {e}")
-    else:
-        print_flush("⚠ 今日尚無大盤指數資料 (可能尚未收盤)")
+        else:
+            print_flush("⚠ 今日尚無大盤指數資料 (可能尚未收盤)")
+            
+    except Exception as e:
+        print_flush(f"❌ 大盤指數儲存失敗: {e}")
 
 def step4_load_data():
     """步驟4: 載入分析資料 (新三表架構)"""
