@@ -1,7 +1,8 @@
 import React, { useState, useEffect, useMemo } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useMobileView } from "@/context/MobileViewContext";
-import API_BASE_URL from '@/lib/api';
+import { supabase } from '@/lib/supabaseClient';
+import { calculateVP, calculateMFI, calculateMA, calculateRSI, calculateVWAP } from '@/utils/indicators';
 
 export const Scan = () => {
     const navigate = useNavigate();
@@ -37,8 +38,14 @@ export const Scan = () => {
     const itemsPerPage = 24;
 
     const fetchSystemStatus = async () => {
+        // Skip in production mode - use current date
+        if (!import.meta.env.DEV) {
+            const today = new Date();
+            setDataDate(`${today.getFullYear()}-${String(today.getMonth() + 1).padStart(2, '0')}-${String(today.getDate()).padStart(2, '0')}`);
+            return;
+        }
         try {
-            const res = await fetch(`${API_BASE_URL}/api/admin/status`);
+            const res = await fetch('/api/admin/status');
             const data = await res.json();
             if (data.success && data.data) {
                 const dateStr = data.data.latest_date?.toString();
@@ -54,41 +61,106 @@ export const Scan = () => {
     const fetchScanResults = async () => {
         setLoading(true);
         setProcessLog([]);
+
         try {
-            let url = '';
-            const params = `limit=100&min_vol=${minVol * 1000}${minPrice ? `&min_price=${minPrice}` : ''}`;
-            switch (activeFilter) {
-                case 'vp': url = `${API_BASE_URL}/api/scan/vp?direction=${vpDirection}&tolerance=${tolerance}&${params}`; break;
-                case 'mfi': url = `${API_BASE_URL}/api/scan/mfi?condition=oversold&${params}`; break;
-                case 'ma': url = `${API_BASE_URL}/api/scan/ma?pattern=${maPattern}&${params}`; break;
-                case 'kd_month': url = `${API_BASE_URL}/api/scan/kd-cross?signal=golden&timeframe=month&${params}`; break;
-                case 'vsbc': url = `${API_BASE_URL}/api/scan/vsbc?style=steady&${params}`; break;
-                case 'smart_money': url = `${API_BASE_URL}/api/scan/smart-money?${params}`; break;
-                case '2560': url = `${API_BASE_URL}/api/scan/2560?${params}`; break;
-                case 'five_stage': url = `${API_BASE_URL}/api/scan/five-stage?${params}`; break;
-                case 'institutional': url = `${API_BASE_URL}/api/scan/institutional-value?${params}`; break;
-                case 'six_dim': url = `${API_BASE_URL}/api/scan/six-dim?${params}`; break;
-                case 'patterns': url = `${API_BASE_URL}/api/scan/patterns?type=${patternType}&${params}`; break;
-                case 'pv_div': url = `${API_BASE_URL}/api/scan/pv-divergence?${params}`; break;
-                case 'builtin': url = `${API_BASE_URL}/api/scan/builtin?${params}`; break;
-                default:
-                    setScanResults([]);
-                    setLoading(false);
-                    return;
-            }
+            // Step 1: Get stock list from stock_snapshot with basic filters
+            const { data: stocks, error: stockError } = await supabase
+                .from('stock_snapshot')
+                .select('code, name, close, change_pct, volume, foreign_buy, trust_buy, dealer_buy')
+                .gte('volume', minVol * 1000)
+                .gte('close', minPrice)
+                .order('volume', { ascending: false })
+                .limit(100);
 
-            const res = await fetch(url);
-            const data = await res.json();
-
-            if (data.success && data.data && data.data.results) {
-                setScanResults(data.data.results);
-                if (data.data.process_log) {
-                    setProcessLog(data.data.process_log);
-                }
-                setCurrentPage(1);
-            } else {
+            if (stockError) {
+                console.error('Failed to fetch stocks:', stockError);
                 setScanResults([]);
+                setLoading(false);
+                return;
             }
+
+            setProcessLog([`讀取 ${stocks.length} 檔股票...`]);
+
+            // Step 2: For each stock, fetch history and calculate indicators
+            const results = [];
+            const batchSize = 10;
+
+            for (let i = 0; i < Math.min(stocks.length, 50); i += batchSize) {
+                const batch = stocks.slice(i, i + batchSize);
+                setProcessLog(prev => [...prev, `計算指標 ${i + 1}-${Math.min(i + batchSize, stocks.length)}...`]);
+
+                const batchResults = await Promise.all(batch.map(async (stock) => {
+                    try {
+                        // Fetch history for this stock
+                        const { data: history, error: histError } = await supabase
+                            .from('stock_history')
+                            .select('date_int, open, high, low, close, volume')
+                            .eq('code', stock.code)
+                            .order('date_int', { ascending: true })
+                            .limit(60);
+
+                        if (histError || !history || history.length < 20) return null;
+
+                        // Convert history format
+                        const chartData = history.map(h => ({
+                            time: `${String(h.date_int).slice(0, 4)}-${String(h.date_int).slice(4, 6)}-${String(h.date_int).slice(6, 8)}`,
+                            open: h.open, high: h.high, low: h.low, close: h.close, value: h.volume
+                        }));
+
+                        // Calculate indicators
+                        const last = chartData.length - 1;
+                        const vp = calculateVP(chartData, 20);
+                        const mfi = calculateMFI(chartData, 14);
+                        const ma20 = calculateMA(chartData, 20);
+                        const ma60 = calculateMA(chartData, 60);
+                        const ma200 = calculateMA(chartData, 200);
+                        const vwap = calculateVWAP(chartData);
+
+                        const result = {
+                            ...stock,
+                            vp_high: vp.upper[last] || 0,
+                            vp_low: vp.lower[last] || 0,
+                            vp_poc: vp.poc[last] || 0,
+                            mfi: mfi[last] || 0,
+                            ma20: ma20[last] || 0,
+                            ma60: ma60[last] || 0,
+                            ma200: ma200[last] || 0,
+                            vwap: vwap[last] || 0,
+                            vol_ma60: calculateMA(chartData, 60, 'value')[last] || 0
+                        };
+
+                        // Apply filter based on activeFilter
+                        if (activeFilter === 'vp') {
+                            const close = stock.close;
+                            if (vpDirection === 'support') {
+                                const distFromLow = (close - result.vp_low) / result.vp_low;
+                                if (distFromLow >= 0 && distFromLow <= tolerance) return result;
+                            } else {
+                                const distFromHigh = (result.vp_high - close) / result.vp_high;
+                                if (distFromHigh >= 0 && distFromHigh <= tolerance) return result;
+                            }
+                        } else if (activeFilter === 'mfi') {
+                            if (result.mfi < 30) return result; // Oversold
+                        } else if (activeFilter === 'ma') {
+                            if (maPattern === 'below_ma200' && stock.close < result.ma200 && result.ma200 > 0) return result;
+                            if (maPattern === 'below_ma20' && stock.close < result.ma20 && result.ma20 > 0) return result;
+                            if (maPattern === 'bull' && result.ma20 > result.ma60) return result;
+                        } else {
+                            return result; // Default: return all
+                        }
+                        return null;
+                    } catch (e) {
+                        console.error(`Error processing ${stock.code}:`, e);
+                        return null;
+                    }
+                }));
+
+                results.push(...batchResults.filter(r => r !== null));
+            }
+
+            setProcessLog(prev => [...prev, `掃描完成，符合 ${results.length} 檔`]);
+            setScanResults(results);
+            setCurrentPage(1);
         } catch (error) {
             console.error('Scan failed:', error);
             setScanResults([]);
