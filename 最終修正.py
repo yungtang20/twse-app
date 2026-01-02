@@ -4,7 +4,7 @@ import os
 #!/usr/bin/env python3
 # -*- coding: utf-8 -*-
 """
-台灣股票分析系統 v40 Enhanced (均線多頭優化版) - 架構師修正版
+台灣股市分析系統
 架構師: 資深軟體架構師
 修正日期: 2024-12-07
 
@@ -8516,380 +8516,362 @@ def _build_history_query(limit_days=None):
             ORDER BY date_int ASC
         """
 
-def calculate_stock_history_indicators(code, display_days=30, limit_days=None, conn=None, preloaded_df=None):
+
+# ==============================
+# 歷史指標計算輔助函數 (Refactored)
+# ==============================
+
+def _fetch_and_prepare_data(code, limit_days, conn, preloaded_df):
+    """
+    [Helper] 獲取並準備歷史資料與快照數據
+    """
     import pandas as pd
-    import numpy as np
-    """計算股票歷史技術指標"""
+    
+    # 1. 獲取快照資料 (籌碼、法人)
+    snapshot_data = {'total_shareholders': 0, 'major_holders_pct': 0.0, 
+                     'foreign_buy': 0, 'trust_buy': 0, 'dealer_buy': 0}
     try:
-        # 獲取籌碼資料 (大戶比例、法人買超、集保人數)
-        snapshot_data = {'total_shareholders': 0, 'major_holders_pct': 0.0, 
-                         'foreign_buy': 0, 'trust_buy': 0, 'dealer_buy': 0}
-        try:
-            snapshot_query = """SELECT total_shareholders, major_holders_pct, 
-                                       foreign_buy, trust_buy, dealer_buy 
-                                FROM stock_snapshot WHERE code = ?"""
-            if conn:
-                cur = conn.cursor()
+        snapshot_query = """SELECT total_shareholders, major_holders_pct, 
+                                   foreign_buy, trust_buy, dealer_buy 
+                            FROM stock_snapshot WHERE code = ?"""
+        if conn:
+            cur = conn.cursor()
+            cur.execute(snapshot_query, (code,))
+            res = cur.fetchone()
+        else:
+            with db_manager.get_connection() as tmp_conn:
+                cur = tmp_conn.cursor()
                 cur.execute(snapshot_query, (code,))
                 res = cur.fetchone()
-            else:
-                with db_manager.get_connection() as tmp_conn:
-                    cur = tmp_conn.cursor()
-                    cur.execute(snapshot_query, (code,))
-                    res = cur.fetchone()
-            
-            if res:
-                snapshot_data['total_shareholders'] = res[0] or 0
-                snapshot_data['major_holders_pct'] = res[1] or 0.0
-                snapshot_data['foreign_buy'] = res[2] or 0
-                snapshot_data['trust_buy'] = res[3] or 0
-                snapshot_data['dealer_buy'] = res[4] or 0
-        except:
-            pass
         
-        # 向前相容
-        total_shareholders = snapshot_data['total_shareholders']
+        if res:
+            snapshot_data['total_shareholders'] = res[0] or 0
+            snapshot_data['major_holders_pct'] = res[1] or 0.0
+            snapshot_data['foreign_buy'] = res[2] or 0
+            snapshot_data['trust_buy'] = res[3] or 0
+            snapshot_data['dealer_buy'] = res[4] or 0
+    except:
+        pass
 
-        # 內部函數: 執行查詢 (新三表架構)
-        def execute_query(connection):
-            query = _build_history_query(limit_days)
-            
-            # 參數處理
-            params = [code]
-            if limit_days:
-                params.append(limit_days + 250) # 多抓一些以計算 MA200
-                
-            df = pd.read_sql_query(query, connection, params=params)
-            return df
+    # 2. 獲取歷史資料
+    def execute_query(connection):
+        query = _build_history_query(limit_days)
+        params = [code]
+        if limit_days:
+            params.append(limit_days + 250) # 多抓一些以計算 MA200
+        return pd.read_sql_query(query, connection, params=params)
 
-        t_start = time.time()
+    if preloaded_df is not None:
+        df = preloaded_df.copy()
+        if limit_days and len(df) > limit_days:
+            df = df.iloc[-limit_days:].reset_index(drop=True)
+    elif conn:
+        df = execute_query(conn)
+    else:
+        with db_manager.get_connection() as new_conn:
+            df = execute_query(new_conn)
+    
+    if df.empty or len(df) < 20:
+        return None, None
+
+    # 3. 資料清洗與映射
+    df['date'] = pd.to_datetime(df['date'])
+    df = df.sort_values('date').reset_index(drop=True)
+    
+    # 映射籌碼數據
+    df['total_shareholders'] = df['tdcc_count'].fillna(0).astype(int) if 'tdcc_count' in df.columns else 0
+    df['major_holders_pct'] = df['large_shareholder_pct'].fillna(0.0) if 'large_shareholder_pct' in df.columns else 0.0
+    
+    # 映射法人數據
+    df['foreign_buy'] = df['foreign_buy'].fillna(0).astype(int) if 'foreign_buy' in df.columns else 0
+    df['trust_buy'] = df['trust_buy'].fillna(0).astype(int) if 'trust_buy' in df.columns else 0
+    df['dealer_buy'] = df['dealer_buy'].fillna(0).astype(int) if 'dealer_buy' in df.columns else 0
+    
+    return df, snapshot_data
+
+def _calc_basic_indicators(df):
+    """[Helper] 計算基礎指標 (MA, Vol_MA, WMA)"""
+    import pandas as pd
+    
+    # MA
+    for n in [3, 20, 60, 120, 200]:
+        df[f'MA{n}'] = df['close'].rolling(n).mean().round(2)
         
-        if preloaded_df is not None:
-            df = preloaded_df.copy()
-            # 如果有 limit_days，截取最後 N 筆
-            if limit_days and len(df) > limit_days:
-                df = df.iloc[-limit_days:].reset_index(drop=True)
-        elif conn:
-            df = execute_query(conn)
-        else:
-            with db_manager.get_connection() as new_conn:
-                df = execute_query(new_conn)
+    # Volume MA
+    for n in [3, 5, 60]:
+        df[f'Vol_MA{n}'] = df['volume'].rolling(n).mean().round(2)
         
-        if df.empty or len(df) < 20:
+    # WMA
+    for n in [3, 20, 60, 120, 200]:
+        df[f'WMA{n}'] = pd.Series(IndicatorCalculator.calculate_wma(df['close'].values, n), index=df.index).round(2)
+        
+    # 週比較數據
+    df['Major_Holders_W'] = df['major_holders_pct'].shift(5)
+    df['Total_Shareholders_W'] = df['total_shareholders'].shift(5)
+    
+    return df
+
+def _calc_advanced_indicators(df):
+    """[Helper] 計算進階指標 (RSI, MACD, MFI, VWAP, KD)"""
+    import pandas as pd
+    
+    df['MFI'] = IndicatorCalculator.calculate_mfi(df, 14).round(2)
+    df['VWAP'] = IndicatorCalculator.calculate_vwap_series(df, lookback=20).round(2)
+    df['CHG14'] = IndicatorCalculator.calculate_chg14_series(df).round(2)
+    df['RSI'] = IndicatorCalculator.calculate_rsi_series(df, 14).round(2)
+    
+    macd, signal = IndicatorCalculator.calculate_macd_series(df)
+    df['MACD'] = macd.round(2)
+    df['SIGNAL'] = signal.round(2)
+    
+    # KD
+    k_series, d_series = IndicatorCalculator.calculate_monthly_kd_series(df)
+    daily_k, daily_d = IndicatorCalculator.calculate_daily_kd_series(df)
+    week_k, week_d = IndicatorCalculator.calculate_weekly_kd_series(df)
+    
+    df['Month_K'] = k_series.round(2)
+    df['Month_D'] = d_series.round(2)
+    df['Daily_K'] = daily_k.round(2)
+    df['Daily_D'] = daily_d.round(2)
+    df['Week_K'] = pd.Series(week_k, index=df.index).round(2)
+    df['Week_D'] = pd.Series(week_d, index=df.index).round(2)
+    
+    return df
+
+def _calc_six_dim_indicators(df):
+    """[Helper] 計算六維共振與其他衍生指標"""
+    import pandas as pd
+    
+    # 1. BBI
+    ma3 = df['close'].rolling(3).mean()
+    ma6 = df['close'].rolling(6).mean()
+    ma12 = df['close'].rolling(12).mean()
+    ma24 = df['close'].rolling(24).mean()
+    df['BBI'] = ((ma3 + ma6 + ma12 + ma24) / 4).round(2)
+
+    # 2. MTM
+    df['MTM'] = (df['close'] - df['close'].shift(12)).round(2)
+    df['MTM_MA'] = df['MTM'].rolling(6).mean().round(2)
+
+    # 3. LWR
+    low_min = df['low'].rolling(9).min()
+    high_max = df['high'].rolling(9).max()
+    df['LWR'] = (((high_max - df['close']) / (high_max - low_min)) * -100).round(2)
+    
+    # Smart Score & Signals
+    smart_score, smi_sig, nvi_sig, vsa_sig, svi_sig, vol_div_sig, weekly_nvi_sig = IndicatorCalculator.calculate_smart_score_series(df)
+    
+    df['SMI'] = IndicatorCalculator.calculate_smi_series(df).round(2)
+    nvi, _ = IndicatorCalculator.calculate_nvi_series(df)
+    df['NVI'] = nvi.round(2)
+    df['SVI'] = ((df['close'] - df['MA200']) / df['MA200'] * 100).round(2)
+    df['ADL'] = IndicatorCalculator.calculate_adl_series(df).round(2)
+    df['RS'] = IndicatorCalculator.calculate_rs_series(df).round(2)
+    df['PVI'] = IndicatorCalculator.calculate_pvi_series(df).round(2)
+    df['clv'] = IndicatorCalculator.calculate_clv_series(df).round(2)
+    
+    div_bull, div_bear = IndicatorCalculator.calculate_3day_divergence_series(df)
+    df['div_3day_bull'] = div_bull
+    df['div_3day_bear'] = div_bear
+    
+    df['Smart_Score'] = smart_score
+    df['SMI_Signal'] = smi_sig
+    df['NVI_Signal'] = nvi_sig
+    df['VSA_Signal'] = vsa_sig
+    df['SVI_Signal'] = svi_sig
+    df['Vol_Div_Signal'] = vol_div_sig
+    df['Weekly_NVI_Signal'] = weekly_nvi_sig
+    
+    # Previous values
+    df['close_prev'] = df['close'].shift(1)
+    df['vol_prev'] = df['volume'].shift(1)
+    
+    # VWAP60 & 200
+    df['VWAP60'] = IndicatorCalculator.calculate_vwap_series(df, lookback=60).round(2)
+    df['VWAP200'] = IndicatorCalculator.calculate_vwap_series(df, lookback=200).round(2)
+    
+    # BBW
+    ma20_for_bb = df['close'].rolling(20).mean()
+    std20_for_bb = df['close'].rolling(20).std()
+    upper_bb = ma20_for_bb + 2 * std20_for_bb
+    lower_bb = ma20_for_bb - 2 * std20_for_bb
+    df['BBW'] = ((upper_bb - lower_bb) / ma20_for_bb).round(4)
+    
+    # VSBC Bands
+    vsbc_u, vsbc_l = IndicatorCalculator.calculate_vsbc_bands(df)
+    df['VSBC_Upper'] = vsbc_u.round(2)
+    df['VSBC_Lower'] = vsbc_l.round(2)
+    
+    # Fib 0.618
+    roll_high_60 = df['high'].rolling(60).max()
+    roll_low_60 = df['low'].rolling(60).min()
+    diff_60 = roll_high_60 - roll_low_60
+    df['Fib_0618'] = (roll_high_60 - (diff_60 * 0.618)).round(2)
+    
+    # Weekly/Monthly Resampling (Simplified)
+    df['date_idx'] = df['date']
+    df.set_index('date_idx', inplace=True)
+    weekly_df = df.resample('W').agg({'open': 'first', 'close': 'last'})
+    monthly_df = df.resample('M').agg({'open': 'first', 'close': 'last'})
+    df['weekly_open'] = weekly_df['open'].reindex(df.index, method='ffill')
+    df['weekly_close'] = weekly_df['close'].reindex(df.index, method='ffill')
+    df['monthly_open'] = monthly_df['open'].reindex(df.index, method='ffill')
+    df['monthly_close'] = monthly_df['close'].reindex(df.index, method='ffill')
+    df.reset_index(drop=True, inplace=True)
+    
+    df['Mansfield_RS'] = df['RS']
+    
+    return df
+
+def _format_indicators_result(df, snapshot_data, display_days):
+    """[Helper] 格式化輸出結果"""
+    import pandas as pd
+    
+    indicators_list = []
+    start_index = 0 if not display_days else max(0, len(df) - display_days)
+    
+    for i in range(start_index, len(df)):
+        row = df.iloc[i]
+        prev_row = df.iloc[i-1] if i > 0 else row
+        
+        indicators = {
+            'date': row['date'].strftime('%Y-%m-%d'),
+            'open': row['open'],
+            'high': row['high'],
+            'low': row['low'],
+            'close': row['close'],
+            'volume': row['volume'],
+            'close_prev': row['close_prev'] if pd.notnull(row['close_prev']) else None,
+            'vol_prev': row['vol_prev'] if pd.notnull(row['vol_prev']) else None,
+            'Vol_MA3': row['Vol_MA3'],
+            'MA3': row['MA3'],
+            'MA20': row['MA20'],
+            'MA60': row['MA60'],
+            'MA120': row['MA120'],
+            'MA200': row['MA200'],
+            'WMA3': row['WMA3'],
+            'WMA20': row['WMA20'],
+            'WMA60': row['WMA60'],
+            'WMA120': row['WMA120'],
+            'WMA200': row['WMA200'],
+            'Vol_MA5': row['Vol_MA5'],
+            'Vol_MA60': row['Vol_MA60'],
+            'Vol_MA5_prev': prev_row['Vol_MA5'],
+            'Vol_MA60_prev': prev_row['Vol_MA60'],
+            'Major_Holders_W': row['Major_Holders_W'],
+            'Total_Shareholders_W': row['Total_Shareholders_W'],
+            'foreign_buy': row['foreign_buy'],
+            'trust_buy': row['trust_buy'],
+            'dealer_buy': row['dealer_buy'],
+            'MA3_prev': prev_row['MA3'],
+            'MA20_prev': prev_row['MA20'],
+            'MA60_prev': prev_row['MA60'],
+            'MA120_prev': prev_row['MA120'],
+            'MA200_prev': prev_row['MA200'],
+            'WMA3_prev': prev_row['WMA3'],
+            'WMA20_prev': prev_row['WMA20'],
+            'WMA60_prev': prev_row['WMA60'],
+            'WMA120_prev': prev_row['WMA120'],
+            'WMA200_prev': prev_row['WMA200'],
+            'MFI': row['MFI'],
+            'MFI_prev': prev_row['MFI'],
+            'VWAP': row['VWAP'],
+            'VWAP_prev': prev_row['VWAP'],
+            'CHG14': row['CHG14'],
+            'CHG14_prev': prev_row['CHG14'],
+            'RSI': row['RSI'],
+            'RSI_prev': prev_row['RSI'],
+            'MACD': row['MACD'],
+            'SIGNAL': row['SIGNAL'],
+            'Month_K': row['Month_K'],
+            'Month_D': row['Month_D'],
+            'Daily_K': row['Daily_K'] if pd.notnull(row['Daily_K']) else None,
+            'Daily_D': row['Daily_D'] if pd.notnull(row['Daily_D']) else None,
+            'Week_K': row['Week_K'] if pd.notnull(row['Week_K']) else None,
+            'Week_D': row['Week_D'] if pd.notnull(row['Week_D']) else None,
+            'Month_K_prev': prev_row['Month_K'],
+            'Month_D_prev': prev_row['Month_D'],
+            'Daily_K_prev': prev_row['Daily_K'],
+            'Daily_D_prev': prev_row['Daily_D'],
+            'Week_K_prev': prev_row['Week_K'],
+            'Week_D_prev': prev_row['Week_D'],
+            'SMI': row['SMI'],
+            'SVI': row['SVI'],
+            'NVI': row['NVI'],
+            'Smart_Score': int(row['Smart_Score']) if pd.notnull(row['Smart_Score']) else None,
+            'SMI_Signal': int(row['SMI_Signal']) if pd.notnull(row['SMI_Signal']) else None,
+            'NVI_Signal': int(row['NVI_Signal']) if pd.notnull(row['NVI_Signal']) else None,
+            'VSA_Signal': int(row['VSA_Signal']) if pd.notnull(row['VSA_Signal']) else None,
+            'SVI_Signal': int(row['SVI_Signal']) if pd.notnull(row['SVI_Signal']) else None,
+            'SMI_Signal_prev': int(prev_row['SMI_Signal']) if pd.notnull(prev_row['SMI_Signal']) else None,
+            'NVI_Signal_prev': int(prev_row['NVI_Signal']) if pd.notnull(prev_row['NVI_Signal']) else None,
+            'SVI_Signal_prev': int(prev_row['SVI_Signal']) if pd.notnull(prev_row['SVI_Signal']) else None,
+            'Smart_Score_prev': int(prev_row['Smart_Score']) if pd.notnull(prev_row['Smart_Score']) else None,
+            'PVI': float(row['PVI']) if pd.notnull(row['PVI']) else None,
+            'pvi_prev': float(prev_row['PVI']) if pd.notnull(prev_row['PVI']) else None,
+            'clv': float(row['clv']) if pd.notnull(row.get('clv')) else None,
+            'Vol_Div_Signal': int(row['Vol_Div_Signal']) if pd.notnull(row['Vol_Div_Signal']) else None,
+            'Weekly_NVI_Signal': int(row['Weekly_NVI_Signal']) if pd.notnull(row['Weekly_NVI_Signal']) else None,
+            'Div_3Day_Bull': int(row['div_3day_bull']) if pd.notnull(row.get('div_3day_bull')) else None,
+            'Div_3Day_Bear': int(row['div_3day_bear']) if pd.notnull(row.get('div_3day_bear')) else None,
+            'VWAP60': row['VWAP60'],
+            'BBW': row['BBW'],
+            'Fib_0618': row['Fib_0618'],
+            'VWAP200': row['VWAP200'],
+            'Weekly_Close': row['weekly_close'] if pd.notnull(row['weekly_close']) else None,
+            'Weekly_Open': row['weekly_open'] if pd.notnull(row['weekly_open']) else None,
+            'Monthly_Close': row['monthly_close'] if pd.notnull(row['monthly_close']) else None,
+            'Monthly_Open': row['monthly_open'] if pd.notnull(row['monthly_open']) else None,
+            'Mansfield_RS': row['Mansfield_RS'],
+            'ADL': float(row['ADL']) if pd.notnull(row['ADL']) else None,
+            'RS': float(row['RS']) if pd.notnull(row['RS']) else None,
+        }
+        
+        current_window = df.iloc[max(0, i-19):i+1]
+        vp = IndicatorCalculator.calculate_vp_scheme3(current_window, lookback=20)
+        
+        indicators['POC'] = vp['POC']
+        indicators['VP_upper'] = vp['VP_upper']
+        indicators['VP_lower'] = vp['VP_lower']
+        
+        indicators['VSBC_Upper'] = row['VSBC_Upper']
+        indicators['VSBC_Lower'] = row['VSBC_Lower']
+        
+        indicators['Total_Shareholders'] = snapshot_data['total_shareholders']
+        indicators['Major_Holders'] = snapshot_data['major_holders_pct']
+        indicators['major_holders_pct'] = snapshot_data['major_holders_pct']
+        indicators['Foreign_Buy'] = snapshot_data['foreign_buy']
+        indicators['foreign_buy'] = snapshot_data['foreign_buy']
+        indicators['Trust_Buy'] = snapshot_data['trust_buy']
+        indicators['trust_buy'] = snapshot_data['trust_buy']
+        indicators['Dealer_Buy'] = snapshot_data['dealer_buy']
+        indicators['dealer_buy'] = snapshot_data['dealer_buy']
+        
+        indicators_list.append(indicators)
+    
+    return indicators_list[::-1]
+
+def calculate_stock_history_indicators(code, display_days=30, limit_days=None, conn=None, preloaded_df=None):
+    """計算股票歷史技術指標 (Refactored)"""
+    try:
+        # 1. 獲取並準備資料
+        df, snapshot_data = _fetch_and_prepare_data(code, limit_days, conn, preloaded_df)
+        if df is None:
             return None
-        
-        # 確保日期格式正確
-        df['date'] = pd.to_datetime(df['date'])
-        df = df.sort_values('date').reset_index(drop=True)
-        
-        # [New] 映射籌碼數據
-        if 'tdcc_count' in df.columns:
-            df['total_shareholders'] = df['tdcc_count'].fillna(0).astype(int)
-        else:
-            df['total_shareholders'] = 0
             
-        if 'large_shareholder_pct' in df.columns:
-            df['major_holders_pct'] = df['large_shareholder_pct'].fillna(0.0)
-        else:
-            df['major_holders_pct'] = 0.0
-            
-        # [New] 映射法人數據
-        if 'foreign_buy' in df.columns:
-            df['foreign_buy'] = df['foreign_buy'].fillna(0).astype(int)
-        else:
-            df['foreign_buy'] = 0
-            
-        if 'trust_buy' in df.columns:
-            df['trust_buy'] = df['trust_buy'].fillna(0).astype(int)
-        else:
-            df['trust_buy'] = 0
-            
-        if 'dealer_buy' in df.columns:
-            df['dealer_buy'] = df['dealer_buy'].fillna(0).astype(int)
-        else:
-            df['dealer_buy'] = 0
+        # 2. 計算基礎指標
+        df = _calc_basic_indicators(df)
         
-        # 計算指標
-        df['MA3'] = df['close'].rolling(3).mean().round(2)
-        df['MA20'] = df['close'].rolling(20).mean().round(2)
-        df['MA60'] = df['close'].rolling(60).mean().round(2)
-        df['MA120'] = df['close'].rolling(120).mean().round(2)
-        df['MA200'] = df['close'].rolling(200).mean().round(2)
+        # 3. 計算進階指標
+        df = _calc_advanced_indicators(df)
         
-        # 成交量均線
-        df['Vol_MA3'] = df['volume'].rolling(3).mean().round(2)
-        df['Vol_MA5'] = df['volume'].rolling(5).mean().round(2)
-        df['Vol_MA60'] = df['volume'].rolling(60).mean().round(2)
+        # 4. 計算六維共振與衍生指標
+        df = _calc_six_dim_indicators(df)
         
-        # 週比較數據 (5日前)
-        df['Major_Holders_W'] = df['major_holders_pct'].shift(5)
-        df['Total_Shareholders_W'] = df['total_shareholders'].shift(5)
-        
-        df['WMA3'] = pd.Series(IndicatorCalculator.calculate_wma(df['close'].values, 3), index=df.index).round(2)
-        df['WMA20'] = pd.Series(IndicatorCalculator.calculate_wma(df['close'].values, 20), index=df.index).round(2)
-        df['WMA60'] = pd.Series(IndicatorCalculator.calculate_wma(df['close'].values, 60), index=df.index).round(2)
-        df['WMA120'] = pd.Series(IndicatorCalculator.calculate_wma(df['close'].values, 120), index=df.index).round(2)
-        df['WMA200'] = pd.Series(IndicatorCalculator.calculate_wma(df['close'].values, 200), index=df.index).round(2)
-        
-        df['MFI'] = IndicatorCalculator.calculate_mfi(df, 14).round(2)
-        df['VWAP'] = IndicatorCalculator.calculate_vwap_series(df, lookback=20).round(2)
-        df['CHG14'] = IndicatorCalculator.calculate_chg14_series(df).round(2)
-        df['RSI'] = IndicatorCalculator.calculate_rsi_series(df, 14).round(2)
-        
-        macd, signal = IndicatorCalculator.calculate_macd_series(df)
-        df['MACD'] = macd.round(2)
-        df['SIGNAL'] = signal.round(2)
-        
-        # [New] Six-Dim Resonance Indicators
-        # 1. BBI (Bullish Bearish Indicator) - (MA3 + MA6 + MA12 + MA24) / 4
-        # Using existing MAs or calculating new ones if needed. Standard BBI uses 3, 6, 12, 24.
-        # We have MA3, MA20, MA60, MA120. Let's calculate specific ones for BBI.
-        ma3 = df['close'].rolling(3).mean()
-        ma6 = df['close'].rolling(6).mean()
-        ma12 = df['close'].rolling(12).mean()
-        ma24 = df['close'].rolling(24).mean()
-        df['BBI'] = ((ma3 + ma6 + ma12 + ma24) / 4).round(2)
-
-        # 2. MTM (Momentum) - Close - Close(N), usually N=12
-        df['MTM'] = (df['close'] - df['close'].shift(12)).round(2)
-        df['MTM_MA'] = df['MTM'].rolling(6).mean().round(2) # MTM Signal line
-
-        # 3. LWR (Williams %R) - usually 9 days
-        # Formula: (Highest High - Close) / (Highest High - Lowest Low) * -100
-        low_min = df['low'].rolling(9).min()
-        high_max = df['high'].rolling(9).max()
-        df['LWR'] = (((high_max - df['close']) / (high_max - low_min)) * -100).round(2)
-        
-        k_series, d_series = IndicatorCalculator.calculate_monthly_kd_series(df)
-        daily_k, daily_d = IndicatorCalculator.calculate_daily_kd_series(df)
-        week_k, week_d = IndicatorCalculator.calculate_weekly_kd_series(df)
-        
-        smart_score, smi_sig, nvi_sig, vsa_sig, svi_sig, vol_div_sig, weekly_nvi_sig = IndicatorCalculator.calculate_smart_score_series(df)
-        
-        # 計算並儲存原始數值
-        df['SMI'] = IndicatorCalculator.calculate_smi_series(df).round(2)
-        nvi, _ = IndicatorCalculator.calculate_nvi_series(df)
-        df['NVI'] = nvi.round(2)
-        
-        # [Restored] SVI, RSI, MACD
-        df['SVI'] = ((df['close'] - df['MA200']) / df['MA200'] * 100).round(2)
-        
-        # [Added] ADL, RS
-        df['ADL'] = IndicatorCalculator.calculate_adl_series(df).round(2)
-        df['RS'] = IndicatorCalculator.calculate_rs_series(df).round(2)
-        
-        df['Smart_Score'] = smart_score
-        df['SMI_Signal'] = smi_sig
-        df['NVI_Signal'] = nvi_sig
-        df['VSA_Signal'] = vsa_sig
-        df['SVI_Signal'] = svi_sig
-        df['Vol_Div_Signal'] = vol_div_sig
-        df['Weekly_NVI_Signal'] = weekly_nvi_sig
-        
-        df['PVI'] = IndicatorCalculator.calculate_pvi_series(df).round(2)
-        
-        # [Fix] 補上缺失的 CLV 計算
-        df['clv'] = IndicatorCalculator.calculate_clv_series(df).round(2)
-        
-        # [Fix] 補上缺失的 3日背離訊號計算
-        div_bull, div_bear = IndicatorCalculator.calculate_3day_divergence_series(df)
-        df['div_3day_bull'] = div_bull
-        df['div_3day_bear'] = div_bear
-        
-        df['Month_K'] = k_series.round(2)
-        df['Month_D'] = d_series.round(2)
-        df['Daily_K'] = daily_k.round(2)
-        df['Daily_D'] = daily_d.round(2)
-        df['Week_K'] = pd.Series(week_k, index=df.index).round(2)
-        df['Week_D'] = pd.Series(week_d, index=df.index).round(2)
-        
-        df['close_prev'] = df['close'].shift(1)
-        df['vol_prev'] = df['volume'].shift(1)
-        
-        # [New] VWAP 60
-        df['VWAP60'] = IndicatorCalculator.calculate_vwap_series(df, lookback=60).round(2)
-        
-        # [New] BBW (Bollinger Band Width)
-        # Using simple calculation here as IndicatorCalculator might not have a dedicated series method for BBW
-        
-        # [New] VSBC Bands
-        vsbc_u, vsbc_l = IndicatorCalculator.calculate_vsbc_bands(df)
-        df['VSBC_Upper'] = vsbc_u.round(2)
-        df['VSBC_Lower'] = vsbc_l.round(2)
-        ma20_for_bb = df['close'].rolling(20).mean()
-        std20_for_bb = df['close'].rolling(20).std()
-        upper_bb = ma20_for_bb + 2 * std20_for_bb
-        lower_bb = ma20_for_bb - 2 * std20_for_bb
-        df['BBW'] = ((upper_bb - lower_bb) / ma20_for_bb).round(4)
-        
-        # [New] Fibonacci 0.618 (Recent 60 days)
-        # We need a rolling calculation for this to be correct for each day in history
-        # For efficiency, we can use rolling max/min
-        roll_high_60 = df['high'].rolling(60).max()
-        roll_low_60 = df['low'].rolling(60).min()
-        diff_60 = roll_high_60 - roll_low_60
-        df['Fib_0618'] = (roll_high_60 - (diff_60 * 0.618)).round(2)
-        
-        # [New] VWAP 200
-        df['VWAP200'] = IndicatorCalculator.calculate_vwap_series(df, lookback=200).round(2)
-        
-        # [New] Weekly/Monthly Data (Resampled)
-        # Note: This is computationally expensive, so we do it only if needed or optimize it
-        # Here we use a simplified approach by taking the last available weekly/monthly data
-        # For a proper implementation, we should resample the whole series and reindex
-        
-        # Weekly
-        df['date_idx'] = df['date']
-        df.set_index('date_idx', inplace=True)
-        
-        weekly_df = df.resample('W').agg({'open': 'first', 'close': 'last'})
-        monthly_df = df.resample('M').agg({'open': 'first', 'close': 'last'})
-        
-        # Reindex back to daily to fill values
-        df['weekly_open'] = weekly_df['open'].reindex(df.index, method='ffill')
-        df['weekly_close'] = weekly_df['close'].reindex(df.index, method='ffill')
-        df['monthly_open'] = monthly_df['open'].reindex(df.index, method='ffill')
-        df['monthly_close'] = monthly_df['close'].reindex(df.index, method='ffill')
-        
-        df.reset_index(drop=True, inplace=True)
-        
-        # [New] Mansfield RS (Simplified Relative Strength Score)
-        # Since we don't have a reliable market index in this context efficiently, 
-        # we use the RS score we already calculated (0-100) as a proxy for now.
-        # Or we can implement a self-relative strength if needed.
-        # For now, we map the existing RS to this field to ensure data availability.
-        df['Mansfield_RS'] = df['RS'] 
-        
-        # 準備結果列表
-        indicators_list = []
-        start_index = 0 if not display_days else max(0, len(df) - display_days)
-        
-        for i in range(start_index, len(df)):
-            row = df.iloc[i]
-            prev_row = df.iloc[i-1] if i > 0 else row
-            
-            indicators = {
-                'date': row['date'].strftime('%Y-%m-%d'),
-                'open': row['open'],
-                'high': row['high'],
-                'low': row['low'],
-                'close': row['close'],
-                'volume': row['volume'],
-                'close_prev': row['close_prev'] if pd.notnull(row['close_prev']) else None,
-                'vol_prev': row['vol_prev'] if pd.notnull(row['vol_prev']) else None,
-                'Vol_MA3': row['Vol_MA3'],
-                'MA3': row['MA3'],
-                'MA20': row['MA20'],
-                'MA60': row['MA60'],
-                'MA120': row['MA120'],
-                'MA200': row['MA200'],
-                'WMA3': row['WMA3'],
-                'WMA20': row['WMA20'],
-                'WMA60': row['WMA60'],
-                'WMA120': row['WMA120'],
-                'WMA200': row['WMA200'],
-                'Vol_MA5': row['Vol_MA5'],
-                'Vol_MA60': row['Vol_MA60'],
-                'Vol_MA5_prev': prev_row['Vol_MA5'],
-                'Vol_MA60_prev': prev_row['Vol_MA60'],
-                'Major_Holders_W': row['Major_Holders_W'],
-                'Total_Shareholders_W': row['Total_Shareholders_W'],
-                'foreign_buy': row['foreign_buy'],
-                'trust_buy': row['trust_buy'],
-                'dealer_buy': row['dealer_buy'],
-                'MA3_prev': prev_row['MA3'],
-                'MA20_prev': prev_row['MA20'],
-                'MA60_prev': prev_row['MA60'],
-                'MA120_prev': prev_row['MA120'],
-                'MA200_prev': prev_row['MA200'],
-                'WMA3_prev': prev_row['WMA3'],
-                'WMA20_prev': prev_row['WMA20'],
-                'WMA60_prev': prev_row['WMA60'],
-                'WMA120_prev': prev_row['WMA120'],
-                'WMA200_prev': prev_row['WMA200'],
-                'MFI': row['MFI'],
-                'MFI_prev': prev_row['MFI'],
-                'VWAP': row['VWAP'],
-                'VWAP_prev': prev_row['VWAP'],
-                'CHG14': row['CHG14'],
-                'CHG14_prev': prev_row['CHG14'],
-                'RSI': row['RSI'],
-                'RSI_prev': prev_row['RSI'],
-                'MACD': row['MACD'],
-                'SIGNAL': row['SIGNAL'],
-                'Month_K': row['Month_K'],
-                'Month_D': row['Month_D'],
-                'Daily_K': row['Daily_K'] if pd.notnull(row['Daily_K']) else None,
-                'Daily_D': row['Daily_D'] if pd.notnull(row['Daily_D']) else None,
-                'Week_K': row['Week_K'] if pd.notnull(row['Week_K']) else None,
-                'Week_D': row['Week_D'] if pd.notnull(row['Week_D']) else None,
-                'Month_K_prev': prev_row['Month_K'],
-                'Month_D_prev': prev_row['Month_D'],
-                'Daily_K_prev': prev_row['Daily_K'],
-                'Daily_D_prev': prev_row['Daily_D'],
-                'Week_K_prev': prev_row['Week_K'],
-                'Week_D_prev': prev_row['Week_D'],
-                'SMI': row['SMI'],
-                'SVI': row['SVI'],
-                'NVI': row['NVI'],
-                'Smart_Score': int(row['Smart_Score']) if pd.notnull(row['Smart_Score']) else None,
-                'SMI_Signal': int(row['SMI_Signal']) if pd.notnull(row['SMI_Signal']) else None,
-                'NVI_Signal': int(row['NVI_Signal']) if pd.notnull(row['NVI_Signal']) else None,
-                'VSA_Signal': int(row['VSA_Signal']) if pd.notnull(row['VSA_Signal']) else None,
-                'SVI_Signal': int(row['SVI_Signal']) if pd.notnull(row['SVI_Signal']) else None,
-                'SMI_Signal_prev': int(prev_row['SMI_Signal']) if pd.notnull(prev_row['SMI_Signal']) else None,
-                'NVI_Signal_prev': int(prev_row['NVI_Signal']) if pd.notnull(prev_row['NVI_Signal']) else None,
-                'SVI_Signal_prev': int(prev_row['SVI_Signal']) if pd.notnull(prev_row['SVI_Signal']) else None,
-                'Smart_Score_prev': int(prev_row['Smart_Score']) if pd.notnull(prev_row['Smart_Score']) else None,
-                'Smart_Score_prev': int(prev_row['Smart_Score']) if pd.notnull(prev_row['Smart_Score']) else None,
-                'PVI': float(row['PVI']) if pd.notnull(row['PVI']) else None,
-                'pvi_prev': float(prev_row['PVI']) if pd.notnull(prev_row['PVI']) else None, # [Fix] Add pvi_prev
-                'clv': float(row['clv']) if pd.notnull(row.get('clv')) else None, # [Fix] 加入 CLV
-                'Vol_Div_Signal': int(row['Vol_Div_Signal']) if pd.notnull(row['Vol_Div_Signal']) else None,
-                'Weekly_NVI_Signal': int(row['Weekly_NVI_Signal']) if pd.notnull(row['Weekly_NVI_Signal']) else None,
-                'Div_3Day_Bull': int(row['div_3day_bull']) if pd.notnull(row.get('div_3day_bull')) else None,
-                'Div_3Day_Bear': int(row['div_3day_bear']) if pd.notnull(row.get('div_3day_bear')) else None,
-                'VWAP60': row['VWAP60'],
-                'BBW': row['BBW'],
-                'Fib_0618': row['Fib_0618'],
-                'VWAP200': row['VWAP200'],
-                'Weekly_Close': row['weekly_close'] if pd.notnull(row['weekly_close']) else None,
-                'Weekly_Open': row['weekly_open'] if pd.notnull(row['weekly_open']) else None,
-                'Monthly_Close': row['monthly_close'] if pd.notnull(row['monthly_close']) else None,
-                'Monthly_Open': row['monthly_open'] if pd.notnull(row['monthly_open']) else None,
-                'Mansfield_RS': row['Mansfield_RS'],
-                'ADL': float(row['ADL']) if pd.notnull(row['ADL']) else None,
-                'RS': float(row['RS']) if pd.notnull(row['RS']) else None,
-            }
-            
-            current_window = df.iloc[max(0, i-19):i+1]
-            vp = IndicatorCalculator.calculate_vp_scheme3(current_window, lookback=20)
-            
-            indicators['POC'] = vp['POC']
-            indicators['VP_upper'] = vp['VP_upper']
-            indicators['VP_lower'] = vp['VP_lower']
-            
-            # VSBC Bands
-            indicators['VSBC_Upper'] = row['VSBC_Upper']
-            indicators['VSBC_Lower'] = row['VSBC_Lower']
-            
-            # 籌碼資料 (大戶比例、法人買超、集保人數)
-            indicators['Total_Shareholders'] = snapshot_data['total_shareholders']
-            indicators['Major_Holders'] = snapshot_data['major_holders_pct']
-            indicators['major_holders_pct'] = snapshot_data['major_holders_pct']  # 相容 format_scan_result
-            indicators['Foreign_Buy'] = snapshot_data['foreign_buy']
-            indicators['foreign_buy'] = snapshot_data['foreign_buy']  # 相容 format_scan_result
-            indicators['Trust_Buy'] = snapshot_data['trust_buy']
-            indicators['trust_buy'] = snapshot_data['trust_buy']  # 相容 format_scan_result
-            indicators['Dealer_Buy'] = snapshot_data['dealer_buy']
-            indicators['dealer_buy'] = snapshot_data['dealer_buy']  # 相容 format_scan_result
-            
-            indicators_list.append(indicators)
-        
-        return indicators_list[::-1]
+        # 5. 格式化輸出
+        return _format_indicators_result(df, snapshot_data, display_days)
         
     except Exception as e:
-        # Log error for debugging purposes
         # logger.debug(f"Error in calculate_stock_history_indicators: {e}")
         return None
 
@@ -13076,7 +13058,7 @@ def main_menu():
         display_system_status()
         
         print_flush("\n" + "="*60)
-        print_flush("【台灣股市分析系統 v40 Enhanced】")
+        print_flush("【台灣股市分析系統】")
         print_flush("="*60)
         print_flush("[1] 資料管理與更新")
         print_flush("[2] 市場掃描 (技術指標)")

@@ -96,6 +96,73 @@ export function TechnicalChart({ code, name, onHoverData, isFullScreen = false }
         }
     }, [isFullScreen]);
 
+    // Resize Handlers
+    const handleResizeStart = useCallback((section) => (e) => {
+        e.preventDefault();
+        isResizing.current = section;
+        document.addEventListener('mousemove', handleMouseMove);
+        document.addEventListener('mouseup', handleMouseUp);
+    }, []);
+
+    const handleTouchStart = useCallback((section) => (e) => {
+        isResizing.current = section;
+        if (e.touches?.[0]) lastTouchY.current = e.touches[0].clientY;
+        document.addEventListener('touchmove', handleTouchMove, { passive: false });
+        document.addEventListener('touchend', handleTouchEnd);
+    }, []);
+
+    const handleMouseMove = useCallback((e) => {
+        if (!isResizing.current) return;
+        const delta = e.movementY;
+        adjustHeights(isResizing.current, delta);
+    }, []);
+
+    const handleMouseUp = useCallback(() => {
+        isResizing.current = null;
+        document.removeEventListener('mousemove', handleMouseMove);
+        document.removeEventListener('mouseup', handleMouseUp);
+    }, [handleMouseMove]);
+
+    const handleTouchMove = useCallback((e) => {
+        if (!isResizing.current || !e.touches?.[0]) return;
+        e.preventDefault();
+        const y = e.touches[0].clientY;
+        const delta = y - lastTouchY.current;
+        lastTouchY.current = y;
+        adjustHeights(isResizing.current, delta);
+    }, []);
+
+    const handleTouchEnd = useCallback(() => {
+        isResizing.current = null;
+        document.removeEventListener('touchmove', handleTouchMove);
+        document.removeEventListener('touchend', handleTouchEnd);
+    }, [handleTouchMove]);
+
+    const adjustHeights = useCallback((section, delta) => {
+        setChartHeights(prev => {
+            const minH = 40;
+            const n = { ...prev };
+            if (section === 'main-vol') {
+                n.main = Math.max(minH, prev.main + delta);
+                n.volume = Math.max(minH, prev.volume - delta);
+            } else if (section === 'vol-sub1') {
+                n.volume = Math.max(minH, prev.volume + delta);
+                n.sub1 = Math.max(minH, prev.sub1 - delta);
+            } else if (section === 'sub1-sub2') {
+                n.sub1 = Math.max(minH, prev.sub1 + delta);
+                n.sub2 = Math.max(minH, prev.sub2 - delta);
+            }
+            return n;
+        });
+    }, []);
+
+    // Toggle Indicator
+    const toggleIndicator = useCallback((name) => {
+        setActiveIndicators(prev =>
+            prev.includes(name) ? prev.filter(x => x !== name) : [...prev, name]
+        );
+    }, []);
+
     // ... (resizing logic remains, but maybe restricted)
 
     // ...
