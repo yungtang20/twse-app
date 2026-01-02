@@ -6818,11 +6818,20 @@ def step4_check_data_gaps():
             inst_map = {r[0]: r[1] for r in inst_rows}
         except:
             inst_map = {}  # 表格可能不存在
+
+        # 3. 檢查融資融券資料
+        print_flush("正在分析融資融券資料...")
+        try:
+            margin_rows = cur.execute("SELECT code, COUNT(*) FROM margin_data GROUP BY code").fetchall()
+            margin_map = {r[0]: r[1] for r in margin_rows}
+        except:
+            margin_map = {}
             
     # 分析缺失
     count_gaps = []
     amount_gaps = []
     inst_gaps = []
+    margin_gaps = []
     
     # 統計變數
     total_records = 0
@@ -6878,6 +6887,9 @@ def step4_check_data_gaps():
         if code not in inst_map:
             inst_gaps.append(code)
             
+        if code not in margin_map:
+            margin_gaps.append(code)
+            
     # 取得資料庫最大日期
     try:
         max_db_date_str = get_latest_market_date()
@@ -6924,6 +6936,20 @@ def step4_check_data_gaps():
                 print_flush(f"  - {c}")
             if len(inst_gaps) > 5:
                 print_flush(f"  ... 等共 {len(inst_gaps)} 檔")
+
+        if margin_gaps:
+            print_flush(f"\n⚠ 融資融券缺失 (完全無資料): {len(margin_gaps)} 檔")
+            # 特別檢查大盤
+            if '0000' in margin_gaps:
+                print_flush(f"  - 0000 (大盤匯總) [重要]")
+            
+            # 顯示其他缺失
+            others = [c for c in margin_gaps if c != '0000']
+            if others:
+                for c in others[:5]:
+                    print_flush(f"  - {c}")
+                if len(others) > 5:
+                    print_flush(f"  ... 等共 {len(others)} 檔")
 
 def step5_clean_delisted():
     """步驟5: 清理下市股票"""
@@ -11973,6 +11999,13 @@ def check_db_nulls():
 
         except Exception as e:
             print_flush(f"檢查失敗: {e}")
+            
+    # 詢問是否補齊
+    print_flush("\n是否嘗試自動補齊缺漏資料? (y/n): ", end="")
+    if input().lower() == 'y':
+        print_flush("\n啟動自動補漏程序...")
+        step6_verify_and_backfill(skip_downloads=True, skip_institutional=False)
+        print_flush("\n補漏程序執行完畢，請重新檢查資料完整性。")
 
 def delete_data_by_date():
     """刪除指定日期的資料"""

@@ -97,45 +97,63 @@ class InstitutionalFetcher(BaseFetcher):
             return []
     
     def fetch_tpex(self, date_str: str) -> List[InstitutionalData]:
-        """抓取上櫃法人資料 (使用新版 OpenAPI)"""
+        """抓取上櫃法人資料 (使用穩定 API)"""
         try:
-            resp = requests.get(self.API_TPEX, timeout=30, verify=False)
+            # 轉換日期為民國年格式
+            if len(date_str) == 8:
+                year = int(date_str[:4]) - 1911
+                date_tw = f"{year}/{date_str[4:6]}/{date_str[6:8]}"
+            else:
+                parts = date_str.split('-')
+                year = int(parts[0]) - 1911
+                date_tw = f"{year}/{parts[1]}/{parts[2]}"
+            
+            # 使用穩定的舊版 API
+            url = f"https://www.tpex.org.tw/web/stock/3insti/daily_trade/3itrade_hedge_result.php?l=zh-tw&d={date_tw}&se=EW&t=D&o=json"
+            
+            headers = {
+                'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36',
+                'Accept': 'application/json, text/javascript, */*; q=0.01',
+                'Referer': 'https://www.tpex.org.tw/'
+            }
+            
+            resp = requests.get(url, headers=headers, timeout=30, verify=False)
             
             if resp.status_code != 200:
                 self.log(f"[InstitutionalFetcher] TPEx API 回傳 {resp.status_code}")
                 return []
             
             data = resp.json()
-            if not data:
+            tables = data.get('tables', [])
+            if not tables:
+                return []
+            
+            # 第一個 table 包含法人買賣明細
+            table = tables[0]
+            rows = table.get('data', [])
+            if not rows:
                 return []
             
             result = []
-            # 新版 OpenAPI 回傳格式為 list of dict
-            # 欄位: "代號", "名稱", "外資及陸資(不含外資自營商)-買進股數", "外資及陸資(不含外資自營商)-賣出股數", "外資及陸資(不含外資自營商)-買賣超股數"
-            # "投信-買進股數", "投信-賣出股數", "投信-買賣超股數"
-            # "自營商-買進股數(自行買賣)", "自營商-賣出股數(自行買賣)", "自營商-買賣超股數(自行買賣)"
-            # "自營商-買進股數(避險)", "自營商-賣出股數(避險)", "自營商-買賣超股數(避險)"
-            for row in data:
+            # 欄位: 代號, 名稱, 外資買, 外資賣, 外資淨, 投信買, 投信賣, 投信淨, ...
+            for row in rows:
                 try:
-                    code = str(row.get('代號', '')).strip()
+                    code = str(row[0]).strip()
                     if len(code) != 4 or not code.isdigit():
                         continue
                     
                     # 外資
-                    f_buy = self._safe_int(row.get('外資及陸資(不含外資自營商)-買進股數', 0))
-                    f_sell = self._safe_int(row.get('外資及陸資(不含外資自營商)-賣出股數', 0))
+                    f_buy = self._safe_int(row[2])
+                    f_sell = self._safe_int(row[3])
                     
                     # 投信
-                    t_buy = self._safe_int(row.get('投信-買進股數', 0))
-                    t_sell = self._safe_int(row.get('投信-賣出股數', 0))
+                    t_buy = self._safe_int(row[5])
+                    t_sell = self._safe_int(row[6])
                     
-                    # 自營商 (自行 + 避險)
-                    d_buy_self = self._safe_int(row.get('自營商-買進股數(自行買賣)', 0))
-                    d_sell_self = self._safe_int(row.get('自營商-賣出股數(自行買賣)', 0))
-                    d_buy_hedge = self._safe_int(row.get('自營商-買進股數(避險)', 0))
-                    d_sell_hedge = self._safe_int(row.get('自營商-賣出股數(避險)', 0))
-                    d_buy = d_buy_self + d_buy_hedge
-                    d_sell = d_sell_self + d_sell_hedge
+                    # 自營商 (欄位可能是合計或自行+避險)
+                    # 根據 columnNum=25, 自營商可能在後面的欄位
+                    d_buy = self._safe_int(row[8]) if len(row) > 8 else 0
+                    d_sell = self._safe_int(row[9]) if len(row) > 9 else 0
                     
                     result.append(InstitutionalData(
                         code=code,

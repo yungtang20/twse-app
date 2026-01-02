@@ -108,6 +108,10 @@ class MarginData:
     short_buy: int          # 融券買進 (張)
     short_sell: int         # 融券賣出 (張)
     short_balance: int      # 融券餘額 (張)
+    margin_redemp: int = 0  # 融資現償 (張)
+    margin_util_rate: float = 0.0  # 融資使用率 (%)
+    short_redemp: int = 0   # 融券現償 (張)
+    short_util_rate: float = 0.0   # 融券使用率 (%)
     
     @property
     def date_int(self) -> int:
@@ -121,9 +125,13 @@ class MarginData:
             'margin_buy': self.margin_buy,
             'margin_sell': self.margin_sell,
             'margin_balance': self.margin_balance,
+            'margin_redemp': self.margin_redemp,
+            'margin_util_rate': self.margin_util_rate,
             'short_buy': self.short_buy,
             'short_sell': self.short_sell,
-            'short_balance': self.short_balance
+            'short_balance': self.short_balance,
+            'short_redemp': self.short_redemp,
+            'short_util_rate': self.short_util_rate
         }
 
 

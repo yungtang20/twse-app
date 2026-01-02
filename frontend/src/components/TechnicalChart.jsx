@@ -16,10 +16,59 @@ export function TechnicalChart({ code, name, onHoverData, isFullScreen = false }
     const subIndicators = ['KD', 'RSI', 'MACD', 'MFI', 'NVI/PVI', 'SMI/SVI', 'ADL', '外資', '投信', '自營', '集保', '大戶'];
     const [activeSubIndicator, setActiveSubIndicator] = useState('KD');
     const [activeSubIndicator2, setActiveSubIndicator2] = useState('MACD');
-    const [chartData, setChartData] = useState([]);
+    const [rawData, setRawData] = useState([]); // Store raw daily data
     const [hoverIdx, setHoverIdx] = useState(-1);
     const [shareholderThreshold, setShareholderThreshold] = useState(1000);
     const [debugStatus, setDebugStatus] = useState('Init...');
+
+    // Aggregation Logic
+    const chartData = useMemo(() => {
+        if (rawData.length === 0) return [];
+        if (period === '日') return rawData;
+
+        const grouped = [];
+        let currentGroup = null;
+
+        const getGroupKey = (d, p) => {
+            const date = new Date(d.time);
+            if (p === '週') {
+                // Get Monday of the week
+                const day = date.getDay();
+                const diff = date.getDate() - day + (day === 0 ? -6 : 1);
+                const monday = new Date(date.setDate(diff));
+                return `${monday.getFullYear()}-${String(monday.getMonth() + 1).padStart(2, '0')}-${String(monday.getDate()).padStart(2, '0')}`;
+            } else {
+                // Month
+                return `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, '0')}`;
+            }
+        };
+
+        rawData.forEach(d => {
+            const key = getGroupKey(d, period);
+            if (!currentGroup || currentGroup.key !== key) {
+                if (currentGroup) grouped.push(currentGroup.data);
+                currentGroup = {
+                    key,
+                    data: { ...d, volume: 0, amount: 0, foreign: 0, trust: 0, dealer: 0 }
+                };
+            }
+
+            // Aggregate
+            const g = currentGroup.data;
+            g.high = Math.max(g.high, d.high);
+            g.low = Math.min(g.low, d.low);
+            g.close = d.close; // Last close
+            g.volume += d.value; // Sum volume (using 'value' field which is volume)
+            g.amount += d.amount || 0;
+            g.foreign += d.foreign || 0;
+            g.trust += d.trust || 0;
+            g.dealer += d.dealer || 0;
+            g.time = d.time; // Update time to latest date in group
+            g.value = g.volume; // Sync value
+        });
+        if (currentGroup) grouped.push(currentGroup.data);
+        return grouped;
+    }, [rawData, period]);
 
     // Fetch Data
     useEffect(() => {
@@ -57,7 +106,7 @@ export function TechnicalChart({ code, name, onHoverData, isFullScreen = false }
                         dealer: d.dealer_buy
                     })).sort((a, b) => new Date(a.time) - new Date(b.time));
 
-                    setChartData(formatted);
+                    setRawData(formatted); // Set Raw Data
                     if (onHoverData && formatted.length > 0) {
                         onHoverData(formatted[formatted.length - 1], formatted.length > 1 ? formatted[formatted.length - 2] : null);
                     }
@@ -286,6 +335,10 @@ export function TechnicalChart({ code, name, onHoverData, isFullScreen = false }
     useEffect(() => {
         const refs = chartRefs.current;
         if (!refs.main || chartData.length === 0) return;
+
+        // Update dataRef for crosshair index lookup
+        dataRef.current = chartData;
+
         try {
             refs.candleSeries.setData(chartData);
             // Volume with color based on price change (up=red, down=green in Taiwan)

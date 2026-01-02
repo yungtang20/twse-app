@@ -692,7 +692,7 @@
 
 ## 驗證結果
 *   ✅ 大盤融資券 (0000): `margin_buy=27047938`, `margin_balance=346634298`
-*   ⚠ TPEx 法人: 網站暫時問題，API 回傳 HTML
+*   ✅ TPEx 法人: 748 筆 (使用穩定 API: `/web/stock/3insti/...`)
 
 ## 修改進度
 *   [x] 調查並找到新 API

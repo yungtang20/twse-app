@@ -1,63 +1,42 @@
 import requests
-import warnings
-warnings.filterwarnings("ignore")
+import ssl
+ssl._create_default_https_context = ssl._create_unverified_context
+requests.packages.urllib3.disable_warnings()
 
-# TPEx 櫃買中心開放資料 API 列表
-apis = [
-    # 行情相關
-    ("櫃買行情 (stk_quote)", "https://www.tpex.org.tw/web/stock/aftertrading/otc_quotes_no1430/stk43_result.php?l=zh-tw&d=114/12/18&o=json"),
-    ("櫃買指數報價", "https://www.tpex.org.tw/web/stock/aftertrading/otc_index_summary/OTC_index_summary_result.php?l=zh-tw&d=114/12/18&o=json"),
-    
-    # 法人相關
-    ("法人買賣超", "https://www.tpex.org.tw/web/stock/3insti/daily_trade/3itrade_hedge_result.php?l=zh-tw&d=114/12/18&t=D&o=json"),
-    
-    # 融資融券
-    ("融資融券 (margin)", "https://www.tpex.org.tw/web/stock/margin_trading/margin_balance/margin_bal_result.php?l=zh-tw&d=114/12/18&o=json"),
-    
-    # PE/PB (本益比)
-    ("本益比/殖利率", "https://www.tpex.org.tw/web/stock/aftertrading/peratio_analysis/pera_result.php?l=zh-tw&d=114/12/18&o=json"),
-    
-    # OpenAPI 對照
-    ("OpenAPI 行情", "https://www.tpex.org.tw/openapi/v1/tpex_mainboard_daily_close_quotes"),
-    ("OpenAPI 法人", "https://www.tpex.org.tw/openapi/v1/tpex_3insti_daily_trading"),
-    ("OpenAPI 融資", "https://www.tpex.org.tw/openapi/v1/tpex_mainboard_margin_balance"),
+headers = {
+    'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36',
+    'Accept': 'application/json, text/javascript, */*; q=0.01',
+    'Accept-Language': 'zh-TW,zh;q=0.9,en-US;q=0.8,en;q=0.7',
+    'Referer': 'https://www.tpex.org.tw/'
+}
+
+print("=== Testing Multiple TPEx Institutional API Endpoints ===")
+
+# 嘗試多種 API 格式
+urls = [
+    # 舊版 API (2024 前)
+    "https://www.tpex.org.tw/web/stock/3insti/daily_trade/3itrade_hedge_result.php?l=zh-tw&d=115/01/02&se=EW&t=D&o=json",
+    # 政府資料開放平臺格式
+    "https://www.tpex.org.tw/openapi/v1/tpex_mainboard_daily_institution_netbuy",
+    # 新版網頁 API
+    "https://www.tpex.org.tw/www/zh-tw/insti/allTradingInfo?d=115/01/02&t=D",
+    # 新版網頁 API (JSON格式)
+    "https://www.tpex.org.tw/www/zh-tw/insti/tradingInfo?d=115/01/02&t=D&o=json",
+    # RWD API (類似 TWSE)
+    "https://www.tpex.org.tw/rwd/zh-tw/insti/tradingInfo?response=json&date=115/01/02",
 ]
 
-with open("test_results.txt", "w", encoding="utf-8") as f:
-    f.write("=" * 70 + "\n")
-    f.write("櫃買中心 (TPEx) 開放資料 API 資料日期測試\n")
-    f.write("=" * 70 + "\n")
-    f.write(f"{'API 名稱':<30} {'日期':<15} {'筆數':<8} {'狀態'}\n")
-    f.write("-" * 70 + "\n")
-
-    for name, url in apis:
-        try:
-            r = requests.get(url, timeout=15, verify=False)
-            data = r.json()
-            
-            # 網頁版 API
-            if isinstance(data, dict):
-                if 'aaData' in data:
-                    count = len(data['aaData'])
-                    date = data.get('reportTitle', '-')[:15] if data.get('reportTitle') else data.get('date', '-')
-                    f.write(f"{name:<30} {date:<15} {count:<8} ✓\n")
-                elif 'iTotalRecords' in data:
-                    count = data.get('iTotalRecords', 0)
-                    date = '-'
-                    f.write(f"{name:<30} {date:<15} {count:<8} ✓\n")
-                else:
-                    f.write(f"{name:<30} {'-':<15} {0:<8} ⚠\n")
-            
-            # OpenAPI (list 格式)
-            elif isinstance(data, list) and data:
-                # 嘗試找日期欄位
-                date = data[0].get('Date', data[0].get('日期', 'N/A'))
-                count = len(data)
-                f.write(f"{name:<30} {date:<15} {count:<8} ✓\n")
-            else:
-                f.write(f"{name:<30} {'-':<15} {0:<8} ⚠ 無資料\n")
-                
-        except Exception as e:
-            f.write(f"{name:<30} {'-':<15} {0:<8} ✗ {str(e)[:20]}\n")
-
-    f.write("=" * 70 + "\n")
+for url in urls:
+    print(f"\n--- Testing: {url[:70]}... ---")
+    try:
+        resp = requests.get(url, headers=headers, timeout=15, verify=False)
+        print(f"Status: {resp.status_code}")
+        ctype = resp.headers.get('Content-Type', 'N/A')
+        print(f"Content-Type: {ctype}")
+        text = resp.text[:150]
+        if 'json' in ctype.lower() or text.startswith('[') or text.startswith('{'):
+            print(f"✓ JSON Response: {text}")
+        else:
+            print(f"✗ Not JSON: {text[:80]}...")
+    except Exception as e:
+        print(f"Error: {e}")
