@@ -163,49 +163,37 @@ export function TechnicalChart({ code, name, onHoverData, isFullScreen = false, 
     const isResizing = useRef(null);
     const lastTouchY = useRef(0);
 
-    // Full Screen Height Calculation
+    // Full Screen Height Calculation - Fill entire available space
     useEffect(() => {
         const calculateHeights = () => {
-            // Get container height or use window height for fullscreen
-            let availableHeight;
-            if (isFullScreen) {
-                const totalHeight = window.innerHeight;
-                const headerHeight = 40;
-                availableHeight = totalHeight - headerHeight;
-            } else {
-                // Normal mode - use parent container height, subtract header area (~130px) and nav (~64px)
-                const container = mainContainerRef.current?.parentElement?.parentElement;
-                const windowH = window.innerHeight;
-                // Estimate: window height - top padding (12px) - header (~130px) - bottom nav (~64px)
-                availableHeight = container?.clientHeight || (windowH - 12 - 130 - 64);
-            }
+            // Use window height minus top header (~28px) and bottom nav (~64px)
+            const windowH = window.innerHeight;
+            const headerHeight = 28; // Single row header
+            const navHeight = 64;    // Bottom navigation
+            const availableHeight = windowH - headerHeight - navHeight;
 
-            // Ratios: Main 62%, Vol 10%, Sub1 14%, Sub2 14%
-            const mainH = Math.floor(availableHeight * 0.62);
-            const volH = Math.floor(availableHeight * 0.10);
-            const subH = Math.floor(availableHeight * 0.14);
+            // Ratios: Main 55%, Vol 12%, Sub1 16%, Sub2 17%
+            const mainH = Math.floor(availableHeight * 0.55);
+            const volH = Math.floor(availableHeight * 0.12);
+            const sub1H = Math.floor(availableHeight * 0.16);
+            const sub2H = availableHeight - mainH - volH - sub1H; // Remaining space
 
-            setChartHeights({ main: mainH, volume: volH, sub1: subH, sub2: subH });
+            setChartHeights({ main: mainH, volume: volH, sub1: sub1H, sub2: sub2H });
         };
 
         // Initial calculation
         calculateHeights();
-        // Recalculate after a short delay for more accurate measurement
-        const timer = setTimeout(calculateHeights, 100);
+        // Recalculate after mount and on resize
+        const timer = setTimeout(calculateHeights, 50);
+        const timer2 = setTimeout(calculateHeights, 200);
         window.addEventListener('resize', calculateHeights);
-
-        if (isFullScreen) {
-            document.body.style.overflow = 'hidden';
-        }
 
         return () => {
             clearTimeout(timer);
+            clearTimeout(timer2);
             window.removeEventListener('resize', calculateHeights);
-            if (isFullScreen) {
-                document.body.style.overflow = '';
-            }
         };
-    }, [isFullScreen]);
+    }, []);
 
     // Resize Handlers
     const handleResizeStart = useCallback((section) => (e) => {
