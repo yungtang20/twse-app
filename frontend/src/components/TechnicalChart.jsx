@@ -193,41 +193,27 @@ export function TechnicalChart({ code, name, onHoverData, isFullScreen = false, 
 
     const dataRef = useRef([]);
 
-    // Chart Heights - Proportions: Main 62%, Volume 10%, Sub1 14%, Sub2 14%
-    const [chartHeights, setChartHeights] = useState({ main: 310, volume: 50, sub1: 70, sub2: 70 });
-    const isResizing = useRef(null);
-    const lastTouchY = useRef(0);
+    // Chart Heights - Removed fixed heights, using Flexbox
+    // const [chartHeights, setChartHeights] = useState({ main: 310, volume: 50, sub1: 70, sub2: 70 });
 
-    // Full Screen Height Calculation - Fill entire available space
+    // Force Data on Mount (Debug)
     useEffect(() => {
-        const calculateHeights = () => {
-            // Use window height minus top header (~20px) and bottom nav (~40px)
-            const windowH = window.innerHeight;
-            const headerHeight = 20; // Minimal header
-            const navHeight = 40;    // Compact Bottom navigation
-            const availableHeight = windowH - headerHeight - navHeight;
-
-            // Ratios: Main 55%, Vol 12%, Sub1 16%, Sub2 17%
-            const mainH = Math.floor(availableHeight * 0.55);
-            const volH = Math.floor(availableHeight * 0.12);
-            const sub1H = Math.floor(availableHeight * 0.16);
-            const sub2H = availableHeight - mainH - volH - sub1H; // Remaining space
-
-            setChartHeights({ main: mainH, volume: volH, sub1: sub1H, sub2: sub2H });
-        };
-
-        // Initial calculation
-        calculateHeights();
-        // Recalculate after mount and on resize
-        const timer = setTimeout(calculateHeights, 50);
-        const timer2 = setTimeout(calculateHeights, 200);
-        window.addEventListener('resize', calculateHeights);
-
-        return () => {
-            clearTimeout(timer);
-            clearTimeout(timer2);
-            window.removeEventListener('resize', calculateHeights);
-        };
+        if (rawData.length === 0) {
+            const mock = [
+                { date_int: 20240101, open: 100, high: 105, low: 95, close: 102, volume: 5000, amount: 500000, tdcc_count: 1000, large_shareholder_pct: 50, foreign_buy: 100, trust_buy: 50, dealer_buy: 10 },
+                { date_int: 20240102, open: 102, high: 108, low: 100, close: 106, volume: 6000, amount: 600000, tdcc_count: 1000, large_shareholder_pct: 50, foreign_buy: 100, trust_buy: 50, dealer_buy: 10 },
+                { date_int: 20240103, open: 106, high: 110, low: 104, close: 108, volume: 7000, amount: 700000, tdcc_count: 1000, large_shareholder_pct: 50, foreign_buy: 100, trust_buy: 50, dealer_buy: 10 },
+                { date_int: 20240104, open: 108, high: 112, low: 105, close: 110, volume: 8000, amount: 800000, tdcc_count: 1000, large_shareholder_pct: 50, foreign_buy: 100, trust_buy: 50, dealer_buy: 10 },
+                { date_int: 20240105, open: 110, high: 115, low: 108, close: 112, volume: 9000, amount: 900000, tdcc_count: 1000, large_shareholder_pct: 50, foreign_buy: 100, trust_buy: 50, dealer_buy: 10 },
+            ];
+            const formatted = mock.map(d => ({
+                time: `${String(d.date_int).slice(0, 4)}-${String(d.date_int).slice(4, 6)}-${String(d.date_int).slice(6, 8)}`,
+                open: d.open, high: d.high, low: d.low, close: d.close, value: d.volume,
+                amount: d.amount, tdcc: d.tdcc_count, large: d.large_shareholder_pct,
+                foreign: d.foreign_buy, trust: d.trust_buy, dealer: d.dealer_buy
+            }));
+            setRawData(formatted);
+        }
     }, []);
 
     // Resize Handlers
@@ -326,17 +312,17 @@ export function TechnicalChart({ code, name, onHoverData, isFullScreen = false, 
             handleScroll: { vertTouchDrag: false, pressedMouseMove: true, horzTouchDrag: true },
         });
 
-        const mainChart = createChart(mainContainerRef.current, chartOpts(chartHeights.main));
+        const mainChart = createChart(mainContainerRef.current, chartOpts(mainContainerRef.current.clientHeight));
         const candleSeries = mainChart.addSeries(CandlestickSeries, { upColor: '#ef4444', downColor: '#22c55e', borderUpColor: '#ef4444', borderDownColor: '#22c55e', wickUpColor: '#ef4444', wickDownColor: '#22c55e', lastValueVisible: false, priceLineVisible: false });
 
         const volumeFormatter = (val) => val >= 100000000 ? (val / 100000000).toFixed(1) + '億' : val >= 10000 ? (val / 10000).toFixed(0) + '萬' : val.toFixed(0);
-        const volumeChart = createChart(volumeContainerRef.current, { ...chartOpts(chartHeights.volume), localization: { priceFormatter: volumeFormatter } });
+        const volumeChart = createChart(volumeContainerRef.current, { ...chartOpts(volumeContainerRef.current.clientHeight), localization: { priceFormatter: volumeFormatter } });
         const volumeSeries = volumeChart.addSeries(HistogramSeries, { priceFormat: { type: 'custom', formatter: volumeFormatter, minMove: 1 }, priceScaleId: '', priceLineVisible: false, lastValueVisible: false });
         const volMA5Series = volumeChart.addSeries(LineSeries, { color: '#3b82f6', lineWidth: 1, priceLineVisible: false, lastValueVisible: false });
         const volMA60Series = volumeChart.addSeries(LineSeries, { color: '#a855f7', lineWidth: 1, priceLineVisible: false, lastValueVisible: false });
 
-        const subChart = createChart(subChartContainerRef.current, chartOpts(chartHeights.sub1, false));
-        const subChart2 = createChart(subChartContainerRef2.current, chartOpts(chartHeights.sub2, true));
+        const subChart = createChart(subChartContainerRef.current, chartOpts(subChartContainerRef.current.clientHeight, false));
+        const subChart2 = createChart(subChartContainerRef2.current, chartOpts(subChartContainerRef2.current.clientHeight, true));
 
         chartRefs.current = { main: mainChart, volume: volumeChart, subChart, subChart2, candleSeries, volumeSeries, volMA5Series, volMA60Series, indicatorSeries: {}, subSeries: {}, subSeries2: {}, isDisposed: false };
 
@@ -363,11 +349,25 @@ export function TechnicalChart({ code, name, onHoverData, isFullScreen = false, 
         });
 
         const resizeObserver = new ResizeObserver(entries => {
-            if (entries.length === 0 || !entries[0].contentRect) return;
-            const newWidth = entries[0].contentRect.width;
-            allCharts.forEach(c => c.applyOptions({ width: newWidth }));
+            entries.forEach(entry => {
+                const { width, height } = entry.contentRect;
+                if (entry.target === mainContainerRef.current && chartRefs.current.main) {
+                    chartRefs.current.main.applyOptions({ width, height });
+                    // Sync width to others
+                    [chartRefs.current.volume, chartRefs.current.subChart, chartRefs.current.subChart2].forEach(c => c?.applyOptions({ width }));
+                } else if (entry.target === volumeContainerRef.current && chartRefs.current.volume) {
+                    chartRefs.current.volume.applyOptions({ height });
+                } else if (entry.target === subChartContainerRef.current && chartRefs.current.subChart) {
+                    chartRefs.current.subChart.applyOptions({ height });
+                } else if (entry.target === subChartContainerRef2.current && chartRefs.current.subChart2) {
+                    chartRefs.current.subChart2.applyOptions({ height });
+                }
+            });
         });
         resizeObserver.observe(mainContainerRef.current);
+        resizeObserver.observe(volumeContainerRef.current);
+        resizeObserver.observe(subChartContainerRef.current);
+        resizeObserver.observe(subChartContainerRef2.current);
 
         return () => {
             chartRefs.current.isDisposed = true;
@@ -377,27 +377,8 @@ export function TechnicalChart({ code, name, onHoverData, isFullScreen = false, 
         };
     }, []); // Keep empty dependency to run once on mount, but we handle updates below
 
-    // Update Chart Sizes when chartHeights changes
-    useEffect(() => {
-        const refs = chartRefs.current;
-        if (refs.main) {
-            refs.main.applyOptions({ height: chartHeights.main });
-            refs.volume.applyOptions({ height: chartHeights.volume });
-            refs.subChart.applyOptions({ height: chartHeights.sub1 });
-            refs.subChart2.applyOptions({ height: chartHeights.sub2 });
-
-            // Force resize width as well just in case
-            if (mainContainerRef.current) {
-                const w = mainContainerRef.current.clientWidth;
-                if (w > 0) {
-                    refs.main.applyOptions({ width: w });
-                    refs.volume.applyOptions({ width: w });
-                    refs.subChart.applyOptions({ width: w });
-                    refs.subChart2.applyOptions({ width: w });
-                }
-            }
-        }
-    }, [chartHeights]);
+    // Update Chart Sizes - Removed manual effect, handled by ResizeObserver
+    // useEffect(() => { ... }, [chartHeights]);
 
     // Update Data
     useEffect(() => {
@@ -718,7 +699,7 @@ export function TechnicalChart({ code, name, onHoverData, isFullScreen = false, 
             </div>
 
             {/* Main Chart with Overlay */}
-            <div className="relative flex-1 min-h-0" style={{ height: chartHeights.main }}>
+            <div className="flex-[3] relative min-h-0">
                 {renderIndicatorOverlay()}
                 <div ref={mainContainerRef} className="w-full h-full rounded overflow-hidden" />
 
@@ -742,7 +723,7 @@ export function TechnicalChart({ code, name, onHoverData, isFullScreen = false, 
             </div>
 
             {/* Volume Section */}
-            <div className="mt-0 relative" style={{ height: chartHeights.volume }}>
+            <div className="flex-1 relative min-h-0">
                 <div className="flex gap-2 text-[9px] text-slate-400 px-1 absolute top-0 left-0 z-10 pointer-events-none">
                     <span className="text-blue-400 bg-slate-900/40 px-0.5 rounded backdrop-blur-[1px]">MA5:{volumeMA5[hoverIdx] ? (volumeMA5[hoverIdx] / 10000).toFixed(0) : '-'}</span>
                     <span className="text-purple-400 bg-slate-900/40 px-0.5 rounded backdrop-blur-[1px]">MA60:{volumeMA60[hoverIdx] ? (volumeMA60[hoverIdx] / 10000).toFixed(0) : '-'}</span>
@@ -757,7 +738,7 @@ export function TechnicalChart({ code, name, onHoverData, isFullScreen = false, 
             </div>
 
             {/* Sub Chart 1 */}
-            <div className="mt-0 relative" style={{ height: chartHeights.sub1 }}>
+            <div className="flex-1 relative min-h-0">
                 <div className="flex gap-1 px-1 items-center absolute top-0 left-0 z-10">
                     <select value={activeSubIndicator} onChange={(e) => setActiveSubIndicator(e.target.value)} className="bg-slate-800/60 text-white text-[9px] px-0.5 py-0 rounded border border-slate-700/50 focus:outline-none backdrop-blur-[1px]">
                         {subIndicators.map(ind => <option key={ind} value={ind}>{ind}</option>)}
@@ -780,7 +761,7 @@ export function TechnicalChart({ code, name, onHoverData, isFullScreen = false, 
             </div>
 
             {/* Sub Chart 2 - fills remaining space */}
-            <div className="mt-0 relative flex-1" style={{ minHeight: chartHeights.sub2 }}>
+            <div className="flex-1 relative min-h-0">
                 <div className="flex gap-1 px-1 items-center absolute top-0 left-0 z-10">
                     <select value={activeSubIndicator2} onChange={(e) => setActiveSubIndicator2(e.target.value)} className="bg-slate-800/60 text-white text-[9px] px-0.5 py-0 rounded border border-slate-700/50 focus:outline-none backdrop-blur-[1px]">
                         {subIndicators.map(ind => <option key={ind} value={ind}>{ind}</option>)}
