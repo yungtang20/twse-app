@@ -42,7 +42,7 @@ export const Rankings = () => {
                 // Fallback to stock_snapshot
                 const { data: snapData, error: snapError } = await supabase
                     .from('stock_snapshot')
-                    .select('code, name, close, change_pct, volume, foreign_buy, trust_buy, dealer_buy')
+                    .select('code, name, close, volume, foreign_buy, trust_buy, dealer_buy')
                     .order('foreign_buy', { ascending: sortType === 'sell' })
                     .range(offset, offset + limit - 1);
 
@@ -70,7 +70,7 @@ export const Rankings = () => {
             // Get institutional data for latest date
             const { data, error } = await supabase
                 .from('institutional_investors')
-                .select('code, name, foreign_buy, foreign_sell, trust_buy, trust_sell, dealer_buy, dealer_sell')
+                .select('code, foreign_buy, foreign_sell, trust_buy, trust_sell, dealer_buy, dealer_sell')
                 .eq('date_int', latestDate)
                 .order(sortType === 'buy' ? 'foreign_buy' : 'foreign_sell', { ascending: sortType === 'sell' })
                 .range(offset, offset + limit - 1);

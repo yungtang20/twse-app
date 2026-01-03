@@ -69,7 +69,7 @@ export async function getInstitutionalRankings(type = 'foreign', days = 1, limit
 
     const { data, error } = await supabase
         .from('stock_snapshot')
-        .select('code, name, close, change_pct, foreign_buy, trust_buy, dealer_buy')
+        .select('code, name, close, foreign_buy, trust_buy, dealer_buy')
         .order(column, { ascending: false })
         .limit(limit);
 
