@@ -166,10 +166,10 @@ export function TechnicalChart({ code, name, onHoverData, isFullScreen = false, 
     // Full Screen Height Calculation - Fill entire available space
     useEffect(() => {
         const calculateHeights = () => {
-            // Use window height minus top header (~28px) and bottom nav (~64px)
+            // Use window height minus top header (~20px) and bottom nav (~60px)
             const windowH = window.innerHeight;
-            const headerHeight = 28; // Single row header
-            const navHeight = 64;    // Bottom navigation
+            const headerHeight = 20; // Minimal header
+            const navHeight = 60;    // Bottom navigation
             const availableHeight = windowH - headerHeight - navHeight;
 
             // Ratios: Main 55%, Vol 12%, Sub1 16%, Sub2 17%
@@ -275,10 +275,11 @@ export function TechnicalChart({ code, name, onHoverData, isFullScreen = false, 
             layout: { background: { type: 'solid', color: '#0f172a' }, textColor: '#94a3b8' },
             grid: { vertLines: { color: '#1e293b' }, horzLines: { color: '#1e293b' } },
             crosshair: { mode: 0 },
-            rightPriceScale: { borderColor: '#334155', scaleMargins: { top: 0.1, bottom: 0.1 }, minimumWidth: 60, width: 60 }, // Consistent scale width
-            timeScale: { visible: showTime, borderColor: '#334155', timeVisible: true, rightOffset: 5, fixRightEdge: true },
-            handleScale: { axisPressedMouseMove: { time: true, price: false } }, // Disable vertical scaling by user to keep fixed range
-            handleScroll: { vertTouchDrag: false, pressedMouseMove: true, horzTouchDrag: true }, // Disable vertical scroll
+            rightPriceScale: { borderColor: '#334155', scaleMargins: { top: 0.02, bottom: 0.02 }, minimumWidth: 45, autoScale: true },
+            leftPriceScale: { visible: false },
+            timeScale: { visible: showTime, borderColor: '#334155', timeVisible: true, rightOffset: 2, fixRightEdge: true, barSpacing: 6 },
+            handleScale: { axisPressedMouseMove: { time: true, price: false } },
+            handleScroll: { vertTouchDrag: false, pressedMouseMove: true, horzTouchDrag: true },
         });
         const mainChart = createChart(mainContainerRef.current, chartOpts(chartHeights.main));
         const candleSeries = mainChart.addSeries(CandlestickSeries, { upColor: '#ef4444', downColor: '#22c55e', borderUpColor: '#ef4444', borderDownColor: '#22c55e', wickUpColor: '#ef4444', wickDownColor: '#22c55e', lastValueVisible: false, priceLineVisible: false });
@@ -556,8 +557,8 @@ export function TechnicalChart({ code, name, onHoverData, isFullScreen = false, 
 
     return (
         <div className="w-full h-full flex flex-col overflow-hidden">
-            {/* Header: Stock name + Indicators + Period */}
-            <div className="bg-slate-800 p-1 flex items-center justify-between shrink-0 gap-1">
+            {/* Header: Stock name + Indicators + Period - minimal height */}
+            <div className="bg-slate-800 px-0.5 py-px flex items-center justify-between shrink-0 gap-0.5">
                 {/* Stock name with click to search */}
                 <div className="relative">
                     {showSearch ? (
