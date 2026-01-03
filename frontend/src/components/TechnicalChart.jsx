@@ -641,8 +641,8 @@ export function TechnicalChart({ code, name, onHoverData, isFullScreen = false }
                 <div className="w-6 h-0.5 bg-slate-600 rounded-full" />
             </div>
 
-            {/* Sub Chart 2 */}
-            <div className="mt-0 relative" style={{ height: chartHeights.sub2 }}>
+            {/* Sub Chart 2 - fills remaining space */}
+            <div className="mt-0 relative flex-1" style={{ minHeight: chartHeights.sub2 }}>
                 <div className="flex gap-1 px-1 items-center absolute top-0 left-0 z-10">
                     <select value={activeSubIndicator2} onChange={(e) => setActiveSubIndicator2(e.target.value)} className="bg-slate-800/60 text-white text-[9px] px-0.5 py-0 rounded border border-slate-700/50 focus:outline-none backdrop-blur-[1px]">
                         {subIndicators.map(ind => <option key={ind} value={ind}>{ind}</option>)}
@@ -659,10 +659,6 @@ export function TechnicalChart({ code, name, onHoverData, isFullScreen = false }
                 <div ref={subChartContainerRef2} className="w-full h-full rounded overflow-hidden" />
             </div>
 
-            {/* Bottom Resizer (Optional, maybe remove to save space) */}
-            <div className="h-1 bg-slate-800 hover:bg-blue-500 cursor-row-resize flex justify-center items-center shrink-0" onMouseDown={handleResizeStart('sub2-bottom')} onTouchStart={handleTouchStart('sub2-bottom')}>
-                <div className="w-6 h-0.5 bg-slate-600 rounded-full" />
-            </div>
         </div>
     );
 }
