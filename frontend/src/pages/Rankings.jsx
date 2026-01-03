@@ -28,6 +28,8 @@ export const Rankings = () => {
             const offset = (page - 1) * limit;
 
             console.log('Fetching rankings from Supabase...');
+            const { data: debugData, error: debugError } = await supabase.from('institutional_investors').select('count');
+            console.log('Debug institutional count:', debugData, debugError);
 
             // Get latest date from institutional_investors
             const { data: latestData, error: latestError } = await supabase

@@ -112,7 +112,7 @@ export function TechnicalChart({ code, name, onHoverData, isFullScreen = false, 
                 // Special handling for 0000 (TAIEX) or if code is missing
                 if (code === '0000' || !code) {
                     console.warn(`Generating mock data for ${code}`);
-                    historyData = generateMockData(23000, 500);
+                    historyData = generateMockData(23000, 2000);
                 } else {
                     // Use Supabase client directly for production compatibility
                     historyData = await getStockHistory(code, 500);
