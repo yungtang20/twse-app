@@ -66,7 +66,7 @@ export const Scan = () => {
             // Step 1: Get stock list from stock_snapshot with basic filters
             const { data: stocks, error: stockError } = await supabase
                 .from('stock_snapshot')
-                .select('code, name, close, change_pct, volume, foreign_buy, trust_buy, dealer_buy')
+                .select('code, name, close, volume, foreign_buy, trust_buy, dealer_buy')
                 .gte('volume', minVol * 1000)
                 .gte('close', minPrice)
                 .order('volume', { ascending: false })
