@@ -348,7 +348,7 @@ export const Scan = () => {
     };
 
     return (
-        <div className={`bg-slate-900 h-screen overflow-auto p-4 pb-20 text-slate-300 font-sans ${isMobileView ? 'max-w-md mx-auto' : ''}`}>
+        <div className={`bg-slate-900 h-screen overflow-auto p-4 pb-10 text-slate-300 font-sans ${isMobileView ? 'max-w-md mx-auto' : ''}`}>
             {/* Header */}
             <div className="flex justify-between items-center mb-4">
                 <div>

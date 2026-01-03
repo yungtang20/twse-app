@@ -266,10 +266,19 @@ export function TechnicalChart({ code, name, onHoverData, isFullScreen = false, 
 
     // ...
 
+    // Create Charts
     useEffect(() => {
         if (!mainContainerRef.current || !volumeContainerRef.current || !subChartContainerRef.current || !subChartContainerRef2.current) return;
-        if (chartRefs.current.main) return;
-        const width = mainContainerRef.current.clientWidth || 800;
+
+        // Dispose old charts if any
+        if (chartRefs.current.main) {
+            chartRefs.current.main.remove();
+            chartRefs.current.volume.remove();
+            chartRefs.current.subChart.remove();
+            chartRefs.current.subChart2.remove();
+        }
+
+        const width = mainContainerRef.current.clientWidth || window.innerWidth;
         const chartOpts = (h, showTime = false) => ({
             width, height: h,
             layout: { background: { type: 'solid', color: '#0f172a' }, textColor: '#94a3b8' },
@@ -281,17 +290,24 @@ export function TechnicalChart({ code, name, onHoverData, isFullScreen = false, 
             handleScale: { axisPressedMouseMove: { time: true, price: false } },
             handleScroll: { vertTouchDrag: false, pressedMouseMove: true, horzTouchDrag: true },
         });
+
         const mainChart = createChart(mainContainerRef.current, chartOpts(chartHeights.main));
         const candleSeries = mainChart.addSeries(CandlestickSeries, { upColor: '#ef4444', downColor: '#22c55e', borderUpColor: '#ef4444', borderDownColor: '#22c55e', wickUpColor: '#ef4444', wickDownColor: '#22c55e', lastValueVisible: false, priceLineVisible: false });
+
         const volumeFormatter = (val) => val >= 100000000 ? (val / 100000000).toFixed(1) + '億' : val >= 10000 ? (val / 10000).toFixed(0) + '萬' : val.toFixed(0);
         const volumeChart = createChart(volumeContainerRef.current, { ...chartOpts(chartHeights.volume), localization: { priceFormatter: volumeFormatter } });
         const volumeSeries = volumeChart.addSeries(HistogramSeries, { priceFormat: { type: 'custom', formatter: volumeFormatter, minMove: 1 }, priceScaleId: '', priceLineVisible: false, lastValueVisible: false });
         const volMA5Series = volumeChart.addSeries(LineSeries, { color: '#3b82f6', lineWidth: 1, priceLineVisible: false, lastValueVisible: false });
         const volMA60Series = volumeChart.addSeries(LineSeries, { color: '#a855f7', lineWidth: 1, priceLineVisible: false, lastValueVisible: false });
+
         const subChart = createChart(subChartContainerRef.current, chartOpts(chartHeights.sub1, false));
         const subChart2 = createChart(subChartContainerRef2.current, chartOpts(chartHeights.sub2, true));
+
         chartRefs.current = { main: mainChart, volume: volumeChart, subChart, subChart2, candleSeries, volumeSeries, volMA5Series, volMA60Series, indicatorSeries: {}, subSeries: {}, subSeries2: {}, isDisposed: false };
+
         const allCharts = [mainChart, volumeChart, subChart, subChart2];
+
+        // Sync Crosshair
         allCharts.forEach(chart => {
             chart.subscribeCrosshairMove(p => {
                 if (chartRefs.current.isDisposed) return;
@@ -303,33 +319,52 @@ export function TechnicalChart({ code, name, onHoverData, isFullScreen = false, 
                 }
             });
         });
+
+        // Sync TimeScale
         allCharts.forEach(src => {
             src.timeScale().subscribeVisibleLogicalRangeChange(r => {
                 if (r && !chartRefs.current.isDisposed) allCharts.forEach(c => { if (c !== src) try { c.timeScale().setVisibleLogicalRange(r); } catch { } });
             });
         });
+
         const resizeObserver = new ResizeObserver(entries => {
             if (entries.length === 0 || !entries[0].contentRect) return;
             const newWidth = entries[0].contentRect.width;
             allCharts.forEach(c => c.applyOptions({ width: newWidth }));
         });
         resizeObserver.observe(mainContainerRef.current);
+
         return () => {
             chartRefs.current.isDisposed = true;
             resizeObserver.disconnect();
             allCharts.forEach(c => c.remove());
             chartRefs.current.main = null;
         };
-    }, []);
+    }, []); // Keep empty dependency to run once on mount, but we handle updates below
 
+    // Update Chart Sizes when chartHeights changes
     useEffect(() => {
         const refs = chartRefs.current;
-        if (refs.main) refs.main.applyOptions({ height: chartHeights.main });
-        if (refs.volume) refs.volume.applyOptions({ height: chartHeights.volume });
-        if (refs.subChart) refs.subChart.applyOptions({ height: chartHeights.sub1 });
-        if (refs.subChart2) refs.subChart2.applyOptions({ height: chartHeights.sub2 });
+        if (refs.main) {
+            refs.main.applyOptions({ height: chartHeights.main });
+            refs.volume.applyOptions({ height: chartHeights.volume });
+            refs.subChart.applyOptions({ height: chartHeights.sub1 });
+            refs.subChart2.applyOptions({ height: chartHeights.sub2 });
+
+            // Force resize width as well just in case
+            if (mainContainerRef.current) {
+                const w = mainContainerRef.current.clientWidth;
+                if (w > 0) {
+                    refs.main.applyOptions({ width: w });
+                    refs.volume.applyOptions({ width: w });
+                    refs.subChart.applyOptions({ width: w });
+                    refs.subChart2.applyOptions({ width: w });
+                }
+            }
+        }
     }, [chartHeights]);
 
+    // Update Data
     useEffect(() => {
         const refs = chartRefs.current;
         if (!refs.main || chartData.length === 0) return;
@@ -339,6 +374,7 @@ export function TechnicalChart({ code, name, onHoverData, isFullScreen = false, 
 
         try {
             refs.candleSeries.setData(chartData);
+
             // Volume with color based on price change (up=red, down=green in Taiwan)
             const volumeData = chartData.map(d => ({
                 time: d.time,
@@ -348,14 +384,22 @@ export function TechnicalChart({ code, name, onHoverData, isFullScreen = false, 
             refs.volumeSeries.setData(volumeData);
             refs.volMA5Series.setData(volumeMA5.map((v, i) => v !== null ? { time: chartData[i].time, value: v } : null).filter(Boolean));
             refs.volMA60Series.setData(volumeMA60.map((v, i) => v !== null ? { time: chartData[i].time, value: v } : null).filter(Boolean));
+
+            // Fit content to ensure data is visible
             setTimeout(() => {
-                try {
-                    const total = chartData.length;
-                    const range = 60;
-                    refs.main.timeScale().setVisibleLogicalRange({ from: total - range, to: total });
-                } catch (e) { }
-            }, 300);
-        } catch (e) { }
+                if (refs.main) {
+                    refs.main.timeScale().fitContent();
+                    // Or set visible range to last 60 bars if data is large
+                    if (chartData.length > 60) {
+                        const total = chartData.length;
+                        refs.main.timeScale().setVisibleLogicalRange({ from: total - 60, to: total });
+                    }
+                }
+            }, 100);
+
+        } catch (e) {
+            console.error("Set data error", e);
+        }
     }, [chartData, volumeMA5, volumeMA60]);
 
     useEffect(() => {
@@ -642,6 +686,8 @@ export function TechnicalChart({ code, name, onHoverData, isFullScreen = false, 
             <div className="relative flex-1 min-h-0" style={{ height: chartHeights.main }}>
                 {renderIndicatorOverlay()}
                 <div ref={mainContainerRef} className="w-full h-full rounded overflow-hidden" />
+                {/* Minimal Status Dot */}
+                <div className={`absolute bottom-1 right-1 w-1.5 h-1.5 rounded-full ${rawData.length > 0 ? 'bg-green-500/50' : 'bg-red-500/50'} pointer-events-none`} />
             </div>
 
             {/* Resizer */}
