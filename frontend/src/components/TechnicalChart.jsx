@@ -78,15 +78,32 @@ export function TechnicalChart({ code, name, onHoverData, isFullScreen = false, 
             return;
         }
 
-        const generateMockData = (basePrice = 15000, days = 100) => {
-            // Hardcoded data to ensure validity
-            return [
-                { date_int: 20240101, open: 100, high: 105, low: 95, close: 102, volume: 5000, amount: 500000, tdcc_count: 1000, large_shareholder_pct: 50, foreign_buy: 100, trust_buy: 50, dealer_buy: 10 },
-                { date_int: 20240102, open: 102, high: 108, low: 100, close: 106, volume: 6000, amount: 600000, tdcc_count: 1000, large_shareholder_pct: 50, foreign_buy: 100, trust_buy: 50, dealer_buy: 10 },
-                { date_int: 20240103, open: 106, high: 110, low: 104, close: 108, volume: 7000, amount: 700000, tdcc_count: 1000, large_shareholder_pct: 50, foreign_buy: 100, trust_buy: 50, dealer_buy: 10 },
-                { date_int: 20240104, open: 108, high: 112, low: 105, close: 110, volume: 8000, amount: 800000, tdcc_count: 1000, large_shareholder_pct: 50, foreign_buy: 100, trust_buy: 50, dealer_buy: 10 },
-                { date_int: 20240105, open: 110, high: 115, low: 108, close: 112, volume: 9000, amount: 900000, tdcc_count: 1000, large_shareholder_pct: 50, foreign_buy: 100, trust_buy: 50, dealer_buy: 10 },
-            ];
+        const generateMockData = (basePrice = 15000, days = 120) => {
+            const mockData = [];
+            let price = basePrice;
+            const now = new Date();
+            for (let i = 0; i < days; i++) {
+                const date = new Date(now);
+                date.setDate(date.getDate() - (days - i));
+                const dateInt = parseInt(date.toISOString().slice(0, 10).replace(/-/g, ''));
+                const change = (Math.random() - 0.5) * (price * 0.03);
+                const open = price;
+                const close = price + change;
+                const high = Math.max(open, close) + Math.random() * (price * 0.01);
+                const low = Math.min(open, close) - Math.random() * (price * 0.01);
+                const volume = Math.floor(Math.random() * 5000000) + 2000000;
+                mockData.push({
+                    date_int: dateInt,
+                    open, high, low, close, volume,
+                    amount: volume * close,
+                    tdcc_count: 1000, large_shareholder_pct: 50,
+                    foreign_buy: Math.floor((Math.random() - 0.5) * 10000),
+                    trust_buy: Math.floor((Math.random() - 0.5) * 5000),
+                    dealer_buy: Math.floor((Math.random() - 0.5) * 2000)
+                });
+                price = close;
+            }
+            return mockData;
         };
 
         const fetchData = async () => {
@@ -193,88 +210,7 @@ export function TechnicalChart({ code, name, onHoverData, isFullScreen = false, 
 
     const dataRef = useRef([]);
 
-    // Chart Heights - Removed fixed heights, using Flexbox
-    // const [chartHeights, setChartHeights] = useState({ main: 310, volume: 50, sub1: 70, sub2: 70 });
-
-    // Force Data on Mount (Debug)
-    useEffect(() => {
-        if (rawData.length === 0) {
-            const mock = [
-                { date_int: 20240101, open: 100, high: 105, low: 95, close: 102, volume: 5000, amount: 500000, tdcc_count: 1000, large_shareholder_pct: 50, foreign_buy: 100, trust_buy: 50, dealer_buy: 10 },
-                { date_int: 20240102, open: 102, high: 108, low: 100, close: 106, volume: 6000, amount: 600000, tdcc_count: 1000, large_shareholder_pct: 50, foreign_buy: 100, trust_buy: 50, dealer_buy: 10 },
-                { date_int: 20240103, open: 106, high: 110, low: 104, close: 108, volume: 7000, amount: 700000, tdcc_count: 1000, large_shareholder_pct: 50, foreign_buy: 100, trust_buy: 50, dealer_buy: 10 },
-                { date_int: 20240104, open: 108, high: 112, low: 105, close: 110, volume: 8000, amount: 800000, tdcc_count: 1000, large_shareholder_pct: 50, foreign_buy: 100, trust_buy: 50, dealer_buy: 10 },
-                { date_int: 20240105, open: 110, high: 115, low: 108, close: 112, volume: 9000, amount: 900000, tdcc_count: 1000, large_shareholder_pct: 50, foreign_buy: 100, trust_buy: 50, dealer_buy: 10 },
-            ];
-            const formatted = mock.map(d => ({
-                time: `${String(d.date_int).slice(0, 4)}-${String(d.date_int).slice(4, 6)}-${String(d.date_int).slice(6, 8)}`,
-                open: d.open, high: d.high, low: d.low, close: d.close, value: d.volume,
-                amount: d.amount, tdcc: d.tdcc_count, large: d.large_shareholder_pct,
-                foreign: d.foreign_buy, trust: d.trust_buy, dealer: d.dealer_buy
-            }));
-            setRawData(formatted);
-        }
-    }, []);
-
-    // Resize Handlers
-    const handleResizeStart = useCallback((section) => (e) => {
-        e.preventDefault();
-        isResizing.current = section;
-        document.addEventListener('mousemove', handleMouseMove);
-        document.addEventListener('mouseup', handleMouseUp);
-    }, []);
-
-    const handleTouchStart = useCallback((section) => (e) => {
-        isResizing.current = section;
-        if (e.touches?.[0]) lastTouchY.current = e.touches[0].clientY;
-        document.addEventListener('touchmove', handleTouchMove, { passive: false });
-        document.addEventListener('touchend', handleTouchEnd);
-    }, []);
-
-    const handleMouseMove = useCallback((e) => {
-        if (!isResizing.current) return;
-        const delta = e.movementY;
-        adjustHeights(isResizing.current, delta);
-    }, []);
-
-    const handleMouseUp = useCallback(() => {
-        isResizing.current = null;
-        document.removeEventListener('mousemove', handleMouseMove);
-        document.removeEventListener('mouseup', handleMouseUp);
-    }, [handleMouseMove]);
-
-    const handleTouchMove = useCallback((e) => {
-        if (!isResizing.current || !e.touches?.[0]) return;
-        e.preventDefault();
-        const y = e.touches[0].clientY;
-        const delta = y - lastTouchY.current;
-        lastTouchY.current = y;
-        adjustHeights(isResizing.current, delta);
-    }, []);
-
-    const handleTouchEnd = useCallback(() => {
-        isResizing.current = null;
-        document.removeEventListener('touchmove', handleTouchMove);
-        document.removeEventListener('touchend', handleTouchEnd);
-    }, [handleTouchMove]);
-
-    const adjustHeights = useCallback((section, delta) => {
-        setChartHeights(prev => {
-            const minH = 40;
-            const n = { ...prev };
-            if (section === 'main-vol') {
-                n.main = Math.max(minH, prev.main + delta);
-                n.volume = Math.max(minH, prev.volume - delta);
-            } else if (section === 'vol-sub1') {
-                n.volume = Math.max(minH, prev.volume + delta);
-                n.sub1 = Math.max(minH, prev.sub1 - delta);
-            } else if (section === 'sub1-sub2') {
-                n.sub1 = Math.max(minH, prev.sub1 + delta);
-                n.sub2 = Math.max(minH, prev.sub2 - delta);
-            }
-            return n;
-        });
-    }, []);
+    // Resize Handlers Removed (Flexbox Layout)
 
     // Toggle Indicator
     const toggleIndicator = useCallback((name) => {
@@ -703,22 +639,14 @@ export function TechnicalChart({ code, name, onHoverData, isFullScreen = false, 
                 {renderIndicatorOverlay()}
                 <div ref={mainContainerRef} className="w-full h-full rounded overflow-hidden" />
 
-                {/* Safe Debug Overlay */}
-                <div className="absolute top-10 left-10 bg-black/80 text-green-400 p-2 rounded z-50 text-xs font-mono pointer-events-none border border-green-500">
-                    <div>Code: {code}</div>
-                    <div>RawData Len: {rawData?.length || 0}</div>
-                    <div>First: {rawData?.[0]?.time || 'N/A'}</div>
-                    <div>Last: {rawData?.[rawData?.length - 1]?.time || 'N/A'}</div>
-                    <div>Chart Created: {chartRefs.current?.chart ? 'YES' : 'NO'}</div>
-                    <div>Container: {mainContainerRef.current?.clientWidth}x{mainContainerRef.current?.clientHeight}</div>
-                </div>
+                {/* Safe Debug Overlay Removed */}
 
                 {/* Minimal Status Dot */}
                 <div className={`absolute bottom-1 right-1 w-1.5 h-1.5 rounded-full ${Array.isArray(rawData) && rawData.length > 0 ? 'bg-green-500/50' : 'bg-red-500/50'} pointer-events-none`} />
             </div>
 
-            {/* Resizer */}
-            <div className="h-0.5 bg-slate-700 hover:bg-blue-500 cursor-row-resize flex justify-center items-center shrink-0" onMouseDown={handleResizeStart('main-vol')} onTouchStart={handleTouchStart('main-vol')}>
+            {/* Resizer Removed */}
+            <div className="h-0.5 bg-slate-700 flex justify-center items-center shrink-0">
                 <div className="w-6 h-px bg-slate-600 rounded-full" />
             </div>
 
@@ -732,8 +660,8 @@ export function TechnicalChart({ code, name, onHoverData, isFullScreen = false, 
                 <div ref={volumeContainerRef} className="w-full h-full rounded overflow-hidden" />
             </div>
 
-            {/* Resizer */}
-            <div className="h-1 bg-slate-800 hover:bg-blue-500 cursor-row-resize flex justify-center items-center shrink-0" onMouseDown={handleResizeStart('vol-sub1')} onTouchStart={handleTouchStart('vol-sub1')}>
+            {/* Resizer Removed */}
+            <div className="h-1 bg-slate-800 flex justify-center items-center shrink-0">
                 <div className="w-6 h-0.5 bg-slate-600 rounded-full" />
             </div>
 
@@ -755,8 +683,8 @@ export function TechnicalChart({ code, name, onHoverData, isFullScreen = false, 
                 <div ref={subChartContainerRef} className="w-full h-full rounded overflow-hidden" />
             </div>
 
-            {/* Resizer */}
-            <div className="h-1 bg-slate-800 hover:bg-blue-500 cursor-row-resize flex justify-center items-center shrink-0" onMouseDown={handleResizeStart('sub1-sub2')} onTouchStart={handleTouchStart('sub1-sub2')}>
+            {/* Resizer Removed */}
+            <div className="h-1 bg-slate-800 flex justify-center items-center shrink-0">
                 <div className="w-6 h-0.5 bg-slate-600 rounded-full" />
             </div>
 
