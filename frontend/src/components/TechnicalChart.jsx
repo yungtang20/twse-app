@@ -637,13 +637,7 @@ export function TechnicalChart({ code, name, onHoverData, isFullScreen = false, 
 
                 {/* Safe Debug Overlay Removed */}
 
-                {/* Debug Overlay */}
-                <div className="absolute top-2 left-2 bg-black/80 text-green-400 p-2 rounded z-50 text-xs font-mono border border-green-500 pointer-events-none">
-                    <div>Code: {code}</div>
-                    <div>Raw: {rawData?.length}</div>
-                    <div>ChartData: {chartData?.length}</div>
-                    <div>W: {mainContainerRef.current?.clientWidth} H: {mainContainerRef.current?.clientHeight}</div>
-                </div>
+                {/* Debug Overlay Removed */}
 
                 {/* Minimal Status Dot */}
                 <div className={`absolute bottom-1 right-1 w-1.5 h-1.5 rounded-full ${Array.isArray(rawData) && rawData.length > 0 ? 'bg-green-500/50' : 'bg-red-500/50'} pointer-events-none`} />
