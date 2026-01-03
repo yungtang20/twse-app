@@ -157,39 +157,47 @@ export function TechnicalChart({ code, name, onHoverData, isFullScreen = false }
 
     const dataRef = useRef([]);
 
-    // Chart Heights
-    const [chartHeights, setChartHeights] = useState({ main: 300, volume: 80, sub1: 120, sub2: 120 });
+    // Chart Heights - Proportions: Main 70%, Volume 8%, Sub1 11%, Sub2 11%
+    const [chartHeights, setChartHeights] = useState({ main: 350, volume: 60, sub1: 80, sub2: 80 });
     const isResizing = useRef(null);
     const lastTouchY = useRef(0);
 
     // Full Screen Height Calculation
     useEffect(() => {
-        if (isFullScreen) {
-            const calculateHeights = () => {
-                // Total available height - header (approx 32px) - padding
-                // Use 100vh to ensure it fits exactly
+        const calculateHeights = () => {
+            // Get container height or use window height for fullscreen
+            let availableHeight;
+            if (isFullScreen) {
                 const totalHeight = window.innerHeight;
-                const headerHeight = 40; // Approx header + margins
-                const availableHeight = totalHeight - headerHeight;
+                const headerHeight = 40;
+                availableHeight = totalHeight - headerHeight;
+            } else {
+                // Normal mode - use parent container height or estimate
+                const container = mainContainerRef.current?.parentElement;
+                availableHeight = container?.clientHeight || 570;
+            }
 
-                // Ratios: Main 65%, Vol 10%, Sub1 12.5%, Sub2 12.5%
-                const mainH = Math.floor(availableHeight * 0.65);
-                const volH = Math.floor(availableHeight * 0.10);
-                const subH = Math.floor(availableHeight * 0.125);
+            // Ratios: Main 70%, Vol 8%, Sub1 11%, Sub2 11%
+            const mainH = Math.floor(availableHeight * 0.70);
+            const volH = Math.floor(availableHeight * 0.08);
+            const subH = Math.floor(availableHeight * 0.11);
 
-                setChartHeights({ main: mainH, volume: volH, sub1: subH, sub2: subH });
-            };
-            calculateHeights();
-            window.addEventListener('resize', calculateHeights);
-            // Prevent scrolling on body when full screen
+            setChartHeights({ main: mainH, volume: volH, sub1: subH, sub2: subH });
+        };
+
+        calculateHeights();
+        window.addEventListener('resize', calculateHeights);
+
+        if (isFullScreen) {
             document.body.style.overflow = 'hidden';
-            return () => {
-                window.removeEventListener('resize', calculateHeights);
-                document.body.style.overflow = '';
-            };
-        } else {
-            setChartHeights({ main: 300, volume: 80, sub1: 120, sub2: 120 });
         }
+
+        return () => {
+            window.removeEventListener('resize', calculateHeights);
+            if (isFullScreen) {
+                document.body.style.overflow = '';
+            }
+        };
     }, [isFullScreen]);
 
     // Resize Handlers
