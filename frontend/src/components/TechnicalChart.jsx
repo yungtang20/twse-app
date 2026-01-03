@@ -157,8 +157,8 @@ export function TechnicalChart({ code, name, onHoverData, isFullScreen = false }
 
     const dataRef = useRef([]);
 
-    // Chart Heights - Proportions: Main 70%, Volume 8%, Sub1 11%, Sub2 11%
-    const [chartHeights, setChartHeights] = useState({ main: 350, volume: 60, sub1: 80, sub2: 80 });
+    // Chart Heights - Proportions: Main 62%, Volume 10%, Sub1 14%, Sub2 14%
+    const [chartHeights, setChartHeights] = useState({ main: 310, volume: 50, sub1: 70, sub2: 70 });
     const isResizing = useRef(null);
     const lastTouchY = useRef(0);
 
@@ -177,10 +177,10 @@ export function TechnicalChart({ code, name, onHoverData, isFullScreen = false }
                 availableHeight = container?.clientHeight || 570;
             }
 
-            // Ratios: Main 70%, Vol 8%, Sub1 11%, Sub2 11%
-            const mainH = Math.floor(availableHeight * 0.70);
-            const volH = Math.floor(availableHeight * 0.08);
-            const subH = Math.floor(availableHeight * 0.11);
+            // Ratios: Main 62%, Vol 10%, Sub1 14%, Sub2 14%
+            const mainH = Math.floor(availableHeight * 0.62);
+            const volH = Math.floor(availableHeight * 0.10);
+            const subH = Math.floor(availableHeight * 0.14);
 
             setChartHeights({ main: mainH, volume: volH, sub1: subH, sub2: subH });
         };
