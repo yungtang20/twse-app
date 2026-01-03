@@ -210,33 +210,7 @@ export function TechnicalChart({ code, name, onHoverData, isFullScreen = false, 
 
     const dataRef = useRef([]);
 
-    // Force Data on Mount (Debug)
-    useEffect(() => {
-        console.log("Forcing data...");
-        const mock = [];
-        let price = 100;
-        for (let i = 0; i < 100; i++) {
-            const date = new Date();
-            date.setDate(date.getDate() - (100 - i));
-            const time = date.toISOString().split('T')[0];
-            mock.push({
-                time,
-                open: price,
-                high: price + 5,
-                low: price - 5,
-                close: price + 2,
-                value: 1000000,
-                amount: 10000000,
-                tdcc: 100,
-                large: 50,
-                foreign: 100,
-                trust: 50,
-                dealer: 10
-            });
-            price += 2;
-        }
-        setRawData(mock);
-    }, []);
+    // Force Data Removed - Testing Real Logic
 
     // Toggle Indicator
     const toggleIndicator = useCallback((name) => {
