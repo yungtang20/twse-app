@@ -172,9 +172,11 @@ export function TechnicalChart({ code, name, onHoverData, isFullScreen = false }
                 const headerHeight = 40;
                 availableHeight = totalHeight - headerHeight;
             } else {
-                // Normal mode - use parent container height or estimate
-                const container = mainContainerRef.current?.parentElement;
-                availableHeight = container?.clientHeight || 570;
+                // Normal mode - use parent container height, subtract header area (~130px) and nav (~64px)
+                const container = mainContainerRef.current?.parentElement?.parentElement;
+                const windowH = window.innerHeight;
+                // Estimate: window height - top padding (12px) - header (~130px) - bottom nav (~64px)
+                availableHeight = container?.clientHeight || (windowH - 12 - 130 - 64);
             }
 
             // Ratios: Main 62%, Vol 10%, Sub1 14%, Sub2 14%
@@ -185,7 +187,10 @@ export function TechnicalChart({ code, name, onHoverData, isFullScreen = false }
             setChartHeights({ main: mainH, volume: volH, sub1: subH, sub2: subH });
         };
 
+        // Initial calculation
         calculateHeights();
+        // Recalculate after a short delay for more accurate measurement
+        const timer = setTimeout(calculateHeights, 100);
         window.addEventListener('resize', calculateHeights);
 
         if (isFullScreen) {
@@ -193,6 +198,7 @@ export function TechnicalChart({ code, name, onHoverData, isFullScreen = false }
         }
 
         return () => {
+            clearTimeout(timer);
             window.removeEventListener('resize', calculateHeights);
             if (isFullScreen) {
                 document.body.style.overflow = '';

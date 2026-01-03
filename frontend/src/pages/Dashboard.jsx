@@ -60,7 +60,7 @@ export function Dashboard() {
     const volChange = hoverData && prevData ? (hoverData.value - prevData.value) : 0;
 
     return (
-        <div className={`bg-slate-900 h-screen w-screen overflow-hidden flex flex-col p-3 pb-20 ${isMobileView ? 'justify-start' : ''}`}>
+        <div className={`bg-slate-900 h-screen w-screen overflow-hidden flex flex-col p-3 pb-16 ${isMobileView ? 'justify-start' : ''}`}>
             <div className={`w-full h-full flex flex-col transition-all duration-300 ${isMobileView ? 'max-w-[430px] mx-auto' : ''}`}>
 
                 <div className={`bg-slate-800 rounded px-3 py-2 mb-2 text-sm text-slate-300 flex ${isMobileView ? 'flex-col items-start gap-2' : 'flex-wrap gap-4 items-center'}`}>
