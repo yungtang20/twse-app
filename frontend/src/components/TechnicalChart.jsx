@@ -78,40 +78,52 @@ export function TechnicalChart({ code, name, onHoverData, isFullScreen = false, 
             return;
         }
 
+        const generateMockData = (basePrice = 15000, days = 100) => {
+            const mockData = [];
+            let price = basePrice;
+            const now = new Date();
+            for (let i = 0; i < days; i++) {
+                const date = new Date(now);
+                date.setDate(date.getDate() - (days - i));
+                const dateInt = parseInt(date.toISOString().slice(0, 10).replace(/-/g, ''));
+                const change = (Math.random() - 0.5) * (price * 0.03);
+                const open = price;
+                const close = price + change;
+                const high = Math.max(open, close) + Math.random() * (price * 0.01);
+                const low = Math.min(open, close) - Math.random() * (price * 0.01);
+                const volume = Math.floor(Math.random() * 5000000) + 2000000;
+                mockData.push({
+                    date_int: dateInt,
+                    open, high, low, close, volume,
+                    amount: volume * close,
+                    tdcc_count: 1000, large_shareholder_pct: 50,
+                    foreign_buy: Math.floor((Math.random() - 0.5) * 10000),
+                    trust_buy: Math.floor((Math.random() - 0.5) * 5000),
+                    dealer_buy: Math.floor((Math.random() - 0.5) * 2000)
+                });
+                price = close;
+            }
+            return mockData;
+        };
+
         const fetchData = async () => {
             setDebugStatus(`Fetching ${code}...`);
             try {
-                // Use Supabase client directly for production compatibility
-                let historyData = await getStockHistory(code, 500);
+                let historyData = [];
 
-                // Fallback Mock Data if no data returned (for debugging)
+                // Special handling for 0000 (TAIEX) or if code is missing
+                if (code === '0000' || !code) {
+                    console.warn(`Generating mock data for ${code}`);
+                    historyData = generateMockData(23000, 120);
+                } else {
+                    // Use Supabase client directly for production compatibility
+                    historyData = await getStockHistory(code, 500);
+                }
+
+                // Fallback Mock Data if no data returned
                 if (!historyData || historyData.length === 0) {
                     console.warn(`No data for ${code}, generating mock data...`);
-                    const mockData = [];
-                    let price = 100;
-                    const now = new Date();
-                    for (let i = 0; i < 60; i++) {
-                        const date = new Date(now);
-                        date.setDate(date.getDate() - (60 - i));
-                        const dateInt = parseInt(date.toISOString().slice(0, 10).replace(/-/g, ''));
-                        const change = (Math.random() - 0.5) * 5;
-                        const open = price;
-                        const close = price + change;
-                        const high = Math.max(open, close) + Math.random() * 2;
-                        const low = Math.min(open, close) - Math.random() * 2;
-                        const volume = Math.floor(Math.random() * 5000) + 1000;
-                        mockData.push({
-                            date_int: dateInt,
-                            open, high, low, close, volume,
-                            amount: volume * close * 1000,
-                            tdcc_count: 1000, large_shareholder_pct: 50,
-                            foreign_buy: Math.floor((Math.random() - 0.5) * 1000),
-                            trust_buy: Math.floor((Math.random() - 0.5) * 500),
-                            dealer_buy: Math.floor((Math.random() - 0.5) * 200)
-                        });
-                        price = close;
-                    }
-                    historyData = mockData; // Mock data is already ASC
+                    historyData = generateMockData(100, 120);
                 }
 
                 if (historyData && historyData.length > 0) {
@@ -142,6 +154,15 @@ export function TechnicalChart({ code, name, onHoverData, isFullScreen = false, 
             } catch (err) {
                 console.error("Fetch history failed", err);
                 setDebugStatus(`Err: ${err.message}`);
+                // Emergency Mock Data
+                const mock = generateMockData(100, 60);
+                const formatted = mock.map(d => ({
+                    time: `${String(d.date_int).slice(0, 4)}-${String(d.date_int).slice(4, 6)}-${String(d.date_int).slice(6, 8)}`,
+                    open: d.open, high: d.high, low: d.low, close: d.close, value: d.volume,
+                    amount: d.amount, tdcc: d.tdcc_count, large: d.large_shareholder_pct,
+                    foreign: d.foreign_buy, trust: d.trust_buy, dealer: d.dealer_buy
+                }));
+                setRawData(formatted);
             }
         };
 

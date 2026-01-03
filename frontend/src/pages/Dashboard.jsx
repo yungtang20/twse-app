@@ -60,7 +60,7 @@ export function Dashboard() {
     const volChange = hoverData && prevData ? (hoverData.value - prevData.value) : 0;
 
     return (
-        <div className="bg-slate-900 h-screen w-screen overflow-hidden flex flex-col pb-10">
+        <div className="bg-slate-900 h-full w-full overflow-hidden flex flex-col">
             {/* Full screen chart - no header */}
             <div className="flex-1 min-h-0 w-full">
                 <TechnicalChart
