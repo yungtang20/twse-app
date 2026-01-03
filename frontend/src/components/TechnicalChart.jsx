@@ -738,6 +738,17 @@ export function TechnicalChart({ code, name, onHoverData, isFullScreen = false, 
             <div className="relative flex-1 min-h-0" style={{ height: chartHeights.main }}>
                 {renderIndicatorOverlay()}
                 <div ref={mainContainerRef} className="w-full h-full rounded overflow-hidden" />
+
+                {/* Debug Overlay */}
+                <div className="absolute top-10 left-10 bg-red-900/80 text-white p-2 rounded z-50 text-xs font-mono pointer-events-none">
+                    <div>Code: {code}</div>
+                    <div>RawData: {rawData.length}</div>
+                    <div>ChartRef: {chartRefs.current?.chart ? 'Yes' : 'No'}</div>
+                    <div>Container: {mainContainerRef.current?.clientWidth}x{mainContainerRef.current?.clientHeight}</div>
+                    <div>Last Date: {rawData.length > 0 ? rawData[rawData.length - 1].time : 'N/A'}</div>
+                    <div>Debug: {debugStatus}</div>
+                </div>
+
                 {/* Minimal Status Dot */}
                 <div className={`absolute bottom-1 right-1 w-1.5 h-1.5 rounded-full ${rawData.length > 0 ? 'bg-green-500/50' : 'bg-red-500/50'} pointer-events-none`} />
             </div>
