@@ -187,7 +187,7 @@ export const Rankings = () => {
     const getColor = (val) => val > 0 ? 'text-red-400' : val < 0 ? 'text-green-400' : 'text-slate-500';
 
     return (
-        <div className={`bg-slate-900 min-h-screen p-4 text-slate-300 font-sans ${isMobileView ? 'max-w-md mx-auto' : ''}`}>
+        <div className={`bg-slate-900 h-screen overflow-auto p-4 pb-20 text-slate-300 font-sans ${isMobileView ? 'max-w-md mx-auto' : ''}`}>
             {/* Header */}
             <div className="bg-gradient-to-r from-teal-600 to-teal-700 text-white px-4 py-2 mb-4 rounded font-bold text-lg flex justify-between items-center">
                 <span>📊 法人買賣超統計</span>

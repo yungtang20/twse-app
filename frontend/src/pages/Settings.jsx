@@ -266,7 +266,7 @@ export const Settings = () => {
     };
 
     return (
-        <div className="h-screen w-screen max-h-screen max-w-screen overflow-auto p-4 bg-slate-900 text-slate-300">
+        <div className="h-screen w-screen overflow-auto p-4 pb-20 bg-slate-900 text-slate-300">
             <h1 className="text-2xl font-bold text-white mb-6 flex items-center gap-2">
                 <Server className="w-8 h-8 text-blue-500" />
                 系統設定
