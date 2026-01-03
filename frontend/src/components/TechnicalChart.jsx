@@ -74,7 +74,6 @@ export function TechnicalChart({ code, name, onHoverData, isFullScreen = false, 
     // Fetch Data
     useEffect(() => {
         if (!code) {
-            setDebugStatus('No code');
             return;
         }
 
@@ -107,7 +106,6 @@ export function TechnicalChart({ code, name, onHoverData, isFullScreen = false, 
         };
 
         const fetchData = async () => {
-            setDebugStatus(`Fetching ${code}...`);
             try {
                 let historyData = [];
 
@@ -128,7 +126,6 @@ export function TechnicalChart({ code, name, onHoverData, isFullScreen = false, 
 
                 if (historyData && historyData.length > 0) {
                     const count = historyData.length;
-                    setDebugStatus(`Data: ${count} recs`);
                     const formatted = historyData.map(d => ({
                         time: d.date_int ? `${String(d.date_int).slice(0, 4)}-${String(d.date_int).slice(4, 6)}-${String(d.date_int).slice(6, 8)}` : '',
                         open: d.open,
@@ -149,11 +146,10 @@ export function TechnicalChart({ code, name, onHoverData, isFullScreen = false, 
                         onHoverData(formatted[formatted.length - 1], formatted.length > 1 ? formatted[formatted.length - 2] : null);
                     }
                 } else {
-                    setDebugStatus(`No data for ${code}`);
+                    console.warn(`No data for ${code}`);
                 }
             } catch (err) {
                 console.error("Fetch history failed", err);
-                setDebugStatus(`Err: ${err.message}`);
                 // Emergency Mock Data
                 const mock = generateMockData(100, 60);
                 const formatted = mock.map(d => ({
