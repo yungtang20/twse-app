@@ -70,9 +70,9 @@ export const Rankings = () => {
             // Get institutional data for latest date
             const { data, error } = await supabase
                 .from('institutional_investors')
-                .select('code, foreign_buy, foreign_sell, trust_buy, trust_sell, dealer_buy, dealer_sell')
+                .select('code, foreign_net, trust_net, dealer_net')
                 .eq('date_int', latestDate)
-                .order(sortType === 'buy' ? 'foreign_buy' : 'foreign_sell', { ascending: sortType === 'sell' })
+                .order('foreign_net', { ascending: sortType === 'sell' })
                 .range(offset, offset + limit - 1);
 
             if (error) {
@@ -92,8 +92,8 @@ export const Rankings = () => {
                 volume: 0,
                 foreign_streak: 0,
                 trust_streak: 0,
-                foreign_cumulative: (d.foreign_buy || 0) - (d.foreign_sell || 0),
-                trust_cumulative: (d.trust_buy || 0) - (d.trust_sell || 0),
+                foreign_cumulative: d.foreign_net || 0,
+                trust_cumulative: d.trust_net || 0,
                 foreign_holding_shares: 0,
                 foreign_holding_pct: 0,
                 trust_holding_shares: 0,
