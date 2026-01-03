@@ -348,362 +348,128 @@ export const Scan = () => {
     };
 
     return (
-        <div className={`bg-slate-900 h-screen overflow-auto p-4 pb-10 text-slate-300 font-sans ${isMobileView ? 'max-w-md mx-auto' : ''}`}>
-            {/* Header */}
-            <div className="flex justify-between items-center mb-4">
-                <div>
-                    <h1 className="text-xl font-bold text-white flex items-center gap-2">
-                        <span className="text-blue-500">⚡</span> 市場掃描
-                    </h1>
-                </div>
-                {dataDate && <span className="text-sm text-slate-400">資料日期：{dataDate}</span>}
+        <div className="h-screen w-screen overflow-hidden flex flex-col pb-10 bg-slate-900 text-slate-300">
+            {/* Header - Compact */}
+            <div className="shrink-0 px-3 py-2 border-b border-slate-800 flex justify-between items-center bg-slate-900 z-10">
+                <h1 className="text-lg font-bold text-white flex items-center gap-2">
+                    <span className="text-blue-500">⚡</span> 市場掃描
+                </h1>
+                {dataDate && <span className="text-xs text-slate-500">{dataDate}</span>}
             </div>
 
-            {/* Filter & Control Bar */}
-            <div className="grid grid-cols-2 gap-2 mb-2">
-                {/* Strategy Select */}
-                <div className="w-full">
-                    <div className="relative h-full">
-                        <select
-                            value={activeFilter}
-                            onChange={(e) => setActiveFilter(e.target.value)}
-                            className="w-full h-full bg-slate-800 text-white border border-slate-700 rounded px-3 py-2 text-sm appearance-none focus:outline-none focus:border-blue-500 transition-colors cursor-pointer flex items-center"
-                        >
-                            {filters.map(f => (
-                                <option key={f.id} value={f.id}>{f.name}</option>
-                            ))}
-                        </select>
-                        <div className="absolute right-3 top-1/2 -translate-y-1/2 pointer-events-none text-slate-400 text-xs">▼</div>
-                    </div>
-                </div>
+            {/* Controls - Compact */}
+            <div className="shrink-0 p-2 bg-slate-800/50 border-b border-slate-700">
+                <div className="flex flex-col gap-2">
+                    <div className="flex gap-2 h-8">
+                        <div className="relative flex-1 min-w-0">
+                            <select
+                                value={activeFilter}
+                                onChange={(e) => setActiveFilter(e.target.value)}
+                                className="w-full h-full bg-slate-800 text-white border border-slate-700 rounded px-2 text-xs appearance-none focus:outline-none focus:border-blue-500"
+                            >
+                                {filters.map(f => <option key={f.id} value={f.id}>{f.name}</option>)}
+                            </select>
+                            <div className="absolute right-2 top-1/2 -translate-y-1/2 pointer-events-none text-slate-400 text-[10px]">▼</div>
+                        </div>
 
-                {/* VP Controls */}
-                {activeFilter === 'vp' && (
-                    <div className="flex flex-col justify-center gap-1 bg-slate-800 rounded border border-slate-700 px-2 py-1 w-full h-full">
-                        <div className="flex justify-between items-center w-full">
-                            <span className="text-[10px] text-slate-400 font-bold whitespace-nowrap">容忍度: {(tolerance * 100).toFixed(0)}%</span>
-                            <div className="flex bg-slate-900 rounded p-0.5">
-                                <button
-                                    onClick={() => setVpDirection('support')}
-                                    className={`px-2 py-0.5 text-[10px] font-bold rounded transition-colors ${vpDirection === 'support' ? 'bg-blue-500 text-white' : 'text-slate-400 hover:text-slate-200'}`}
-                                >
-                                    支撐
-                                </button>
-                                <button
-                                    onClick={() => setVpDirection('resistance')}
-                                    className={`px-2 py-0.5 text-[10px] font-bold rounded transition-colors ${vpDirection === 'resistance' ? 'bg-red-500 text-white' : 'text-slate-400 hover:text-slate-200'}`}
-                                >
-                                    壓力
-                                </button>
+                        {/* Contextual Controls */}
+                        {activeFilter === 'vp' && (
+                            <div className="flex items-center gap-1 bg-slate-800 rounded border border-slate-700 px-1">
+                                <span className="text-[10px] text-slate-400 whitespace-nowrap">{(tolerance * 100).toFixed(0)}%</span>
+                                <div className="flex bg-slate-900 rounded p-0.5">
+                                    <button onClick={() => setVpDirection('support')} className={`px-2 py-0.5 text-[10px] rounded ${vpDirection === 'support' ? 'bg-blue-500 text-white' : 'text-slate-400'}`}>支</button>
+                                    <button onClick={() => setVpDirection('resistance')} className={`px-2 py-0.5 text-[10px] rounded ${vpDirection === 'resistance' ? 'bg-red-500 text-white' : 'text-slate-400'}`}>壓</button>
+                                </div>
                             </div>
-                        </div>
-                        <input
-                            type="range"
-                            min="0"
-                            max="0.1"
-                            step="0.01"
-                            value={tolerance}
-                            onChange={(e) => setTolerance(parseFloat(e.target.value))}
-                            className="w-full h-1 bg-slate-700 rounded-lg appearance-none cursor-pointer accent-blue-500"
-                        />
-                    </div>
-                )}
-
-                {/* MA Controls */}
-                {activeFilter === 'ma' && (
-                    <div className="flex items-center justify-center bg-slate-800 rounded border border-slate-700 px-2 py-1 w-full h-full overflow-x-auto">
-                        <div className="flex bg-slate-900 rounded p-0.5 whitespace-nowrap">
-                            <button
-                                onClick={() => setMaPattern('below_ma200')}
-                                className={`px-2 py-1 text-[10px] font-bold rounded transition-colors ${maPattern === 'below_ma200' ? 'bg-blue-500 text-white' : 'text-slate-400 hover:text-slate-200'}`}
-                            >
-                                [1] 低於MA200
-                            </button>
-                            <button
-                                onClick={() => setMaPattern('below_ma20')}
-                                className={`px-2 py-1 text-[10px] font-bold rounded transition-colors ${maPattern === 'below_ma20' ? 'bg-blue-500 text-white' : 'text-slate-400 hover:text-slate-200'}`}
-                            >
-                                [2] 低於MA20
-                            </button>
-                            <button
-                                onClick={() => setMaPattern('bull')}
-                                className={`px-2 py-1 text-[10px] font-bold rounded transition-colors ${maPattern === 'bull' ? 'bg-blue-500 text-white' : 'text-slate-400 hover:text-slate-200'}`}
-                            >
-                                [3] 均線多頭
-                            </button>
-                        </div>
-                    </div>
-                )}
-                {/* Pattern Type Toggle (only for [b] K線型態) */}
-                {activeFilter === 'patterns' && (
-                    <div className="flex items-center gap-2">
-                        <span className="text-slate-400 text-xs font-medium">型態:</span>
-                        <div className="flex gap-1 bg-slate-800/60 p-0.5 rounded">
-                            <button
-                                onClick={() => setPatternType('morning_star')}
-                                className={`px-2 py-1 text-[10px] font-bold rounded transition-colors ${patternType === 'morning_star' ? 'bg-green-500 text-white' : 'text-slate-400 hover:text-slate-200'}`}
-                            >
-                                [1] 晨星
-                            </button>
-                            <button
-                                onClick={() => setPatternType('evening_star')}
-                                className={`px-2 py-1 text-[10px] font-bold rounded transition-colors ${patternType === 'evening_star' ? 'bg-red-500 text-white' : 'text-slate-400 hover:text-slate-200'}`}
-                            >
-                                [2] 黃昏之星
-                            </button>
-                        </div>
-                    </div>
-                )}
-            </div>
-
-            {/* Column Selector Panel (Toggled) */}
-
-
-            {/* Screening Process Panel (Info Box) */}
-            {/* Screening Process Panel (Info Box) */}
-            <div className="bg-slate-800/80 border border-blue-500/30 rounded p-3 mb-4 text-sm text-slate-300 shadow-sm">
-                <div className="flex flex-col gap-3">
-                    {/* Row 1: Logic */}
-                    <div className="flex flex-col sm:flex-row sm:items-start gap-1 sm:gap-3">
-                        <div className="text-blue-400 font-bold whitespace-nowrap shrink-0">ℹ️ 篩選邏輯:</div>
-                        <div className="text-white font-medium whitespace-normal break-words leading-relaxed">{activeDesc}</div>
-                    </div>
-
-                    {/* Row 2: Filter Conditions & Controls */}
-                    <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2 border-t border-slate-700/50 pt-2">
-                        <div className="flex flex-wrap items-center gap-2">
-                            <div className="text-slate-400 font-bold text-xs whitespace-nowrap">篩選條件:</div>
-                            <div className="flex items-center gap-2 bg-slate-900/50 px-2 py-1 rounded border border-slate-700">
-                                <span className="text-xs text-slate-500 whitespace-nowrap">量&gt;</span>
-                                <input
-                                    type="number"
-                                    value={minVol}
-                                    onChange={(e) => setMinVol(Number(e.target.value))}
-                                    className="bg-transparent text-white w-12 text-xs focus:outline-none text-right"
-                                />
-                                <span className="text-xs text-slate-500 whitespace-nowrap">張</span>
+                        )}
+                        {activeFilter === 'ma' && (
+                            <div className="flex bg-slate-900 rounded border border-slate-700 p-0.5">
+                                <button onClick={() => setMaPattern('below_ma200')} className={`px-2 py-0.5 text-[10px] rounded ${maPattern === 'below_ma200' ? 'bg-blue-600 text-white' : 'text-slate-400'}`}>&lt;200</button>
+                                <button onClick={() => setMaPattern('below_ma20')} className={`px-2 py-0.5 text-[10px] rounded ${maPattern === 'below_ma20' ? 'bg-purple-600 text-white' : 'text-slate-400'}`}>&lt;20</button>
+                                <button onClick={() => setMaPattern('bull')} className={`px-2 py-0.5 text-[10px] rounded ${maPattern === 'bull' ? 'bg-red-600 text-white' : 'text-slate-400'}`}>多頭</button>
                             </div>
-                            <div className="flex items-center gap-2 bg-slate-900/50 px-2 py-1 rounded border border-slate-700">
-                                <span className="text-xs text-slate-500 whitespace-nowrap">價&gt;</span>
-                                <input
-                                    type="number"
-                                    value={minPrice}
-                                    onChange={(e) => setMinPrice(Number(e.target.value))}
-                                    className="bg-transparent text-white w-10 text-xs focus:outline-none text-right"
-                                />
-                                <span className="text-xs text-slate-500 whitespace-nowrap">元</span>
+                        )}
+                        {activeFilter === 'patterns' && (
+                            <div className="flex bg-slate-900 rounded border border-slate-700 p-0.5">
+                                <button onClick={() => setPatternType('morning_star')} className={`px-2 py-0.5 text-[10px] rounded ${patternType === 'morning_star' ? 'bg-red-600 text-white' : 'text-slate-400'}`}>晨星</button>
+                                <button onClick={() => setPatternType('evening_star')} className={`px-2 py-0.5 text-[10px] rounded ${patternType === 'evening_star' ? 'bg-green-600 text-white' : 'text-slate-400'}`}>夜星</button>
                             </div>
-                            {loading && <span className="text-yellow-500 text-xs animate-pulse ml-2">掃描運算中...</span>}
-                        </div>
+                        )}
+                    </div>
 
-                        <div className="flex items-center justify-end gap-2">
-                            {!loading && scanResults.length > 0 && <span className="text-green-400 text-xs font-bold whitespace-nowrap">符合: {scanResults.length} 檔</span>}
-                            <button
-                                onClick={() => setShowColumnSelector(!showColumnSelector)}
-                                className="text-xs bg-slate-800 hover:bg-slate-700 text-slate-400 hover:text-white px-2 py-1 rounded border border-slate-700 transition-colors flex items-center gap-1 whitespace-nowrap"
-                            >
-                                ⚙️ 欄位 {showColumnSelector ? '▲' : '▼'}
-                            </button>
-                        </div>
+                    <div className="text-[10px] text-slate-400 truncate px-1">
+                        {activeDesc}
                     </div>
                 </div>
             </div>
 
-            {/* Column Selector Panel (Moved Below Info Box) */}
-            {
-                showColumnSelector && (
-                    <div className="mb-4 p-3 bg-slate-800 border border-slate-700 rounded flex flex-wrap gap-x-4 gap-y-2 text-sm animate-in fade-in slide-in-from-top-2 duration-200">
-                        {/* Original Columns */}
-                        <div className="flex gap-3 border-r border-slate-700 pr-3">
-                            <label className="flex items-center gap-2 cursor-pointer hover:text-white whitespace-nowrap"><input type="checkbox" checked={visibleColumns.vp_high} onChange={() => toggleColumn('vp_high')} className="rounded bg-slate-700 border-slate-600 text-blue-500" /> VP上限</label>
-                            <label className="flex items-center gap-2 cursor-pointer hover:text-white whitespace-nowrap"><input type="checkbox" checked={visibleColumns.vp_low} onChange={() => toggleColumn('vp_low')} className="rounded bg-slate-700 border-slate-600 text-blue-500" /> VP下限</label>
-                            <label className="flex items-center gap-2 cursor-pointer hover:text-white whitespace-nowrap"><input type="checkbox" checked={visibleColumns.vp_poc} onChange={() => toggleColumn('vp_poc')} className="rounded bg-slate-700 border-slate-600 text-blue-500" /> POC</label>
-                            <label className="flex items-center gap-2 cursor-pointer hover:text-white whitespace-nowrap"><input type="checkbox" checked={visibleColumns.vwap} onChange={() => toggleColumn('vwap')} className="rounded bg-slate-700 border-slate-600 text-blue-500" /> VWAP</label>
-                            <label className="flex items-center gap-2 cursor-pointer hover:text-white whitespace-nowrap"><input type="checkbox" checked={visibleColumns.mfi} onChange={() => toggleColumn('mfi')} className="rounded bg-slate-700 border-slate-600 text-blue-500" /> MFI</label>
-                            <label className="flex items-center gap-2 cursor-pointer hover:text-white whitespace-nowrap"><input type="checkbox" checked={visibleColumns.rsi} onChange={() => toggleColumn('rsi')} className="rounded bg-slate-700 border-slate-600 text-blue-500" /> RSI</label>
-                        </div>
-                        {/* MAs */}
-                        <div className="flex gap-3 border-r border-slate-700 pr-3">
-                            <label className="flex items-center gap-2 cursor-pointer hover:text-white whitespace-nowrap"><input type="checkbox" checked={visibleColumns.ma20} onChange={() => toggleColumn('ma20')} className="rounded bg-slate-700 border-slate-600 text-blue-500" /> MA20</label>
-                            <label className="flex items-center gap-2 cursor-pointer hover:text-white whitespace-nowrap"><input type="checkbox" checked={visibleColumns.ma25} onChange={() => toggleColumn('ma25')} className="rounded bg-slate-700 border-slate-600 text-blue-500" /> MA25</label>
-                            <label className="flex items-center gap-2 cursor-pointer hover:text-white whitespace-nowrap"><input type="checkbox" checked={visibleColumns.ma60} onChange={() => toggleColumn('ma60')} className="rounded bg-slate-700 border-slate-600 text-blue-500" /> MA60</label>
-                            <label className="flex items-center gap-2 cursor-pointer hover:text-white whitespace-nowrap"><input type="checkbox" checked={visibleColumns.ma120} onChange={() => toggleColumn('ma120')} className="rounded bg-slate-700 border-slate-600 text-blue-500" /> MA120</label>
-                            <label className="flex items-center gap-2 cursor-pointer hover:text-white whitespace-nowrap"><input type="checkbox" checked={visibleColumns.ma200} onChange={() => toggleColumn('ma200')} className="rounded bg-slate-700 border-slate-600 text-blue-500" /> MA200</label>
-                        </div>
-                        {/* VolMAs */}
-                        <div className="flex gap-3 border-r border-slate-700 pr-3">
-                            <label className="flex items-center gap-2 cursor-pointer hover:text-white whitespace-nowrap"><input type="checkbox" checked={visibleColumns.vol_ma5} onChange={() => toggleColumn('vol_ma5')} className="rounded bg-slate-700 border-slate-600 text-blue-500" /> VolMA5</label>
-                            <label className="flex items-center gap-2 cursor-pointer hover:text-white whitespace-nowrap"><input type="checkbox" checked={visibleColumns.vol_ma60} onChange={() => toggleColumn('vol_ma60')} className="rounded bg-slate-700 border-slate-600 text-blue-500" /> VolMA60</label>
-                        </div>
-                        {/* Chips */}
-                        <div className="flex gap-3">
-                            <label className="flex items-center gap-2 cursor-pointer hover:text-white whitespace-nowrap"><input type="checkbox" checked={visibleColumns.foreign} onChange={() => toggleColumn('foreign')} className="rounded bg-slate-700 border-slate-600 text-blue-500" /> 外資</label>
-                            <label className="flex items-center gap-2 cursor-pointer hover:text-white whitespace-nowrap"><input type="checkbox" checked={visibleColumns.trust} onChange={() => toggleColumn('trust')} className="rounded bg-slate-700 border-slate-600 text-blue-500" /> 投信</label>
-                            <label className="flex items-center gap-2 cursor-pointer hover:text-white whitespace-nowrap"><input type="checkbox" checked={visibleColumns.dealer} onChange={() => toggleColumn('dealer')} className="rounded bg-slate-700 border-slate-600 text-blue-500" /> 自營</label>
-                            <label className="flex items-center gap-2 cursor-pointer hover:text-white whitespace-nowrap"><input type="checkbox" checked={visibleColumns.big_trader} onChange={() => toggleColumn('big_trader')} className="rounded bg-slate-700 border-slate-600 text-blue-500" /> 大戶</label>
-                            <label className="flex items-center gap-2 cursor-pointer hover:text-white whitespace-nowrap"><input type="checkbox" checked={visibleColumns.concentration} onChange={() => toggleColumn('concentration')} className="rounded bg-slate-700 border-slate-600 text-blue-500" /> 集保</label>
-                        </div>
-                    </div>
-                )
-            }
-
-            {/* Results Display */}
-            <div className="bg-slate-800/50 rounded-lg p-2 border border-slate-700/50 min-h-[400px]">
+            {/* Results List - Scrollable */}
+            <div className="flex-1 overflow-y-auto p-2">
                 {loading ? (
-                    <div className="flex items-center justify-center h-full text-slate-500">
-                        <div className="animate-pulse">掃描中...</div>
+                    <div className="flex flex-col items-center justify-center h-40 text-slate-500 gap-2">
+                        <div className="animate-spin rounded-full h-6 w-6 border-b-2 border-blue-500"></div>
+                        <div className="text-xs">掃描運算中...</div>
+                        <div className="text-[10px] opacity-70 max-w-[200px] truncate text-center">
+                            {processLog[processLog.length - 1]}
+                        </div>
+                    </div>
+                ) : scanResults.length > 0 ? (
+                    <div className="grid grid-cols-1 gap-2 pb-20">
+                        {currentItems.map((stock) => (
+                            <div key={stock.code} onClick={() => navigate(`/dashboard?code=${stock.code}`)} className="bg-slate-800 p-2 rounded border border-slate-700 flex items-center justify-between active:scale-[0.99] transition-transform">
+                                <div className="flex items-center gap-3">
+                                    <div className="w-10 h-10 rounded bg-slate-700 flex items-center justify-center text-xs font-bold text-white">
+                                        {stock.code}
+                                    </div>
+                                    <div>
+                                        <div className="text-sm font-bold text-white">{stock.name}</div>
+                                        <div className="flex items-center gap-2 text-[10px]">
+                                            <span className={stock.change_pct > 0 ? 'text-red-400' : stock.change_pct < 0 ? 'text-green-400' : 'text-slate-400'}>
+                                                {stock.close} ({stock.change_pct}%)
+                                            </span>
+                                            <span className="text-slate-500">|</span>
+                                            <span className="text-slate-400">{fmtSheets(stock.volume)}張</span>
+                                        </div>
+                                    </div>
+                                </div>
+                                <div className="flex flex-col items-end gap-1">
+                                    {/* Dynamic Indicator Value based on Filter */}
+                                    {activeFilter === 'vp' && (
+                                        <div className="text-xs font-mono">
+                                            <span className="text-slate-500 mr-1">VP:</span>
+                                            <span className="text-yellow-400">{vpDirection === 'support' ? stock.vp_low?.toFixed(1) : stock.vp_high?.toFixed(1)}</span>
+                                        </div>
+                                    )}
+                                    {activeFilter === 'mfi' && (
+                                        <div className="text-xs font-mono">
+                                            <span className="text-slate-500 mr-1">MFI:</span>
+                                            <span className={stock.mfi < 30 ? 'text-green-400' : 'text-red-400'}>{stock.mfi?.toFixed(1)}</span>
+                                        </div>
+                                    )}
+                                    {/* Default Volume Tag */}
+                                    <div className="px-1.5 py-0.5 bg-slate-700 rounded text-[10px] text-slate-300">
+                                        量 {fmtSheets(stock.volume)}
+                                    </div>
+                                </div>
+                            </div>
+                        ))}
                     </div>
                 ) : (
-                    <div className="overflow-x-auto relative">
-                        <table className="w-full text-left border-collapse text-sm whitespace-nowrap">
-                            <thead>
-                                <tr className="bg-slate-800 text-slate-400 border-b border-slate-700">
-                                    <th className="p-2 text-left cursor-pointer hover:text-white sticky left-0 z-20 bg-slate-800 shadow-[2px_0_5px_-2px_rgba(0,0,0,0.5)]" onClick={() => handleSort('name')}>
-                                        股票 {sortConfig.key === 'name' && (sortConfig.direction === 'asc' ? '↑' : '↓')}
-                                    </th>
-                                    <th className="p-2 font-bold text-right cursor-pointer hover:text-white" onClick={() => handleSort('close')}>
-                                        現價 (%) {sortConfig.key === 'close' && (sortConfig.direction === 'asc' ? '↑' : '↓')}
-                                    </th>
-                                    <th className="p-2 font-bold text-right cursor-pointer hover:text-white" onClick={() => handleSort('volume')}>
-                                        成交量 (量比) {sortConfig.key === 'volume' && (sortConfig.direction === 'asc' ? '↑' : '↓')}
-                                    </th>
-                                    {visibleColumns.vp_high && (
-                                        <th className="p-2 font-bold text-right cursor-pointer hover:text-white" onClick={() => handleSort('vp_high')}>
-                                            VP 上限 {sortConfig.key === 'vp_high' && (sortConfig.direction === 'asc' ? '↑' : '↓')}
-                                        </th>
-                                    )}
-                                    {visibleColumns.vp_low && (
-                                        <th className="p-2 font-bold text-right cursor-pointer hover:text-white" onClick={() => handleSort('vp_low')}>
-                                            VP 下限 {sortConfig.key === 'vp_low' && (sortConfig.direction === 'asc' ? '↑' : '↓')}
-                                        </th>
-                                    )}
-                                    {visibleColumns.vp_poc && (
-                                        <th className="p-2 font-bold text-right text-orange-400 cursor-pointer hover:text-orange-200" onClick={() => handleSort('vp_poc')}>
-                                            POC {sortConfig.key === 'vp_poc' && (sortConfig.direction === 'asc' ? '↑' : '↓')}
-                                        </th>
-                                    )}
-                                    {visibleColumns.vwap && (
-                                        <th className="p-2 font-bold text-right text-blue-400 cursor-pointer hover:text-blue-200" onClick={() => handleSort('vwap')}>
-                                            VWAP {sortConfig.key === 'vwap' && (sortConfig.direction === 'asc' ? '↑' : '↓')}
-                                        </th>
-                                    )}
-                                    {visibleColumns.mfi && <th className="p-2 font-bold text-right text-purple-400 cursor-pointer hover:text-purple-200" onClick={() => handleSort('mfi')}>MFI {sortConfig.key === 'mfi' && (sortConfig.direction === 'asc' ? '↑' : '↓')}</th>}
-                                    {visibleColumns.rsi && <th className="p-2 font-bold text-right text-purple-400 cursor-pointer hover:text-purple-200" onClick={() => handleSort('rsi')}>RSI {sortConfig.key === 'rsi' && (sortConfig.direction === 'asc' ? '↑' : '↓')}</th>}
-
-                                    {visibleColumns.ma20 && <th className="p-2 font-bold text-right text-slate-400 cursor-pointer hover:text-white" onClick={() => handleSort('ma20')}>MA20</th>}
-                                    {visibleColumns.ma25 && <th className="p-2 font-bold text-right text-slate-400 cursor-pointer hover:text-white" onClick={() => handleSort('ma25')}>MA25</th>}
-                                    {visibleColumns.ma60 && <th className="p-2 font-bold text-right text-slate-400 cursor-pointer hover:text-white" onClick={() => handleSort('ma60')}>MA60</th>}
-                                    {visibleColumns.ma120 && <th className="p-2 font-bold text-right text-slate-400 cursor-pointer hover:text-white" onClick={() => handleSort('ma120')}>MA120</th>}
-                                    {visibleColumns.ma200 && <th className="p-2 font-bold text-right text-slate-400 cursor-pointer hover:text-white" onClick={() => handleSort('ma200')}>MA200</th>}
-
-                                    {visibleColumns.vol_ma5 && <th className="p-2 font-bold text-right text-slate-400 cursor-pointer hover:text-white" onClick={() => handleSort('vol_ma5')}>VolMA5</th>}
-                                    {visibleColumns.vol_ma60 && <th className="p-2 font-bold text-right text-slate-400 cursor-pointer hover:text-white" onClick={() => handleSort('vol_ma60')}>VolMA60</th>}
-
-                                    {visibleColumns.foreign && <th className="p-2 font-bold text-right text-slate-400 cursor-pointer hover:text-white" onClick={() => handleSort('foreign')}>外資</th>}
-                                    {visibleColumns.trust && <th className="p-2 font-bold text-right text-slate-400 cursor-pointer hover:text-white" onClick={() => handleSort('trust')}>投信</th>}
-                                    {visibleColumns.dealer && <th className="p-2 font-bold text-right text-slate-400 cursor-pointer hover:text-white" onClick={() => handleSort('dealer')}>自營</th>}
-                                    {visibleColumns.big_trader && <th className="p-2 font-bold text-right text-slate-400 cursor-pointer hover:text-white" onClick={() => handleSort('big_trader')}>大戶</th>}
-                                    {visibleColumns.concentration && <th className="p-2 font-bold text-right text-slate-400 cursor-pointer hover:text-white" onClick={() => handleSort('concentration')}>集保</th>}
-                                </tr>
-                            </thead>
-                            <tbody>
-                                {currentItems.map((stock) => {
-                                    const volRatio = (stock.volume && stock.vol_ma60) ? (stock.volume / stock.vol_ma60).toFixed(1) : '-';
-
-                                    // Calculate distance for VP
-                                    let dist = null;
-                                    if (activeFilter === 'vp') {
-                                        if (vpDirection === 'support' && stock.vp_low) {
-                                            dist = ((stock.close - stock.vp_low) / stock.vp_low * 100).toFixed(1);
-                                        } else if (vpDirection === 'resistance' && stock.vp_high) {
-                                            dist = ((stock.vp_high - stock.close) / stock.vp_high * 100).toFixed(1);
-                                        }
-                                    }
-
-                                    return (
-                                        <tr
-                                            key={stock.code}
-                                            onClick={() => navigate(`/stock/${stock.code}`)}
-                                            className="group border-b border-slate-700/50 hover:bg-slate-700/30 cursor-pointer transition-colors"
-                                        >
-                                            <td className="p-2 sticky left-0 z-10 bg-slate-900 group-hover:bg-slate-800 transition-colors shadow-[2px_0_5px_-2px_rgba(0,0,0,0.5)]">
-                                                <div className="flex flex-col">
-                                                    <span className="text-white font-bold">{stock.name.substring(0, 4)}</span>
-                                                    <span className="text-slate-500 text-xs font-mono">{stock.code}</span>
-                                                </div>
-                                            </td>
-                                            <td className="p-2 text-right">
-                                                <div className="flex flex-col items-end">
-                                                    <span className={`font-bold font-mono ${Number(stock.change_pct) > 0 ? 'text-red-400' : Number(stock.change_pct) < 0 ? 'text-green-400' : 'text-slate-400'}`}>
-                                                        {stock.close?.toFixed(2) || '-'}
-                                                    </span>
-                                                    <span className={`text-xs ${Number(stock.change_pct) > 0 ? 'text-red-400' : Number(stock.change_pct) < 0 ? 'text-green-400' : 'text-slate-400'}`}>
-                                                        ({Number(stock.change_pct) > 0 ? '+' : ''}{stock.change_pct}%)
-                                                    </span>
-                                                </div>
-                                            </td>
-                                            <td className="p-2 text-right">
-                                                <div className="flex flex-col items-end">
-                                                    <span className="text-slate-200 font-mono">{fmtSheets(stock.volume)} 張</span>
-                                                    <span className="text-slate-500 text-xs">({volRatio}x)</span>
-                                                </div>
-                                            </td>
-                                            {visibleColumns.vp_high && (
-                                                <td className={`p-2 text-right font-mono ${stock.close > stock.vp_high ? 'text-red-400 font-bold' : stock.close < stock.vp_high ? 'text-green-400' : 'text-slate-300'}`}>
-                                                    {Math.round(stock.vp_high || 0)}
-                                                </td>
-                                            )}
-                                            {visibleColumns.vp_low && (
-                                                <td className={`p-2 text-right font-mono ${stock.close > stock.vp_low ? 'text-red-400 font-bold' : stock.close < stock.vp_low ? 'text-green-400' : 'text-slate-300'}`}>
-                                                    {Math.round(stock.vp_low || 0)}
-                                                </td>
-                                            )}
-                                            {visibleColumns.vp_poc && (
-                                                <td className={`p-2 text-right font-bold font-mono ${stock.close > stock.vp_poc ? 'text-red-400' : stock.close < stock.vp_poc ? 'text-green-400' : 'text-orange-400'}`}>
-                                                    {fmtPrice(stock.vp_poc)}
-                                                </td>
-                                            )}
-                                            {visibleColumns.vwap && (
-                                                <td className={`p-2 text-right font-bold font-mono ${stock.close > stock.vwap ? 'text-red-400' : stock.close < stock.vwap ? 'text-green-400' : 'text-blue-400'}`}>
-                                                    {fmtPrice(stock.vwap)}
-                                                </td>
-                                            )}
-                                            {visibleColumns.mfi && <td className={`p-2 text-right font-bold font-mono ${stock.mfi > 50 ? 'text-red-400' : stock.mfi < 50 ? 'text-green-400' : 'text-purple-400'}`}>{stock.mfi ? Math.round(stock.mfi) : '-'}</td>}
-                                            {visibleColumns.rsi && <td className={`p-2 text-right font-bold font-mono ${stock.rsi > 50 ? 'text-red-400' : stock.rsi < 50 ? 'text-green-400' : 'text-purple-400'}`}>{stock.rsi ? Math.round(stock.rsi) : '-'}</td>}
-
-                                            {visibleColumns.ma20 && <td className={`p-2 text-right font-mono ${stock.close > stock.ma20 ? 'text-red-400' : stock.close < stock.ma20 ? 'text-green-400' : 'text-slate-300'}`}>{fmtPrice(stock.ma20)}</td>}
-                                            {visibleColumns.ma25 && <td className={`p-2 text-right font-mono ${stock.close > stock.ma25 ? 'text-red-400' : stock.close < stock.ma25 ? 'text-green-400' : 'text-slate-300'}`}>{fmtPrice(stock.ma25)}</td>}
-                                            {visibleColumns.ma60 && <td className={`p-2 text-right font-mono ${stock.close > stock.ma60 ? 'text-red-400' : stock.close < stock.ma60 ? 'text-green-400' : 'text-slate-300'}`}>{fmtPrice(stock.ma60)}</td>}
-                                            {visibleColumns.ma120 && <td className={`p-2 text-right font-mono ${stock.close > stock.ma120 ? 'text-red-400' : stock.close < stock.ma120 ? 'text-green-400' : 'text-slate-300'}`}>{fmtPrice(stock.ma120)}</td>}
-                                            {visibleColumns.ma200 && <td className={`p-2 text-right font-mono ${stock.close > stock.ma200 ? 'text-red-400' : stock.close < stock.ma200 ? 'text-green-400' : 'text-slate-300'}`}>{fmtPrice(stock.ma200)}</td>}
-
-                                            {visibleColumns.vol_ma5 && <td className={`p-2 text-right font-mono ${stock.vol_ma5 > stock.vol_ma60 ? 'text-red-400' : stock.vol_ma5 < stock.vol_ma60 ? 'text-green-400' : 'text-slate-300'}`}>{fmtSheets(stock.vol_ma5)}</td>}
-                                            {visibleColumns.vol_ma60 && <td className={`p-2 text-right font-mono ${stock.vol_ma5 > stock.vol_ma60 ? 'text-red-400' : stock.vol_ma5 < stock.vol_ma60 ? 'text-green-400' : 'text-slate-300'}`}>{fmtSheets(stock.vol_ma60)}</td>}
-
-                                            {visibleColumns.foreign && <td className={`p-2 text-right font-bold font-mono ${stock.foreign > 0 ? 'text-red-400' : stock.foreign < 0 ? 'text-green-400' : 'text-slate-500'}`}>{fmtSheets(stock.foreign)}</td>}
-                                            {visibleColumns.trust && <td className={`p-2 text-right font-bold font-mono ${stock.trust > 0 ? 'text-red-400' : stock.trust < 0 ? 'text-green-400' : 'text-slate-500'}`}>{fmtSheets(stock.trust)}</td>}
-                                            {visibleColumns.dealer && <td className={`p-2 text-right font-bold font-mono ${stock.dealer > 0 ? 'text-red-400' : stock.dealer < 0 ? 'text-green-400' : 'text-slate-500'}`}>{fmtSheets(stock.dealer)}</td>}
-                                            {visibleColumns.big_trader && <td className={`p-2 text-right font-bold font-mono ${stock.big_trader > 0 ? 'text-red-400' : stock.big_trader < 0 ? 'text-green-400' : 'text-slate-500'}`}>{stock.big_trader ? stock.big_trader.toFixed(2) + '%' : '-'}</td>}
-                                            {visibleColumns.concentration && <td className="p-2 text-right text-slate-300 font-mono">{stock.concentration ? stock.concentration.toLocaleString() : '-'}</td>}
-                                        </tr>
-                                    );
-                                })}
-                            </tbody>
-                        </table>
-                    </div>
-                )}
-
-                {/* Pagination */}
-                {scanResults.length > 0 && (
-                    <div className="mt-4 pt-2 border-t border-slate-700/50 flex flex-col sm:flex-row justify-between items-center gap-4 text-sm text-slate-500">
-                        <span>顯示 {indexOfFirstItem + 1}-{Math.min(indexOfLastItem, scanResults.length)} 筆，共 {scanResults.length} 筆</span>
-                        <div className="flex gap-1">
-                            <button onClick={() => handlePageChange(currentPage - 1)} disabled={currentPage === 1} className="px-2 py-1 bg-slate-700 rounded hover:bg-slate-600 disabled:opacity-50 disabled:cursor-not-allowed">上一頁</button>
-                            <button onClick={() => handlePageChange(currentPage + 1)} disabled={currentPage === totalPages} className="px-2 py-1 bg-slate-700 rounded hover:bg-slate-600 disabled:opacity-50 disabled:cursor-not-allowed">下一頁</button>
-                        </div>
+                    <div className="flex flex-col items-center justify-center h-40 text-slate-500 gap-2">
+                        <div className="text-2xl">🔍</div>
+                        <div className="text-xs">無符合條件個股</div>
                     </div>
                 )}
             </div>
-        </div >
+
+            {/* Pagination - Compact */}
+            {scanResults.length > 0 && (
+                <div className="shrink-0 p-2 border-t border-slate-800 bg-slate-900 flex justify-between items-center">
+                    <button onClick={() => handlePageChange(currentPage - 1)} disabled={currentPage === 1} className="px-3 py-1 bg-slate-800 rounded text-xs disabled:opacity-30">上一頁</button>
+                    <span className="text-xs text-slate-400">{currentPage} / {totalPages}</span>
+                    <button onClick={() => handlePageChange(currentPage + 1)} disabled={currentPage === totalPages} className="px-3 py-1 bg-slate-800 rounded text-xs disabled:opacity-30">下一頁</button>
+                </div>
+            )}
+        </div>
     );
 };

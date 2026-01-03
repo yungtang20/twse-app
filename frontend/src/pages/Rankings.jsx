@@ -20,19 +20,6 @@ export const Rankings = () => {
     const [totalPages, setTotalPages] = useState(1);
     const [dataDate, setDataDate] = useState('');
 
-    // Column Widths - Optimized for "One Page" view
-    const colWidths = [
-        '12%', // Stock
-        '10%', // Price
-        '8%',  // Volume
-        '15%', // Foreign Streak
-        '15%', // Trust Streak
-        '10%', // Foreign Shares
-        '10%', // Foreign Pct
-        '10%', // Trust Shares
-        '10%'  // Trust Pct
-    ];
-
     const fetchRankings = async () => {
         setLoading(true);
         try {
@@ -127,8 +114,6 @@ export const Rankings = () => {
         fetchRankings();
     }, [sortType, filterForeign, filterTrust, sortColumn, sortDirection, page]);
 
-    // Note: data_date is set from fetchRankings() response (data.data_date)
-
     const handleSort = (column) => {
         if (sortColumn === column) {
             setSortDirection(prev => prev === 'desc' ? 'asc' : 'desc');
@@ -187,207 +172,98 @@ export const Rankings = () => {
     const getColor = (val) => val > 0 ? 'text-red-400' : val < 0 ? 'text-green-400' : 'text-slate-500';
 
     return (
-        <div className={`bg-slate-900 h-screen overflow-auto p-4 pb-10 text-slate-300 font-sans ${isMobileView ? 'max-w-md mx-auto' : ''}`}>
-            {/* Header */}
-            <div className="bg-gradient-to-r from-teal-600 to-teal-700 text-white px-4 py-2 mb-4 rounded font-bold text-lg flex justify-between items-center">
-                <span>📊 法人買賣超統計</span>
-                {dataDate && <span className="text-sm font-normal opacity-80">資料日期：{dataDate}</span>}
+        <div className="h-screen w-screen overflow-hidden flex flex-col pb-10 bg-slate-900 text-slate-300">
+            {/* Header - Compact */}
+            <div className="shrink-0 px-3 py-2 border-b border-slate-800 flex justify-between items-center bg-slate-900 z-10">
+                <h1 className="text-lg font-bold text-white flex items-center gap-2">
+                    <span className="text-teal-500">📊</span> 法人買賣超
+                </h1>
+                {dataDate && <span className="text-xs text-slate-500">{dataDate}</span>}
             </div>
 
-            {/* Controls */}
-            <div className="flex flex-col gap-2 mb-4 bg-slate-800/50 p-2 rounded border border-slate-700">
-                <div className="flex gap-2">
-                    <button onClick={() => setSortType('buy')}
-                        className={`flex-1 px-3 py-1 text-sm font-bold rounded ${sortType === 'buy' ? 'bg-red-500/20 text-red-400 border border-red-500/50' : 'bg-slate-800 text-slate-400 border border-slate-600'}`}>
-                        買超排行
-                    </button>
-                    <button onClick={() => setSortType('sell')}
-                        className={`flex-1 px-3 py-1 text-sm font-bold rounded ${sortType === 'sell' ? 'bg-green-500/20 text-green-400 border border-green-500/50' : 'bg-slate-800 text-slate-400 border border-slate-600'}`}>
-                        賣超排行
-                    </button>
-                </div>
-
-                <div className="flex items-center gap-2 bg-slate-900/30 p-1.5 rounded">
-                    <span className="text-xs text-slate-400 whitespace-nowrap">連買/賣：</span>
-                    <div className="flex items-center gap-1">
-                        <span className="text-xs text-slate-500">外資</span>
-                        <input type="number" value={filterForeign} onChange={(e) => setFilterForeign(e.target.value)}
-                            className="bg-slate-800 border border-slate-600 rounded px-1 py-0.5 w-8 text-center text-white text-xs" />
-                        <span className="text-xs text-slate-500">天</span>
+            {/* Controls - Compact */}
+            <div className="shrink-0 p-2 bg-slate-800/50 border-b border-slate-700">
+                <div className="flex items-center gap-2 overflow-x-auto no-scrollbar">
+                    {/* Buy/Sell Toggle */}
+                    <div className="flex bg-slate-900 rounded p-0.5 shrink-0">
+                        <button onClick={() => setSortType('buy')} className={`px-3 py-1 text-xs font-bold rounded transition-colors ${sortType === 'buy' ? 'bg-red-500/20 text-red-400 border border-red-500/50' : 'text-slate-400 hover:text-slate-200'}`}>買超</button>
+                        <button onClick={() => setSortType('sell')} className={`px-3 py-1 text-xs font-bold rounded transition-colors ${sortType === 'sell' ? 'bg-green-500/20 text-green-400 border border-green-500/50' : 'text-slate-400 hover:text-slate-200'}`}>賣超</button>
                     </div>
-                    <div className="flex items-center gap-1 ml-2">
-                        <span className="text-xs text-slate-500">投信</span>
-                        <input type="number" value={filterTrust} onChange={(e) => setFilterTrust(e.target.value)}
-                            className="bg-slate-800 border border-slate-600 rounded px-1 py-0.5 w-8 text-center text-white text-xs" />
-                        <span className="text-xs text-slate-500">天</span>
+
+                    {/* Filter Inputs */}
+                    <div className="flex items-center gap-2 bg-slate-900/30 px-2 py-1 rounded shrink-0">
+                        <div className="flex items-center gap-1">
+                            <span className="text-[10px] text-slate-500">外資連</span>
+                            <input type="number" value={filterForeign} onChange={(e) => setFilterForeign(e.target.value)} className="bg-slate-800 border border-slate-600 rounded px-1 py-0.5 w-8 text-center text-white text-[10px] focus:outline-none focus:border-teal-500" placeholder="0" />
+                        </div>
+                        <div className="flex items-center gap-1">
+                            <span className="text-[10px] text-slate-500">投信連</span>
+                            <input type="number" value={filterTrust} onChange={(e) => setFilterTrust(e.target.value)} className="bg-slate-800 border border-slate-600 rounded px-1 py-0.5 w-8 text-center text-white text-[10px] focus:outline-none focus:border-teal-500" placeholder="0" />
+                        </div>
                     </div>
                 </div>
             </div>
 
-            {/* Table Container - Horizontal Scroll */}
-            <div className="bg-slate-800/50 border border-slate-700 rounded overflow-x-auto relative min-h-[400px] no-scrollbar">
+            {/* Table Container - Scrollable */}
+            <div className="flex-1 overflow-auto p-2">
                 {loading ? (
-                    <div className="flex items-center justify-center h-64 text-slate-500">載入中...</div>
+                    <div className="flex items-center justify-center h-40 text-slate-500 gap-2">
+                        <div className="animate-spin rounded-full h-6 w-6 border-b-2 border-teal-500"></div>
+                        <div className="text-xs">載入中...</div>
+                    </div>
                 ) : (
-                    <table className="w-full text-xs border-collapse whitespace-nowrap text-left">
-                        <thead>
-                            <tr className="bg-slate-800 text-slate-400 border-b border-slate-700">
-                                <th rowSpan="2" className="p-2 font-bold text-slate-300 sticky left-0 z-20 bg-slate-800 shadow-[2px_0_5px_-2px_rgba(0,0,0,0.5)] min-w-[80px]">
-                                    股票
-                                </th>
-                                <th rowSpan="2" className="p-2 font-bold text-slate-300 cursor-pointer hover:text-white text-right min-w-[70px]" onClick={() => handleSort('close')}>
-                                    現價%<SortIcon column="close" />
-                                </th>
-                                <th rowSpan="2" className="p-2 font-bold text-slate-300 cursor-pointer hover:text-white text-right min-w-[70px]" onClick={() => handleSort('volume')}>
-                                    成交量<SortIcon column="volume" />
-                                </th>
-                                <th colSpan="2" className="p-2 font-bold text-slate-300 cursor-pointer hover:text-white text-center border-l border-slate-700" onClick={() => handleSort('streak')}>
-                                    連買連賣<SortIcon column="streak" />
-                                </th>
-                                <th colSpan="2" className="p-2 font-bold text-orange-400 bg-orange-500/10 cursor-pointer hover:text-orange-300 text-center border-l border-slate-700" onClick={() => handleSort('foreign_holding')}>
-                                    外資持股<SortIcon column="foreign_holding" />
-                                </th>
-                                <th colSpan="2" className="p-2 font-bold text-yellow-400 bg-yellow-500/10 cursor-pointer hover:text-yellow-300 text-center border-l border-slate-700" onClick={() => handleSort('trust_holding')}>
-                                    投信持股(估)<SortIcon column="trust_holding" />
-                                </th>
-                            </tr>
-                            <tr className="bg-slate-800/80 text-slate-400 border-b border-slate-700">
-                                <th className="p-2 text-red-400 text-center border-l border-slate-700 min-w-[80px]">
-                                    <div className="flex flex-col items-center">
-                                        <span className="cursor-pointer hover:text-red-300" onClick={() => handleSort('foreign_streak')}>外資</span>
-                                        <div className="flex gap-0.5 mt-1 w-full justify-center">
-                                            <span onClick={() => handleSort('foreign_cumulative')} className="px-1.5 py-0.5 text-[10px] bg-slate-700 rounded cursor-pointer hover:bg-slate-600 text-slate-300" title="依累計張數排序">張</span>
-                                            <span onClick={() => handleSort('foreign_cumulative_amount')} className="px-1.5 py-0.5 text-[10px] bg-slate-700 rounded cursor-pointer hover:bg-slate-600 text-slate-300" title="依累計金額排序">金</span>
-                                        </div>
-                                    </div>
-                                </th>
-                                <th className="p-2 text-yellow-400 text-center min-w-[80px]">
-                                    <div className="flex flex-col items-center">
-                                        <span className="cursor-pointer hover:text-yellow-300" onClick={() => handleSort('trust_streak')}>投信</span>
-                                        <div className="flex gap-0.5 mt-1 w-full justify-center">
-                                            <span onClick={() => handleSort('trust_cumulative')} className="px-1.5 py-0.5 text-[10px] bg-slate-700 rounded cursor-pointer hover:bg-slate-600 text-slate-300" title="依累計張數排序">張</span>
-                                            <span onClick={() => handleSort('trust_cumulative_amount')} className="px-1.5 py-0.5 text-[10px] bg-slate-700 rounded cursor-pointer hover:bg-slate-600 text-slate-300" title="依累計金額排序">金</span>
-                                        </div>
-                                    </div>
-                                </th>
-                                <th className="p-2 text-orange-400 text-right border-l border-slate-700 min-w-[70px]">張數</th>
-                                <th className="p-2 text-orange-400 text-right min-w-[60px]">比率</th>
-                                <th className="p-2 text-yellow-400 text-right border-l border-slate-700 min-w-[70px]">張數</th>
-                                <th className="p-2 text-yellow-400 text-right min-w-[60px]">比率</th>
-                            </tr>
-                        </thead>
-                        <tbody>
-                            {rankings.map((stock) => (
-                                <tr key={stock.code} onClick={() => navigate('/', { state: { code: stock.code } })}
-                                    className="group hover:bg-slate-700/50 cursor-pointer border-b border-slate-700/50 transition-colors">
-                                    <td className="p-2 font-bold text-slate-200 sticky left-0 z-10 bg-slate-900 group-hover:bg-slate-800 transition-colors shadow-[2px_0_5px_-2px_rgba(0,0,0,0.5)]">
-                                        <div className="flex flex-col">
-                                            <span className="text-sm text-white">{stock.name.substring(0, 4)}</span>
-                                            <span className="text-xs text-slate-400">{stock.code}</span>
-                                        </div>
-                                    </td>
-                                    <td className={`p-2 text-right font-mono font-bold ${getColor(stock.change_pct)}`}>
-                                        <div className="flex flex-col items-end">
-                                            <span>{stock.close}</span>
-                                            <span className="text-xs">{stock.change_pct > 0 ? '+' : ''}{stock.change_pct}%</span>
-                                        </div>
-                                    </td>
-                                    <td className="p-2 text-right font-mono text-slate-300">
-                                        {fmtVolume(stock.volume)}
-                                    </td>
-                                    <td className="p-2 text-center border-l border-slate-700/50">
-                                        <div className="flex flex-col items-center justify-center gap-0.5">
-                                            <StreakBadge value={stock.foreign_streak} />
-                                            <div className={`text-[10px] ${getColor(stock.foreign_cumulative)}`}>
-                                                {fmtCumulative(stock.foreign_cumulative)}
-                                            </div>
-                                            <div className={`text-[10px] ${getColor(stock.foreign_cumulative)}`}>
-                                                {fmtAmount(stock.foreign_cumulative, stock.close)}億
-                                            </div>
-                                        </div>
-                                    </td>
-                                    <td className="p-2 text-center">
-                                        <div className="flex flex-col items-center justify-center gap-0.5">
-                                            <StreakBadge value={stock.trust_streak} />
-                                            <div className={`text-[10px] ${getColor(stock.trust_cumulative)}`}>
-                                                {fmtCumulative(stock.trust_cumulative)}
-                                            </div>
-                                            <div className={`text-[10px] ${getColor(stock.trust_cumulative)}`}>
-                                                {fmtAmount(stock.trust_cumulative, stock.close)}億
-                                            </div>
-                                        </div>
-                                    </td>
-                                    <td className="p-2 text-right font-mono text-orange-300 border-l border-slate-700/50">
-                                        {fmtCumulative(stock.foreign_holding_shares)}
-                                    </td>
-                                    <td className="p-2 text-right font-mono text-orange-300">
-                                        {stock.foreign_holding_pct}%
-                                    </td>
-                                    <td className="p-2 text-right font-mono text-yellow-300 border-l border-slate-700/50">
-                                        {fmtCumulative(stock.trust_holding_shares || 0)}
-                                    </td>
-                                    <td className="p-2 text-right font-mono text-yellow-300">
-                                        {stock.trust_holding_pct || 0}%
-                                    </td>
-                                </tr>
-                            ))}
-
-                            {rankings.length === 0 && !loading && (
-                                <tr>
-                                    <td colSpan="9" className="text-center py-8 text-slate-500">
-                                        無符合條件的資料
-                                    </td>
-                                </tr>
-                            )}
-                        </tbody>
-                    </table>
+                    <div className="bg-slate-800 rounded border border-slate-700 overflow-hidden">
+                        <div className="overflow-x-auto">
+                            <table className="w-full text-xs border-collapse whitespace-nowrap text-left">
+                                <thead>
+                                    <tr className="bg-slate-900 text-slate-400 border-b border-slate-700">
+                                        <th className="p-2 font-bold text-slate-300 sticky left-0 z-20 bg-slate-900 shadow-[2px_0_5px_-2px_rgba(0,0,0,0.5)] min-w-[80px]">股票</th>
+                                        <th className="p-2 font-bold text-right cursor-pointer hover:text-white" onClick={() => handleSort('close')}>現價%<SortIcon column="close" /></th>
+                                        <th className="p-2 font-bold text-right cursor-pointer hover:text-white" onClick={() => handleSort('volume')}>成交量<SortIcon column="volume" /></th>
+                                        <th className="p-2 font-bold text-center border-l border-slate-700">外資連</th>
+                                        <th className="p-2 font-bold text-center">投信連</th>
+                                        <th className="p-2 font-bold text-right text-orange-400 border-l border-slate-700">外資買賣</th>
+                                        <th className="p-2 font-bold text-right text-yellow-400 border-l border-slate-700">投信買賣</th>
+                                    </tr>
+                                </thead>
+                                <tbody>
+                                    {rankings.map((stock) => (
+                                        <tr key={stock.code} onClick={() => navigate(`/dashboard?code=${stock.code}`)} className="group hover:bg-slate-700/50 cursor-pointer border-b border-slate-700/50 transition-colors">
+                                            <td className="p-2 font-bold text-slate-200 sticky left-0 z-10 bg-slate-900 group-hover:bg-slate-800 transition-colors shadow-[2px_0_5px_-2px_rgba(0,0,0,0.5)]">
+                                                <div className="flex flex-col">
+                                                    <span className="text-sm text-white">{stock.name.substring(0, 4)}</span>
+                                                    <span className="text-[10px] text-slate-500 font-mono">{stock.code}</span>
+                                                </div>
+                                            </td>
+                                            <td className={`p-2 text-right font-mono font-bold ${getColor(stock.change_pct)}`}>
+                                                <div className="flex flex-col items-end">
+                                                    <span>{stock.close}</span>
+                                                    <span className="text-[10px]">{stock.change_pct > 0 ? '+' : ''}{stock.change_pct}%</span>
+                                                </div>
+                                            </td>
+                                            <td className="p-2 text-right font-mono text-slate-300">{fmtVolume(stock.volume)}</td>
+                                            <td className="p-2 text-center border-l border-slate-700/50"><StreakBadge value={stock.foreign_streak} /></td>
+                                            <td className="p-2 text-center"><StreakBadge value={stock.trust_streak} /></td>
+                                            <td className={`p-2 text-right font-mono border-l border-slate-700/50 ${getColor(stock.foreign_cumulative)}`}>{fmtCumulative(stock.foreign_cumulative)}</td>
+                                            <td className={`p-2 text-right font-mono border-l border-slate-700/50 ${getColor(stock.trust_cumulative)}`}>{fmtCumulative(stock.trust_cumulative)}</td>
+                                        </tr>
+                                    ))}
+                                    {rankings.length === 0 && !loading && (
+                                        <tr><td colSpan="7" className="text-center py-8 text-slate-500">無符合條件的資料</td></tr>
+                                    )}
+                                </tbody>
+                            </table>
+                        </div>
+                    </div>
                 )}
             </div>
 
-            {/* Pagination Controls */}
+            {/* Pagination - Compact */}
             {!loading && rankings.length > 0 && (
-                <div className="flex justify-center items-center gap-2 mt-4 text-sm">
-                    <button
-                        onClick={() => setPage(p => Math.max(1, p - 1))}
-                        disabled={page === 1}
-                        className={`px-3 py-1 rounded border ${page === 1 ? 'bg-slate-800 text-slate-600 border-slate-700 cursor-not-allowed' : 'bg-slate-800 text-slate-300 border-slate-600 hover:bg-slate-700'}`}
-                    >
-                        上一頁
-                    </button>
-
-                    <div className="flex gap-1">
-                        {Array.from({ length: Math.min(5, totalPages) }, (_, i) => {
-                            let p = page;
-                            if (totalPages <= 5) {
-                                p = i + 1;
-                            } else if (page <= 3) {
-                                p = i + 1;
-                            } else if (page >= totalPages - 2) {
-                                p = totalPages - 4 + i;
-                            } else {
-                                p = page - 2 + i;
-                            }
-
-                            return (
-                                <button
-                                    key={p}
-                                    onClick={() => setPage(p)}
-                                    className={`w-8 h-8 flex items-center justify-center rounded border ${page === p ? 'bg-teal-600 text-white border-teal-500 font-bold' : 'bg-slate-800 text-slate-300 border-slate-600 hover:bg-slate-700'}`}
-                                >
-                                    {p}
-                                </button>
-                            );
-                        })}
-                    </div>
-
-                    <button
-                        onClick={() => setPage(p => Math.min(totalPages, p + 1))}
-                        disabled={page === totalPages}
-                        className={`px-3 py-1 rounded border ${page === totalPages ? 'bg-slate-800 text-slate-600 border-slate-700 cursor-not-allowed' : 'bg-slate-800 text-slate-300 border-slate-600 hover:bg-slate-700'}`}
-                    >
-                        下一頁
-                    </button>
-                    <span className="text-slate-500 ml-2">共 {totalPages} 頁</span>
+                <div className="shrink-0 p-2 border-t border-slate-800 bg-slate-900 flex justify-between items-center">
+                    <button onClick={() => setPage(p => Math.max(1, p - 1))} disabled={page === 1} className="px-3 py-1 bg-slate-800 rounded text-xs disabled:opacity-30">上一頁</button>
+                    <span className="text-xs text-slate-400">{page} / {totalPages}</span>
+                    <button onClick={() => setPage(p => Math.min(totalPages, p + 1))} disabled={page === totalPages} className="px-3 py-1 bg-slate-800 rounded text-xs disabled:opacity-30">下一頁</button>
                 </div>
             )}
         </div>

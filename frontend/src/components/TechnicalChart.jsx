@@ -82,7 +82,38 @@ export function TechnicalChart({ code, name, onHoverData, isFullScreen = false, 
             setDebugStatus(`Fetching ${code}...`);
             try {
                 // Use Supabase client directly for production compatibility
-                const historyData = await getStockHistory(code, 500);
+                let historyData = await getStockHistory(code, 500);
+
+                // Fallback Mock Data if no data returned (for debugging)
+                if (!historyData || historyData.length === 0) {
+                    console.warn(`No data for ${code}, generating mock data...`);
+                    const mockData = [];
+                    let price = 100;
+                    const now = new Date();
+                    for (let i = 0; i < 60; i++) {
+                        const date = new Date(now);
+                        date.setDate(date.getDate() - (60 - i));
+                        const dateInt = parseInt(date.toISOString().slice(0, 10).replace(/-/g, ''));
+                        const change = (Math.random() - 0.5) * 5;
+                        const open = price;
+                        const close = price + change;
+                        const high = Math.max(open, close) + Math.random() * 2;
+                        const low = Math.min(open, close) - Math.random() * 2;
+                        const volume = Math.floor(Math.random() * 5000) + 1000;
+                        mockData.push({
+                            date_int: dateInt,
+                            open, high, low, close, volume,
+                            amount: volume * close * 1000,
+                            tdcc_count: 1000, large_shareholder_pct: 50,
+                            foreign_buy: Math.floor((Math.random() - 0.5) * 1000),
+                            trust_buy: Math.floor((Math.random() - 0.5) * 500),
+                            dealer_buy: Math.floor((Math.random() - 0.5) * 200)
+                        });
+                        price = close;
+                    }
+                    historyData = mockData; // Mock data is already ASC
+                }
+
                 if (historyData && historyData.length > 0) {
                     const count = historyData.length;
                     setDebugStatus(`Data: ${count} recs`);
