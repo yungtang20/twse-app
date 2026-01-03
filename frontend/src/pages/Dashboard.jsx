@@ -2,7 +2,7 @@ import { useState, useEffect } from 'react';
 import { useNavigate, useLocation } from 'react-router-dom';
 import { useMobileView } from "@/context/MobileViewContext";
 import TechnicalChart from '@/components/TechnicalChart';
-import API_BASE_URL from '@/lib/api';
+import { supabase } from '@/lib/supabaseClient';
 
 export function Dashboard() {
     const navigate = useNavigate();
@@ -28,12 +28,18 @@ export function Dashboard() {
         }
     }, [location.state, stockList]);
 
-    // Fetch Stock List
+    // Fetch Stock List from Supabase
     useEffect(() => {
-        fetch(`${API_BASE_URL}/api/stocks?limit=5000`)
-            .then(res => res.json())
-            .then(data => { if (data.success) setStockList(data.data.stocks); })
-            .catch(err => console.error('Stock list fetch error:', err));
+        const fetchStocks = async () => {
+            try {
+                const { data, error } = await supabase
+                    .from('stock_meta')
+                    .select('code, name')
+                    .limit(3000);
+                if (!error && data) setStockList(data);
+            } catch (e) { console.error('Stock list fetch error:', e); }
+        };
+        fetchStocks();
     }, []);
 
     // Filter Stocks
@@ -54,8 +60,8 @@ export function Dashboard() {
     const volChange = hoverData && prevData ? (hoverData.value - prevData.value) : 0;
 
     return (
-        <div className={`bg-slate-900 min-h-screen p-3 ${isMobileView ? 'flex justify-center' : ''}`}>
-            <div className={`w-full transition-all duration-300 ${isMobileView ? 'max-w-[375px]' : ''}`}>
+        <div className={`bg-slate-900 h-screen w-screen max-h-screen max-w-screen overflow-hidden flex flex-col p-3 ${isMobileView ? 'justify-start' : ''}`}>
+            <div className={`w-full h-full flex flex-col transition-all duration-300 ${isMobileView ? 'max-w-[430px] mx-auto' : ''}`}>
 
                 <div className={`bg-slate-800 rounded px-3 py-2 mb-2 text-sm text-slate-300 flex ${isMobileView ? 'flex-col items-start gap-2' : 'flex-wrap gap-4 items-center'}`}>
                     <div className="relative flex justify-between w-full">
@@ -131,7 +137,9 @@ export function Dashboard() {
                     </div>
                 </div>
 
-                <TechnicalChart code={stockInfo.code} name={stockInfo.name} onHoverData={handleHoverUpdate} />
+                <div className="flex-1 min-h-0">
+                    <TechnicalChart code={stockInfo.code} name={stockInfo.name} onHoverData={handleHoverUpdate} />
+                </div>
             </div>
         </div>
     );

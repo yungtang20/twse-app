@@ -36,22 +36,57 @@ export const Rankings = () => {
     const fetchRankings = async () => {
         setLoading(true);
         try {
-            // Use Supabase directly for production compatibility
-            const limit = 10;
+            // Use Supabase directly - try institutional_investors first
+            const limit = 20;
             const offset = (page - 1) * limit;
 
-            let query = supabase
-                .from('stock_snapshot')
-                .select('code, name, close, change_pct, volume, foreign_buy, trust_buy, dealer_buy, foreign_holding_pct');
+            console.log('Fetching rankings from Supabase...');
 
-            // Sort by buy or sell
-            const orderColumn = sortType === 'buy' ? 'foreign_buy' : 'foreign_buy';
-            const ascending = sortType === 'sell';
+            // Get latest date from institutional_investors
+            const { data: latestData, error: latestError } = await supabase
+                .from('institutional_investors')
+                .select('date_int')
+                .order('date_int', { ascending: false })
+                .limit(1);
 
-            query = query.order(orderColumn, { ascending })
+            if (latestError || !latestData?.length) {
+                console.error('No institutional data found:', latestError);
+
+                // Fallback to stock_snapshot
+                const { data: snapData, error: snapError } = await supabase
+                    .from('stock_snapshot')
+                    .select('code, name, close, change_pct, volume, foreign_buy, trust_buy, dealer_buy')
+                    .order('foreign_buy', { ascending: sortType === 'sell' })
+                    .range(offset, offset + limit - 1);
+
+                if (snapError) {
+                    console.error('stock_snapshot error:', snapError);
+                    setRankings([]);
+                    return;
+                }
+
+                console.log('Got snapshot data:', snapData?.length);
+                const transformed = (snapData || []).map(d => ({
+                    ...d, foreign_streak: 0, trust_streak: 0,
+                    foreign_cumulative: d.foreign_buy || 0,
+                    trust_cumulative: d.trust_buy || 0,
+                    foreign_holding_shares: 0, trust_holding_shares: 0, trust_holding_pct: 0
+                }));
+                setRankings(transformed);
+                setTotalPages(10);
+                return;
+            }
+
+            const latestDate = latestData[0].date_int;
+            console.log('Latest date:', latestDate);
+
+            // Get institutional data for latest date
+            const { data, error } = await supabase
+                .from('institutional_investors')
+                .select('code, name, foreign_buy, foreign_sell, trust_buy, trust_sell, dealer_buy, dealer_sell')
+                .eq('date_int', latestDate)
+                .order(sortType === 'buy' ? 'foreign_buy' : 'foreign_sell', { ascending: sortType === 'sell' })
                 .range(offset, offset + limit - 1);
-
-            const { data, error } = await query;
 
             if (error) {
                 console.error('Supabase error:', error);
@@ -59,20 +94,27 @@ export const Rankings = () => {
                 return;
             }
 
-            // Transform data to match expected format
+            console.log('Got institutional data:', data?.length);
+            setDataDate(`${String(latestDate).slice(0, 4)}-${String(latestDate).slice(4, 6)}-${String(latestDate).slice(6, 8)}`);
+
             const transformed = (data || []).map(d => ({
-                ...d,
-                foreign_streak: 0, // Not available in snapshot
+                code: d.code,
+                name: d.name || d.code,
+                close: 0,
+                change_pct: 0,
+                volume: 0,
+                foreign_streak: 0,
                 trust_streak: 0,
-                foreign_cumulative: d.foreign_buy || 0,
-                trust_cumulative: d.trust_buy || 0,
+                foreign_cumulative: (d.foreign_buy || 0) - (d.foreign_sell || 0),
+                trust_cumulative: (d.trust_buy || 0) - (d.trust_sell || 0),
                 foreign_holding_shares: 0,
+                foreign_holding_pct: 0,
                 trust_holding_shares: 0,
                 trust_holding_pct: 0
             }));
 
             setRankings(transformed);
-            setTotalPages(10); // Estimate
+            setTotalPages(10);
         } catch (error) {
             console.error('Fetch rankings failed:', error);
             setRankings([]);
