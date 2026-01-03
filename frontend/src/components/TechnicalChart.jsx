@@ -272,7 +272,7 @@ export function TechnicalChart({ code, name, onHoverData, isFullScreen = false }
             layout: { background: { type: 'solid', color: '#0f172a' }, textColor: '#94a3b8' },
             grid: { vertLines: { color: '#1e293b' }, horzLines: { color: '#1e293b' } },
             crosshair: { mode: 0 },
-            rightPriceScale: { borderColor: '#334155', scaleMargins: { top: 0.1, bottom: 0.1 }, minimumWidth: 40, width: 40 }, // Compact scale
+            rightPriceScale: { borderColor: '#334155', scaleMargins: { top: 0.1, bottom: 0.1 }, minimumWidth: 60, width: 60 }, // Consistent scale width
             timeScale: { visible: showTime, borderColor: '#334155', timeVisible: true, rightOffset: 5, fixRightEdge: true },
             handleScale: { axisPressedMouseMove: { time: true, price: false } }, // Disable vertical scaling by user to keep fixed range
             handleScroll: { vertTouchDrag: false, pressedMouseMove: true, horzTouchDrag: true }, // Disable vertical scroll
