@@ -2,7 +2,7 @@ import React, { useState, useEffect, useMemo } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useMobileView } from "@/context/MobileViewContext";
 import { supabase } from '@/lib/supabaseClient';
-import { calculateVP, calculateMFI, calculateMA, calculateRSI, calculateVWAP } from '@/utils/indicators';
+import { calculateVP, calculateMFI, calculateMA, calculateRSI, calculateVWAP, calculateKD, calculateMACD, calculateVSBC, calculateNVI, calculatePVI, calculateBollinger } from '@/utils/indicators';
 
 export const Scan = () => {
     const navigate = useNavigate();
@@ -133,20 +133,102 @@ export const Scan = () => {
                         if (activeFilter === 'vp') {
                             const close = stock.close;
                             if (vpDirection === 'support') {
-                                const distFromLow = (close - result.vp_low) / result.vp_low;
+                                const distFromLow = result.vp_low > 0 ? (close - result.vp_low) / result.vp_low : 1;
                                 if (distFromLow >= 0 && distFromLow <= tolerance) return result;
                             } else {
-                                const distFromHigh = (result.vp_high - close) / result.vp_high;
+                                const distFromHigh = result.vp_high > 0 ? (result.vp_high - close) / result.vp_high : 1;
                                 if (distFromHigh >= 0 && distFromHigh <= tolerance) return result;
                             }
                         } else if (activeFilter === 'mfi') {
-                            if (result.mfi < 30) return result; // Oversold
+                            if (result.mfi < 30) return result;
                         } else if (activeFilter === 'ma') {
                             if (maPattern === 'below_ma200' && stock.close < result.ma200 && result.ma200 > 0) return result;
                             if (maPattern === 'below_ma20' && stock.close < result.ma20 && result.ma20 > 0) return result;
                             if (maPattern === 'bull' && result.ma20 > result.ma60) return result;
+                        } else if (activeFilter === 'kd_month') {
+                            // KD golden cross: K crosses above D, K < 80
+                            const kd = calculateKD(chartData, 9);
+                            if (last >= 1 && kd.k[last] && kd.d[last]) {
+                                const kCross = kd.k[last - 1] <= kd.d[last - 1] && kd.k[last] > kd.d[last];
+                                if (kCross && kd.k[last] < 80) return result;
+                            }
+                        } else if (activeFilter === 'vsbc') {
+                            // Price > POC, MA20 > MA60, Price > MA20
+                            if (stock.close > result.vp_poc && result.ma20 > result.ma60 && stock.close > result.ma20) return result;
+                        } else if (activeFilter === 'smart_money') {
+                            // Volume > 1.1x avg, Price > MA200, MFI < 80
+                            const volRatio = result.vol_ma60 > 0 ? stock.volume / result.vol_ma60 : 0;
+                            if (volRatio > 1.1 && stock.close > result.ma200 && result.mfi < 80) return result;
+                        } else if (activeFilter === '2560') {
+                            // Price > MA25, Vol cross, Bullish, Bias < 10%
+                            const ma25 = calculateMA(chartData, 25);
+                            const volMa5 = calculateMA(chartData, 5, 'value');
+                            const volMa20 = calculateMA(chartData, 20, 'value');
+                            const bias = result.ma20 > 0 ? ((stock.close - result.ma20) / result.ma20 * 100) : 999;
+                            const isBullish = chartData[last].close > chartData[last].open;
+                            const volCross = last > 0 && volMa5[last] > volMa20[last] && volMa5[last - 1] <= volMa20[last - 1];
+                            if (stock.close > (ma25[last] || 0) && (volCross || volMa5[last] > volMa20[last]) && isBullish && bias >= 0 && bias < 10) return result;
+                        } else if (activeFilter === 'five_stage') {
+                            // 5-stage: MA bull + NVI > PVI + RSI > 50 + Bullish + MFI > 50
+                            const nvi = calculateNVI(chartData);
+                            const pvi = calculatePVI(chartData);
+                            const rsi = calculateRSI(chartData, 14);
+                            const isBullish = chartData[last].close > chartData[last].open;
+                            let score = 0;
+                            if (result.ma20 > result.ma60) score++;
+                            if (nvi[last] > pvi[last]) score++;
+                            if (rsi[last] > 50) score++;
+                            if (isBullish) score++;
+                            if (result.mfi > 50) score++;
+                            if (score >= 4) return result;
+                        } else if (activeFilter === 'institutional') {
+                            // MA20 > MA60, RSI < 60, High volume
+                            const rsi = calculateRSI(chartData, 14);
+                            if (result.ma20 > result.ma60 && rsi[last] < 60 && stock.volume > minVol * 2000) return result;
+                        } else if (activeFilter === 'six_dim') {
+                            // 6 indicators: MACD/KD/RSI/Bollinger/NVI/MFI >= 5 bullish
+                            const macd = calculateMACD(chartData);
+                            const kd = calculateKD(chartData, 9);
+                            const rsi = calculateRSI(chartData, 14);
+                            const boll = calculateBollinger(chartData, 20);
+                            const nvi = calculateNVI(chartData);
+                            const pvi = calculatePVI(chartData);
+                            let cnt = 0;
+                            if (macd.osc[last] > 0) cnt++;
+                            if (kd.k[last] > kd.d[last]) cnt++;
+                            if (rsi[last] > 50) cnt++;
+                            if (boll.mid[last] && stock.close > boll.mid[last]) cnt++;
+                            if (nvi[last] > pvi[last]) cnt++;
+                            if (result.mfi > 50) cnt++;
+                            if (cnt >= 5) return result;
+                        } else if (activeFilter === 'patterns') {
+                            // Morning Star / Evening Star
+                            if (chartData.length >= 3) {
+                                const c0 = chartData[last - 2], c1 = chartData[last - 1], c2 = chartData[last];
+                                if (patternType === 'morning_star') {
+                                    const bear0 = c0.close < c0.open && (c0.open - c0.close) > (c0.high - c0.low) * 0.5;
+                                    const small1 = Math.abs(c1.close - c1.open) < (c1.high - c1.low) * 0.3;
+                                    const bull2 = c2.close > c2.open && (c2.close - c2.open) > (c2.high - c2.low) * 0.5;
+                                    if (bear0 && small1 && bull2 && c2.close > (c0.open + c0.close) / 2) return result;
+                                } else {
+                                    const bull0 = c0.close > c0.open && (c0.close - c0.open) > (c0.high - c0.low) * 0.5;
+                                    const small1 = Math.abs(c1.close - c1.open) < (c1.high - c1.low) * 0.3;
+                                    const bear2 = c2.close < c2.open && (c2.open - c2.close) > (c2.high - c2.low) * 0.5;
+                                    if (bull0 && small1 && bear2 && c2.close < (c0.open + c0.close) / 2) return result;
+                                }
+                            }
+                        } else if (activeFilter === 'pv_div') {
+                            // Price-Volume divergence: Price up, Volume down (3 days)
+                            if (chartData.length >= 3) {
+                                let priceUp = 0, volDown = 0;
+                                for (let k = 1; k <= 3 && last - k >= 0; k++) {
+                                    if (chartData[last - k + 1].close > chartData[last - k].close) priceUp++;
+                                    if (chartData[last - k + 1].value < chartData[last - k].value) volDown++;
+                                }
+                                if (priceUp >= 2 && volDown >= 2) return result;
+                            }
                         } else {
-                            return result; // Default: return all
+                            return result;
                         }
                         return null;
                     } catch (e) {
