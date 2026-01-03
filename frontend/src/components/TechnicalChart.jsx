@@ -582,9 +582,9 @@ export function TechnicalChart({ code, name, onHoverData, isFullScreen = false }
             </div>
 
             {/* Main Chart with Overlay */}
-            <div className="relative w-full">
+            <div className="relative w-full" style={{ height: chartHeights.main }}>
                 {renderIndicatorOverlay()}
-                <div ref={mainContainerRef} className="w-full rounded overflow-hidden" />
+                <div ref={mainContainerRef} className="w-full h-full rounded overflow-hidden" />
             </div>
 
             {/* Resizer */}
@@ -598,13 +598,13 @@ export function TechnicalChart({ code, name, onHoverData, isFullScreen = false }
             </div>
 
             {/* Volume Section */}
-            <div className="mt-0 relative">
+            <div className="mt-0 relative" style={{ height: chartHeights.volume }}>
                 <div className="flex gap-2 text-[9px] text-slate-400 px-1 absolute top-0 left-0 z-10 pointer-events-none">
                     <span className="text-blue-400 bg-slate-900/40 px-0.5 rounded backdrop-blur-[1px]">MA5:{volumeMA5[hoverIdx] ? (volumeMA5[hoverIdx] / 10000).toFixed(0) : '-'}</span>
                     <span className="text-purple-400 bg-slate-900/40 px-0.5 rounded backdrop-blur-[1px]">MA60:{volumeMA60[hoverIdx] ? (volumeMA60[hoverIdx] / 10000).toFixed(0) : '-'}</span>
                     <span className="text-yellow-400 bg-slate-900/40 px-0.5 rounded backdrop-blur-[1px]">V:{chartData[hoverIdx] ? (chartData[hoverIdx].value / 10000).toFixed(0) : '-'}</span>
                 </div>
-                <div ref={volumeContainerRef} className="w-full rounded overflow-hidden" />
+                <div ref={volumeContainerRef} className="w-full h-full rounded overflow-hidden" />
             </div>
 
             {/* Resizer */}
@@ -613,7 +613,7 @@ export function TechnicalChart({ code, name, onHoverData, isFullScreen = false }
             </div>
 
             {/* Sub Chart 1 */}
-            <div className="mt-0 relative">
+            <div className="mt-0 relative" style={{ height: chartHeights.sub1 }}>
                 <div className="flex gap-1 px-1 items-center absolute top-0 left-0 z-10">
                     <select value={activeSubIndicator} onChange={(e) => setActiveSubIndicator(e.target.value)} className="bg-slate-800/60 text-white text-[9px] px-0.5 py-0 rounded border border-slate-700/50 focus:outline-none backdrop-blur-[1px]">
                         {subIndicators.map(ind => <option key={ind} value={ind}>{ind}</option>)}
@@ -627,7 +627,7 @@ export function TechnicalChart({ code, name, onHoverData, isFullScreen = false }
                         {getSubValues(activeSubIndicator, chartRefs.current.subSeries)}
                     </div>
                 </div>
-                <div ref={subChartContainerRef} className="w-full rounded overflow-hidden" />
+                <div ref={subChartContainerRef} className="w-full h-full rounded overflow-hidden" />
             </div>
 
             {/* Resizer */}
@@ -636,7 +636,7 @@ export function TechnicalChart({ code, name, onHoverData, isFullScreen = false }
             </div>
 
             {/* Sub Chart 2 */}
-            <div className="mt-0 relative">
+            <div className="mt-0 relative" style={{ height: chartHeights.sub2 }}>
                 <div className="flex gap-1 px-1 items-center absolute top-0 left-0 z-10">
                     <select value={activeSubIndicator2} onChange={(e) => setActiveSubIndicator2(e.target.value)} className="bg-slate-800/60 text-white text-[9px] px-0.5 py-0 rounded border border-slate-700/50 focus:outline-none backdrop-blur-[1px]">
                         {subIndicators.map(ind => <option key={ind} value={ind}>{ind}</option>)}
@@ -650,7 +650,7 @@ export function TechnicalChart({ code, name, onHoverData, isFullScreen = false }
                         {getSubValues(activeSubIndicator2, chartRefs.current.subSeries2)}
                     </div>
                 </div>
-                <div ref={subChartContainerRef2} className="w-full rounded overflow-hidden" />
+                <div ref={subChartContainerRef2} className="w-full h-full rounded overflow-hidden" />
             </div>
 
             {/* Bottom Resizer (Optional, maybe remove to save space) */}
