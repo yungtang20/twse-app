@@ -12,7 +12,7 @@ export function Layout() {
             {!isMobileView && <Sidebar />}
             <div className="flex-1 flex flex-col min-w-0">
                 {!isMobileView && <Header />}
-                <main className={`flex-1 p-6 overflow-auto ${isMobileView ? 'pb-20' : ''}`}>
+                <main className={`flex-1 p-0 overflow-hidden ${isMobileView ? 'pb-10' : ''}`}>
                     <Outlet />
                 </main>
                 {isMobileView && <BottomNav />}

@@ -15,7 +15,7 @@ export function BottomNav() {
     ];
 
     return (
-        <div className="fixed bottom-0 left-0 right-0 h-16 bg-black border-t border-zinc-800 grid grid-cols-4 z-50">
+        <div className="fixed bottom-0 left-0 right-0 h-10 bg-black border-t border-zinc-800 grid grid-cols-4 z-50">
             {navItems.map((item) => {
                 const Icon = item.icon;
                 const isActive = location.pathname === item.path;
@@ -25,14 +25,14 @@ export function BottomNav() {
                         key={item.path}
                         to={item.path}
                         className={cn(
-                            "flex flex-col items-center justify-center gap-1 transition-colors h-full",
+                            "flex flex-col items-center justify-center gap-0.5 transition-colors h-full",
                             isActive
                                 ? "bg-zinc-800 text-white"
                                 : "text-zinc-500 hover:text-zinc-300 hover:bg-zinc-900"
                         )}
                     >
-                        <Icon className="w-6 h-6" />
-                        <span className="text-[10px] font-medium">{item.label}</span>
+                        <Icon className="w-4 h-4" />
+                        <span className="text-[9px] font-medium leading-none">{item.label}</span>
                     </Link>
                 );
             })}

@@ -166,10 +166,10 @@ export function TechnicalChart({ code, name, onHoverData, isFullScreen = false, 
     // Full Screen Height Calculation - Fill entire available space
     useEffect(() => {
         const calculateHeights = () => {
-            // Use window height minus top header (~20px) and bottom nav (~60px)
+            // Use window height minus top header (~20px) and bottom nav (~40px)
             const windowH = window.innerHeight;
             const headerHeight = 20; // Minimal header
-            const navHeight = 60;    // Bottom navigation
+            const navHeight = 40;    // Compact Bottom navigation
             const availableHeight = windowH - headerHeight - navHeight;
 
             // Ratios: Main 55%, Vol 12%, Sub1 16%, Sub2 17%
