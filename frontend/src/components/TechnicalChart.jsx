@@ -210,7 +210,33 @@ export function TechnicalChart({ code, name, onHoverData, isFullScreen = false, 
 
     const dataRef = useRef([]);
 
-    // Resize Handlers Removed (Flexbox Layout)
+    // Force Data on Mount (Debug)
+    useEffect(() => {
+        console.log("Forcing data...");
+        const mock = [];
+        let price = 100;
+        for (let i = 0; i < 100; i++) {
+            const date = new Date();
+            date.setDate(date.getDate() - (100 - i));
+            const time = date.toISOString().split('T')[0];
+            mock.push({
+                time,
+                open: price,
+                high: price + 5,
+                low: price - 5,
+                close: price + 2,
+                value: 1000000,
+                amount: 10000000,
+                tdcc: 100,
+                large: 50,
+                foreign: 100,
+                trust: 50,
+                dealer: 10
+            });
+            price += 2;
+        }
+        setRawData(mock);
+    }, []);
 
     // Toggle Indicator
     const toggleIndicator = useCallback((name) => {
@@ -640,6 +666,14 @@ export function TechnicalChart({ code, name, onHoverData, isFullScreen = false, 
                 <div ref={mainContainerRef} className="w-full h-full rounded overflow-hidden" />
 
                 {/* Safe Debug Overlay Removed */}
+
+                {/* Debug Overlay */}
+                <div className="absolute top-2 left-2 bg-black/80 text-green-400 p-2 rounded z-50 text-xs font-mono border border-green-500 pointer-events-none">
+                    <div>Code: {code}</div>
+                    <div>Raw: {rawData?.length}</div>
+                    <div>ChartData: {chartData?.length}</div>
+                    <div>W: {mainContainerRef.current?.clientWidth} H: {mainContainerRef.current?.clientHeight}</div>
+                </div>
 
                 {/* Minimal Status Dot */}
                 <div className={`absolute bottom-1 right-1 w-1.5 h-1.5 rounded-full ${Array.isArray(rawData) && rawData.length > 0 ? 'bg-green-500/50' : 'bg-red-500/50'} pointer-events-none`} />
