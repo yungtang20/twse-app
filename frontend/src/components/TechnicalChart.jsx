@@ -79,31 +79,14 @@ export function TechnicalChart({ code, name, onHoverData, isFullScreen = false, 
         }
 
         const generateMockData = (basePrice = 15000, days = 100) => {
-            const mockData = [];
-            let price = basePrice;
-            const now = new Date();
-            for (let i = 0; i < days; i++) {
-                const date = new Date(now);
-                date.setDate(date.getDate() - (days - i));
-                const dateInt = parseInt(date.toISOString().slice(0, 10).replace(/-/g, ''));
-                const change = (Math.random() - 0.5) * (price * 0.03);
-                const open = price;
-                const close = price + change;
-                const high = Math.max(open, close) + Math.random() * (price * 0.01);
-                const low = Math.min(open, close) - Math.random() * (price * 0.01);
-                const volume = Math.floor(Math.random() * 5000000) + 2000000;
-                mockData.push({
-                    date_int: dateInt,
-                    open, high, low, close, volume,
-                    amount: volume * close,
-                    tdcc_count: 1000, large_shareholder_pct: 50,
-                    foreign_buy: Math.floor((Math.random() - 0.5) * 10000),
-                    trust_buy: Math.floor((Math.random() - 0.5) * 5000),
-                    dealer_buy: Math.floor((Math.random() - 0.5) * 2000)
-                });
-                price = close;
-            }
-            return mockData;
+            // Hardcoded data to ensure validity
+            return [
+                { date_int: 20240101, open: 100, high: 105, low: 95, close: 102, volume: 5000, amount: 500000, tdcc_count: 1000, large_shareholder_pct: 50, foreign_buy: 100, trust_buy: 50, dealer_buy: 10 },
+                { date_int: 20240102, open: 102, high: 108, low: 100, close: 106, volume: 6000, amount: 600000, tdcc_count: 1000, large_shareholder_pct: 50, foreign_buy: 100, trust_buy: 50, dealer_buy: 10 },
+                { date_int: 20240103, open: 106, high: 110, low: 104, close: 108, volume: 7000, amount: 700000, tdcc_count: 1000, large_shareholder_pct: 50, foreign_buy: 100, trust_buy: 50, dealer_buy: 10 },
+                { date_int: 20240104, open: 108, high: 112, low: 105, close: 110, volume: 8000, amount: 800000, tdcc_count: 1000, large_shareholder_pct: 50, foreign_buy: 100, trust_buy: 50, dealer_buy: 10 },
+                { date_int: 20240105, open: 110, high: 115, low: 108, close: 112, volume: 9000, amount: 900000, tdcc_count: 1000, large_shareholder_pct: 50, foreign_buy: 100, trust_buy: 50, dealer_buy: 10 },
+            ];
         };
 
         const fetchData = async () => {
@@ -739,7 +722,15 @@ export function TechnicalChart({ code, name, onHoverData, isFullScreen = false, 
                 {renderIndicatorOverlay()}
                 <div ref={mainContainerRef} className="w-full h-full rounded overflow-hidden" />
 
-                {/* Debug Overlay Removed to prevent crash */}
+                {/* Safe Debug Overlay */}
+                <div className="absolute top-10 left-10 bg-black/80 text-green-400 p-2 rounded z-50 text-xs font-mono pointer-events-none border border-green-500">
+                    <div>Code: {code}</div>
+                    <div>RawData Len: {rawData?.length || 0}</div>
+                    <div>First: {rawData?.[0]?.time || 'N/A'}</div>
+                    <div>Last: {rawData?.[rawData?.length - 1]?.time || 'N/A'}</div>
+                    <div>Chart Created: {chartRefs.current?.chart ? 'YES' : 'NO'}</div>
+                    <div>Container: {mainContainerRef.current?.clientWidth}x{mainContainerRef.current?.clientHeight}</div>
+                </div>
 
                 {/* Minimal Status Dot */}
                 <div className={`absolute bottom-1 right-1 w-1.5 h-1.5 rounded-full ${Array.isArray(rawData) && rawData.length > 0 ? 'bg-green-500/50' : 'bg-red-500/50'} pointer-events-none`} />
