@@ -8,7 +8,7 @@ import {
 } from '@/utils/indicators';
 import { getStockHistory } from '@/lib/supabaseClient';
 
-export function TechnicalChart({ code, name, onHoverData, isFullScreen = false }) {
+export function TechnicalChart({ code, name, onHoverData, isFullScreen = false, stockList = [], onStockChange }) {
     const { isMobileView } = useMobileView();
     const [period, setPeriod] = useState('日');
     const periods = ['日', '週', '月'];
@@ -19,7 +19,8 @@ export function TechnicalChart({ code, name, onHoverData, isFullScreen = false }
     const [rawData, setRawData] = useState([]); // Store raw daily data
     const [hoverIdx, setHoverIdx] = useState(-1);
     const [shareholderThreshold, setShareholderThreshold] = useState(1000);
-    const [debugStatus, setDebugStatus] = useState('Init...');
+    const [searchTerm, setSearchTerm] = useState('');
+    const [showSearch, setShowSearch] = useState(false);
 
     // Aggregation Logic
     const chartData = useMemo(() => {
@@ -555,18 +556,77 @@ export function TechnicalChart({ code, name, onHoverData, isFullScreen = false }
         }
     };
 
+    // Filtered stocks for search
+    const filteredStocks = useMemo(() => {
+        if (!searchTerm || !stockList.length) return [];
+        const term = searchTerm.toLowerCase();
+        return stockList.filter(s =>
+            s.code.toLowerCase().includes(term) ||
+            s.name.toLowerCase().includes(term)
+        ).slice(0, 10);
+    }, [searchTerm, stockList]);
+
     return (
-        <div className="w-full h-full flex flex-col max-h-screen overflow-hidden">
-            {/* Header: Scrollable Toggles */}
-            <div className="bg-slate-800 rounded p-0.5 mb-0.5 flex items-center justify-between shrink-0">
-                <div className="flex overflow-x-auto no-scrollbar gap-1 px-1 items-center flex-1 mask-linear-fade">
+        <div className="w-full h-full flex flex-col overflow-hidden">
+            {/* Header: Stock name + Indicators + Period */}
+            <div className="bg-slate-800 p-1 flex items-center justify-between shrink-0 gap-1">
+                {/* Stock name with click to search */}
+                <div className="relative">
+                    {showSearch ? (
+                        <input
+                            type="text"
+                            autoFocus
+                            placeholder="輸入代號..."
+                            className="bg-slate-700 text-white px-2 py-0.5 rounded text-xs w-24 focus:outline-none"
+                            value={searchTerm}
+                            onChange={(e) => setSearchTerm(e.target.value)}
+                            onBlur={() => setTimeout(() => setShowSearch(false), 200)}
+                            onKeyDown={(e) => {
+                                if (e.key === 'Enter' && filteredStocks.length > 0) {
+                                    onStockChange?.(filteredStocks[0]);
+                                    setSearchTerm('');
+                                    setShowSearch(false);
+                                } else if (e.key === 'Escape') {
+                                    setShowSearch(false);
+                                }
+                            }}
+                        />
+                    ) : (
+                        <button
+                            onClick={() => setShowSearch(true)}
+                            className="text-white font-bold text-xs px-1 py-0.5 bg-slate-700 rounded hover:bg-slate-600"
+                        >
+                            {name} ({code})
+                        </button>
+                    )}
+                    {showSearch && filteredStocks.length > 0 && (
+                        <div className="absolute top-full left-0 w-48 bg-slate-700 border border-slate-600 rounded mt-1 z-50 max-h-40 overflow-y-auto shadow-lg">
+                            {filteredStocks.map(s => (
+                                <div
+                                    key={s.code}
+                                    className="px-2 py-1 hover:bg-slate-600 cursor-pointer text-white text-xs"
+                                    onClick={() => {
+                                        onStockChange?.(s);
+                                        setSearchTerm('');
+                                        setShowSearch(false);
+                                    }}
+                                >
+                                    <span className="font-bold text-yellow-400">{s.code}</span> {s.name}
+                                </div>
+                            ))}
+                        </div>
+                    )}
+                </div>
+
+                {/* Indicators */}
+                <div className="flex overflow-x-auto no-scrollbar gap-0.5 px-1 items-center flex-1">
                     {indicatorConfig.map(ind => {
                         const active = activeIndicators.includes(ind.name);
                         return (
                             <button
                                 key={ind.name}
                                 onClick={() => toggleIndicator(ind.name)}
-                                className={`flex items-center gap-0.5 px-1.5 py-0.5 rounded text-[9px] whitespace-nowrap transition-all ${active ? 'bg-slate-700 text-white shadow-sm' : 'text-slate-500 hover:text-slate-400'}`}
+                                className={`flex items-center gap-0.5 px-1 py-0.5 rounded text-[8px] whitespace-nowrap ${active ? 'bg-slate-700 text-white' : 'text-slate-500'}`}
                             >
                                 <span className="w-1 h-1 rounded-full" style={{ backgroundColor: ind.color }} />
                                 <span>{ind.name}</span>
@@ -574,12 +634,14 @@ export function TechnicalChart({ code, name, onHoverData, isFullScreen = false }
                         );
                     })}
                 </div>
-                <div className="flex gap-0.5 ml-1 shrink-0">
+
+                {/* Period selector */}
+                <div className="flex gap-0.5 shrink-0">
                     {periods.map(p => (
                         <button
                             key={p}
                             onClick={() => setPeriod(p)}
-                            className={`px-1.5 py-0.5 text-[9px] rounded font-medium ${period === p ? 'bg-blue-600 text-white' : 'bg-slate-700 text-slate-500'}`}
+                            className={`px-1 py-0.5 text-[8px] rounded font-medium ${period === p ? 'bg-blue-600 text-white' : 'bg-slate-700 text-slate-500'}`}
                         >
                             {p}
                         </button>
@@ -588,19 +650,14 @@ export function TechnicalChart({ code, name, onHoverData, isFullScreen = false }
             </div>
 
             {/* Main Chart with Overlay */}
-            <div className="relative w-full" style={{ height: chartHeights.main }}>
+            <div className="relative flex-1 min-h-0" style={{ height: chartHeights.main }}>
                 {renderIndicatorOverlay()}
                 <div ref={mainContainerRef} className="w-full h-full rounded overflow-hidden" />
             </div>
 
             {/* Resizer */}
-            <div className="h-1 bg-slate-800 hover:bg-blue-500 cursor-row-resize flex justify-center items-center shrink-0" onMouseDown={handleResizeStart('main-vol')} onTouchStart={handleTouchStart('main-vol')}>
-                <div className="w-6 h-0.5 bg-slate-600 rounded-full" />
-            </div>
-
-            {/* Debug Info */}
-            <div className="absolute top-0 right-0 bg-black/50 text-white text-xs p-1 z-50 pointer-events-none">
-                Debug: {debugStatus}
+            <div className="h-0.5 bg-slate-700 hover:bg-blue-500 cursor-row-resize flex justify-center items-center shrink-0" onMouseDown={handleResizeStart('main-vol')} onTouchStart={handleTouchStart('main-vol')}>
+                <div className="w-6 h-px bg-slate-600 rounded-full" />
             </div>
 
             {/* Volume Section */}
