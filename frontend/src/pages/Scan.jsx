@@ -167,14 +167,23 @@ export const Scan = () => {
                             const volRatio = result.vol_ma60 > 0 ? stock.volume / result.vol_ma60 : 0;
                             if (volRatio > 1.1 && stock.close > result.ma200 && result.mfi < 80) return result;
                         } else if (activeFilter === '2560') {
-                            // Price > MA25, Vol cross, Bullish, Bias < 10%
+                            // Price > MA25, MA25 Up, Vol MA5 > MA60, Bullish, Bias < 10%
                             const ma25 = calculateMA(chartData, 25);
                             const volMa5 = calculateMA(chartData, 5, 'value');
-                            const volMa20 = calculateMA(chartData, 20, 'value');
-                            const bias = result.ma20 > 0 ? ((stock.close - result.ma20) / result.ma20 * 100) : 999;
+                            const volMa60 = calculateMA(chartData, 60, 'value');
+
+                            const ma25Val = ma25[last] || 0;
+                            const ma25Prev = ma25[last - 1] || 0;
+                            const ma25Slope = ma25Val > ma25Prev;
+
+                            const bias = ma25Val > 0 ? ((stock.close - ma25Val) / ma25Val * 100) : 999;
                             const isBullish = chartData[last].close > chartData[last].open;
-                            const volCross = last > 0 && volMa5[last] > volMa20[last] && volMa5[last - 1] <= volMa20[last - 1];
-                            if (stock.close > (ma25[last] || 0) && (volCross || volMa5[last] > volMa20[last]) && isBullish && bias >= 0 && bias < 10) return result;
+                            const isUp = last > 0 && chartData[last].close > chartData[last - 1].close;
+
+                            // Vol condition: MA5 > MA60 (Golden Cross state)
+                            const volCond = volMa5[last] > volMa60[last];
+
+                            if (stock.close > ma25Val && ma25Slope && volCond && isBullish && isUp && bias >= 0 && bias < 10) return result;
                         } else if (activeFilter === 'five_stage') {
                             // 5-stage: MA bull + NVI > PVI + RSI > 50 + Bullish + MFI > 50
                             const nvi = calculateNVI(chartData);
