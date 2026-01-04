@@ -86,21 +86,42 @@ export const Rankings = () => {
             console.log('Got institutional data:', data?.length);
             setDataDate(`${String(latestDate).slice(0, 4)}-${String(latestDate).slice(4, 6)}-${String(latestDate).slice(6, 8)}`);
 
-            const transformed = (data || []).map(d => ({
-                code: d.code,
-                name: d.name || d.code,
-                close: 0,
-                change_pct: 0,
-                volume: 0,
-                foreign_streak: 0,
-                trust_streak: 0,
-                foreign_cumulative: d.foreign_net || 0,
-                trust_cumulative: d.trust_net || 0,
-                foreign_holding_shares: 0,
-                foreign_holding_pct: 0,
-                trust_holding_shares: 0,
-                trust_holding_pct: 0
-            }));
+            // Get stock codes for snapshot lookup
+            const codes = (data || []).map(d => d.code);
+
+            // Fetch stock_snapshot for price and volume data
+            let snapshotMap = {};
+            if (codes.length > 0) {
+                const { data: snapData, error: snapError } = await supabase
+                    .from('stock_snapshot')
+                    .select('code, name, close, volume, foreign_streak, trust_streak')
+                    .in('code', codes);
+
+                if (!snapError && snapData) {
+                    snapData.forEach(s => {
+                        snapshotMap[s.code] = s;
+                    });
+                }
+            }
+
+            const transformed = (data || []).map(d => {
+                const snap = snapshotMap[d.code] || {};
+                return {
+                    code: d.code,
+                    name: snap.name || d.code,
+                    close: snap.close || 0,
+                    change_pct: 0, // Will be calculated if we have previous close
+                    volume: snap.volume || 0,
+                    foreign_streak: snap.foreign_streak || 0,
+                    trust_streak: snap.trust_streak || 0,
+                    foreign_cumulative: d.foreign_net || 0,
+                    trust_cumulative: d.trust_net || 0,
+                    foreign_holding_shares: 0,
+                    foreign_holding_pct: 0,
+                    trust_holding_shares: 0,
+                    trust_holding_pct: 0
+                };
+            });
 
             setRankings(transformed);
             setTotalPages(10);

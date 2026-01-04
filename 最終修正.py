@@ -732,8 +732,8 @@ def get_last_trading_day(exclude_today: bool = False) -> int:
 
 # 雲端同步設定
 # 優先讀取環境變數 (GitHub Actions)，否則使用硬碼 (本地測試)
-SUPABASE_URL = os.getenv("SUPABASE_URL", "https://gqiyvefcldxslrqpqlri.supabase.co")
-SUPABASE_KEY = os.getenv("SUPABASE_KEY", "sb_secret_XSeaHx_76CRxA6j8nZ3qDg_nzgFgTAN")
+SUPABASE_URL = os.getenv("SUPABASE_URL", "https://bshxromrtsetlfjdeggv.supabase.co")
+SUPABASE_KEY = os.getenv("SUPABASE_KEY", "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImJzaHhyb21ydHNldGxmamRlZ2d2Iiwicm9sZSI6InNlcnZpY2Vfcm9sZSIsImlhdCI6MTc2Njk5NzI1NywiZXhwIjoyMDgyNTczMjU3fQ.8i4GD8rOQtpISgEd2ZX-wzR4xq2FCuKC99NyKqjmHi0")
 ENABLE_CLOUD_SYNC = True
 
 # 全域快取（延遲初始化）
