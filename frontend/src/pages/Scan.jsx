@@ -129,6 +129,9 @@ export const Scan = () => {
 
                         const result = {
                             ...stock,
+                            close: chartData[last].close, // Use history close
+                            volume: chartData[last].value, // Use history volume
+                            change_pct: last > 0 ? (chartData[last].close - chartData[last - 1].close) / chartData[last - 1].close * 100 : 0,
                             vp_high: vp.upper[last] || 0,
                             vp_low: vp.lower[last] || 0,
                             vp_poc: vp.poc[last] || 0,
@@ -142,7 +145,7 @@ export const Scan = () => {
 
                         // Apply filter based on activeFilter
                         if (activeFilter === 'vp') {
-                            const close = stock.close;
+                            const close = result.close;
                             if (vpDirection === 'support') {
                                 const distFromLow = result.vp_low > 0 ? (close - result.vp_low) / result.vp_low : 1;
                                 if (distFromLow >= 0 && distFromLow <= tolerance) return result;
@@ -153,8 +156,8 @@ export const Scan = () => {
                         } else if (activeFilter === 'mfi') {
                             if (result.mfi < 30) return result;
                         } else if (activeFilter === 'ma') {
-                            if (maPattern === 'below_ma200' && stock.close < result.ma200 && result.ma200 > 0) return result;
-                            if (maPattern === 'below_ma20' && stock.close < result.ma20 && result.ma20 > 0) return result;
+                            if (maPattern === 'below_ma200' && result.close < result.ma200 && result.ma200 > 0) return result;
+                            if (maPattern === 'below_ma20' && result.close < result.ma20 && result.ma20 > 0) return result;
                             if (maPattern === 'bull' && result.ma20 > result.ma60) return result;
                         } else if (activeFilter === 'kd_month') {
                             // KD golden cross: K crosses above D, K < 80
@@ -165,11 +168,11 @@ export const Scan = () => {
                             }
                         } else if (activeFilter === 'vsbc') {
                             // Price > POC, MA20 > MA60, Price > MA20
-                            if (stock.close > result.vp_poc && result.ma20 > result.ma60 && stock.close > result.ma20) return result;
+                            if (result.close > result.vp_poc && result.ma20 > result.ma60 && result.close > result.ma20) return result;
                         } else if (activeFilter === 'smart_money') {
                             // Volume > 1.1x avg, Price > MA200, MFI < 80
-                            const volRatio = result.vol_ma60 > 0 ? stock.volume / result.vol_ma60 : 0;
-                            if (volRatio > 1.1 && stock.close > result.ma200 && result.mfi < 80) return result;
+                            const volRatio = result.vol_ma60 > 0 ? result.volume / result.vol_ma60 : 0;
+                            if (volRatio > 1.1 && result.close > result.ma200 && result.mfi < 80) return result;
                         } else if (activeFilter === '2560') {
                             // Price > MA25, MA25 Up, Vol MA5 > MA60, Bullish, Bias < 10%
                             const ma25 = calculateMA(chartData, 25);
@@ -180,7 +183,7 @@ export const Scan = () => {
                             const ma25Prev = ma25[last - 1] || 0;
                             const ma25Slope = ma25Val > ma25Prev;
 
-                            const bias = ma25Val > 0 ? ((stock.close - ma25Val) / ma25Val * 100) : 999;
+                            const bias = ma25Val > 0 ? ((result.close - ma25Val) / ma25Val * 100) : 999;
                             const isBullish = chartData[last].close > chartData[last].open;
                             const isUp = last > 0 && chartData[last].close > chartData[last - 1].close;
 
@@ -190,7 +193,7 @@ export const Scan = () => {
                                 volMa5[last] > volMa60[last] &&
                                 volMa5[last - 1] <= volMa60[last - 1];
 
-                            if (stock.close > ma25Val && ma25Slope && volCross && isBullish && isUp && bias >= 0 && bias < 10) return result;
+                            if (result.close > ma25Val && ma25Slope && volCross && isBullish && isUp && bias >= 0 && bias < 10) return result;
                         } else if (activeFilter === 'five_stage') {
                             // 5-stage: MA bull + NVI > PVI + RSI > 50 + Bullish + MFI > 50
                             const nvi = calculateNVI(chartData);
