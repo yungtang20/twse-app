@@ -364,13 +364,13 @@ export const Settings = () => {
                             <h3 className="text-sm font-semibold text-white">系統控制</h3>
                         </div>
                         <div className="flex items-center gap-2">
-                            <div className="flex bg-slate-900/50 p-0.5 rounded border border-slate-700/50">
-                                <button onClick={() => handleSettingChange('read', 'local')} className={`px-2 py-0.5 rounded text-[10px] ${readSource === 'local' ? 'bg-slate-700 text-white' : 'text-slate-400'}`}>本地</button>
-                                <button onClick={() => handleSettingChange('read', 'cloud')} className={`px-2 py-0.5 rounded text-[10px] ${readSource === 'cloud' ? 'bg-blue-600 text-white' : 'text-slate-400'}`}>雲端</button>
+                            <div className="flex bg-slate-900 p-0.5 rounded border border-slate-600">
+                                <button onClick={() => handleSettingChange('read', 'local')} className={`px-3 py-1 rounded text-xs font-medium transition-colors ${readSource === 'local' ? 'bg-slate-700 text-white shadow' : 'text-slate-400 hover:text-slate-200'}`}>本地</button>
+                                <button onClick={() => handleSettingChange('read', 'cloud')} className={`px-3 py-1 rounded text-xs font-medium transition-colors ${readSource === 'cloud' ? 'bg-blue-600 text-white shadow' : 'text-slate-400 hover:text-slate-200'}`}>雲端</button>
                             </div>
-                            <div onClick={async () => { setSupabaseConnected(false); try { await fetch('/api/admin/connect-cloud', { method: 'POST' }); } catch (e) { } fetchSyncMode(); fetchSyncStatus(); }} className="flex items-center gap-1 bg-slate-900/50 px-2 py-1 rounded-full cursor-pointer border border-transparent hover:border-slate-700">
-                                <div className={`w-1.5 h-1.5 rounded-full ${supabaseConnected ? "bg-green-500" : "bg-red-500"}`}></div>
-                                <span className={`text-[10px] ${supabaseConnected ? "text-green-400" : "text-red-400"}`}>{supabaseConnected ? "已連線" : "未連線"}</span>
+                            <div onClick={async () => { setSupabaseConnected(false); try { await fetch('/api/admin/connect-cloud', { method: 'POST' }); } catch (e) { } fetchSyncMode(); fetchSyncStatus(); }} className="flex items-center gap-1 bg-slate-900 px-2 py-1 rounded-full cursor-pointer border border-slate-700 hover:border-slate-500 transition-colors">
+                                <div className={`w-2 h-2 rounded-full ${supabaseConnected ? "bg-green-500 shadow-[0_0_5px_rgba(34,197,94,0.5)]" : "bg-red-500"}`}></div>
+                                <span className={`text-[10px] font-medium ${supabaseConnected ? "text-green-400" : "text-red-400"}`}>{supabaseConnected ? "已連線" : "未連線"}</span>
                             </div>
                         </div>
                     </div>

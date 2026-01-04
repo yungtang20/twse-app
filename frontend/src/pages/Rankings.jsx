@@ -23,108 +23,65 @@ export const Rankings = () => {
     const fetchRankings = async () => {
         setLoading(true);
         try {
-            // Use Supabase directly - try institutional_investors first
             const limit = 20;
             const offset = (page - 1) * limit;
 
-            console.log('Fetching rankings from Supabase...');
-            const { data: debugData, error: debugError } = await supabase.from('institutional_investors').select('count');
-            console.log('Debug institutional count:', debugData, debugError);
+            // Build query on stock_snapshot
+            let query = supabase
+                .from('stock_snapshot')
+                .select('code, name, close, volume, foreign_buy, trust_buy, dealer_buy, foreign_streak, trust_streak', { count: 'exact' });
 
-            // Get latest date from institutional_investors
-            const { data: latestData, error: latestError } = await supabase
-                .from('institutional_investors')
-                .select('date_int')
-                .order('date_int', { ascending: false })
-                .limit(1);
-
-            if (latestError || !latestData?.length) {
-                console.error('No institutional data found:', latestError);
-
-                // Fallback to stock_snapshot
-                const { data: snapData, error: snapError } = await supabase
-                    .from('stock_snapshot')
-                    .select('code, name, close, volume, foreign_buy, trust_buy, dealer_buy')
-                    .order('foreign_buy', { ascending: sortType === 'sell' })
-                    .range(offset, offset + limit - 1);
-
-                if (snapError) {
-                    console.error('stock_snapshot error:', snapError);
-                    setRankings([]);
-                    return;
-                }
-
-                console.log('Got snapshot data:', snapData?.length);
-                const transformed = (snapData || []).map(d => ({
-                    ...d, foreign_streak: 0, trust_streak: 0,
-                    foreign_cumulative: d.foreign_buy || 0,
-                    trust_cumulative: d.trust_buy || 0,
-                    foreign_holding_shares: 0, trust_holding_shares: 0, trust_holding_pct: 0
-                }));
-                setRankings(transformed);
-                setTotalPages(10);
-                return;
+            // Apply Filters
+            if (filterForeign && !isNaN(parseInt(filterForeign))) {
+                query = query.gte('foreign_streak', parseInt(filterForeign));
+            }
+            if (filterTrust && !isNaN(parseInt(filterTrust))) {
+                query = query.gte('trust_streak', parseInt(filterTrust));
             }
 
-            const latestDate = latestData[0].date_int;
-            console.log('Latest date:', latestDate);
+            // Apply Sorting
+            if (sortColumn) {
+                query = query.order(sortColumn, { ascending: sortDirection === 'asc' });
+            } else {
+                // Default sort: Foreign Buy (Net) Descending
+                query = query.order(sortType === 'sell' ? 'foreign_buy' : 'foreign_buy', { ascending: sortType === 'sell' });
+            }
 
-            // Get institutional data for latest date
-            const { data, error } = await supabase
-                .from('institutional_investors')
-                .select('code, foreign_net, trust_net, dealer_net')
-                .eq('date_int', latestDate)
-                .order('foreign_net', { ascending: sortType === 'sell' })
-                .range(offset, offset + limit - 1);
+            // Pagination
+            query = query.range(offset, offset + limit - 1);
+
+            const { data, error, count } = await query;
 
             if (error) {
-                console.error('Supabase error:', error);
+                console.error('Fetch rankings error:', error);
                 setRankings([]);
                 return;
             }
 
-            console.log('Got institutional data:', data?.length);
-            setDataDate(`${String(latestDate).slice(0, 4)}-${String(latestDate).slice(4, 6)}-${String(latestDate).slice(6, 8)}`);
-
-            // Get stock codes for snapshot lookup
-            const codes = (data || []).map(d => d.code);
-
-            // Fetch stock_snapshot for price and volume data
-            let snapshotMap = {};
-            if (codes.length > 0) {
-                const { data: snapData, error: snapError } = await supabase
-                    .from('stock_snapshot')
-                    .select('code, name, close, volume, foreign_streak, trust_streak')
-                    .in('code', codes);
-
-                if (!snapError && snapData) {
-                    snapData.forEach(s => {
-                        snapshotMap[s.code] = s;
-                    });
-                }
-            }
-
-            const transformed = (data || []).map(d => {
-                const snap = snapshotMap[d.code] || {};
-                return {
-                    code: d.code,
-                    name: snap.name || d.code,
-                    close: snap.close || 0,
-                    change_pct: 0, // Will be calculated if we have previous close
-                    volume: snap.volume || 0,
-                    foreign_streak: snap.foreign_streak || 0,
-                    trust_streak: snap.trust_streak || 0,
-                    foreign_cumulative: d.foreign_net || 0,
-                    trust_cumulative: d.trust_net || 0,
-                    foreign_holding_shares: 0,
-                    foreign_holding_pct: 0,
-                    trust_holding_shares: 0,
-                    trust_holding_pct: 0
-                };
-            });
+            // Transform data
+            const transformed = (data || []).map(d => ({
+                code: d.code,
+                name: d.name,
+                close: d.close,
+                change_pct: 0, // Snapshot doesn't have change_pct, usually calculated or joined
+                volume: d.volume,
+                foreign_streak: d.foreign_streak || 0,
+                trust_streak: d.trust_streak || 0,
+                foreign_cumulative: d.foreign_buy || 0, // Using daily net as cumulative for now
+                trust_cumulative: d.trust_buy || 0,
+                foreign_holding_shares: 0,
+                foreign_holding_pct: 0,
+                trust_holding_shares: 0,
+                trust_holding_pct: 0
+            }));
 
             setRankings(transformed);
-            setTotalPages(10);
+            setTotalPages(Math.ceil((count || 0) / limit));
+
+            // Update date from system status or just use today
+            const today = new Date();
+            setDataDate(`${today.getFullYear()}-${String(today.getMonth() + 1).padStart(2, '0')}-${String(today.getDate()).padStart(2, '0')}`);
+
         } catch (error) {
             console.error('Fetch rankings failed:', error);
             setRankings([]);

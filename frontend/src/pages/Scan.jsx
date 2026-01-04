@@ -355,7 +355,7 @@ export const Scan = () => {
     const renderControls = () => {
         const controlsMap = {
             vp: (
-                <div className="flex items-center gap-2 bg-slate-800 rounded border border-slate-700 px-2 h-9">
+                <div className="flex flex-wrap items-center gap-2 bg-slate-800 rounded border border-slate-700 px-2 py-1 min-h-[36px]">
                     <div className="flex items-center gap-1">
                         <span className="text-[10px] text-slate-400 whitespace-nowrap">容忍度</span>
                         <select
@@ -369,7 +369,7 @@ export const Scan = () => {
                             <option value={0.15}>15%</option>
                         </select>
                     </div>
-                    <div className="w-px h-3 bg-slate-700 mx-1"></div>
+                    <div className="w-px h-3 bg-slate-700 mx-1 hidden sm:block"></div>
                     <div className="flex bg-slate-900 rounded p-0.5">
                         <button onClick={() => setVpDirection('support')} className={`px-2 py-0.5 text-[10px] rounded transition-colors ${vpDirection === 'support' ? 'bg-blue-600 text-white' : 'text-slate-400 hover:text-slate-200'}`}>支撐</button>
                         <button onClick={() => setVpDirection('resistance')} className={`px-2 py-0.5 text-[10px] rounded transition-colors ${vpDirection === 'resistance' ? 'bg-red-600 text-white' : 'text-slate-400 hover:text-slate-200'}`}>壓力</button>
