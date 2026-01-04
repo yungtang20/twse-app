@@ -183,7 +183,8 @@ export const Rankings = () => {
     };
 
     const StreakBadge = ({ value }) => {
-        if (!value || value === 0) return <span className="text-slate-500">-</span>;
+        if (value === null || value === undefined) return <span className="text-slate-500">-</span>;
+        if (value === 0) return <span className="text-slate-500">0</span>;
         const isBuy = value > 0;
         return (
             <span className={`font-bold ${isBuy ? 'text-red-400' : 'text-green-400'}`}>

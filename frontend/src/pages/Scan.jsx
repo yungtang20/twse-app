@@ -38,24 +38,28 @@ export const Scan = () => {
     const itemsPerPage = 24;
 
     const fetchSystemStatus = async () => {
-        // Skip in production mode - use current date
-        if (!import.meta.env.DEV) {
-            const today = new Date();
-            setDataDate(`${today.getFullYear()}-${String(today.getMonth() + 1).padStart(2, '0')}-${String(today.getDate()).padStart(2, '0')}`);
-            return;
-        }
+        // In dev mode, try to fetch but fallback gracefully
         try {
             const res = await fetch('/api/admin/status');
+            if (!res.ok) throw new Error(res.statusText);
             const data = await res.json();
-            if (data.success && data.data) {
-                const dateStr = data.data.latest_date?.toString();
-                if (dateStr && dateStr.length === 8) {
-                    setDataDate(`${dateStr.substring(0, 4)}-${dateStr.substring(4, 6)}-${dateStr.substring(6, 8)}`);
-                }
-            }
+
+
+            // Guard Clauses (Rule #2)
+            if (!data.success || !data.data) return;
+
+            const dateStr = data.data.latest_date?.toString();
+            if (!dateStr || dateStr.length !== 8) return;
+
+            setDataDate(`${dateStr.substring(0, 4)}-${dateStr.substring(4, 6)}-${dateStr.substring(6, 8)}`);
+            return;
         } catch (error) {
-            console.error('Failed to fetch system status:', error);
+            console.warn('System status API unavailable, using local date:', error);
         }
+
+        // Fallback to today's date
+        const today = new Date();
+        setDataDate(`${today.getFullYear()}-${String(today.getMonth() + 1).padStart(2, '0')}-${String(today.getDate()).padStart(2, '0')}`);
     };
 
     const fetchScanResults = async () => {
@@ -347,6 +351,49 @@ export const Scan = () => {
         setCurrentPage(page);
     };
 
+    // Table-Driven Method for Controls Rendering (Rule #1)
+    const renderControls = () => {
+        const controlsMap = {
+            vp: (
+                <div className="flex items-center gap-2 bg-slate-800 rounded border border-slate-700 px-2 h-9">
+                    <div className="flex items-center gap-1">
+                        <span className="text-[10px] text-slate-400 whitespace-nowrap">容忍度</span>
+                        <select
+                            value={tolerance}
+                            onChange={(e) => setTolerance(parseFloat(e.target.value))}
+                            className="bg-slate-900 text-white text-[10px] border border-slate-600 rounded px-1 py-0.5 focus:outline-none cursor-pointer"
+                        >
+                            <option value={0.02}>2%</option>
+                            <option value={0.05}>5%</option>
+                            <option value={0.10}>10%</option>
+                            <option value={0.15}>15%</option>
+                        </select>
+                    </div>
+                    <div className="w-px h-3 bg-slate-700 mx-1"></div>
+                    <div className="flex bg-slate-900 rounded p-0.5">
+                        <button onClick={() => setVpDirection('support')} className={`px-2 py-0.5 text-[10px] rounded transition-colors ${vpDirection === 'support' ? 'bg-blue-600 text-white' : 'text-slate-400 hover:text-slate-200'}`}>支撐</button>
+                        <button onClick={() => setVpDirection('resistance')} className={`px-2 py-0.5 text-[10px] rounded transition-colors ${vpDirection === 'resistance' ? 'bg-red-600 text-white' : 'text-slate-400 hover:text-slate-200'}`}>壓力</button>
+                    </div>
+                </div>
+            ),
+            ma: (
+                <div className="flex bg-slate-900 rounded border border-slate-700 p-0.5 h-9 items-center">
+                    <button onClick={() => setMaPattern('below_ma200')} className={`px-2 py-1 text-[10px] rounded transition-colors ${maPattern === 'below_ma200' ? 'bg-blue-600 text-white' : 'text-slate-400 hover:text-slate-200'}`}>低於年線</button>
+                    <button onClick={() => setMaPattern('below_ma20')} className={`px-2 py-1 text-[10px] rounded transition-colors ${maPattern === 'below_ma20' ? 'bg-purple-600 text-white' : 'text-slate-400 hover:text-slate-200'}`}>低於月線</button>
+                    <button onClick={() => setMaPattern('bull')} className={`px-2 py-1 text-[10px] rounded transition-colors ${maPattern === 'bull' ? 'bg-red-600 text-white' : 'text-slate-400 hover:text-slate-200'}`}>均線多頭</button>
+                </div>
+            ),
+            patterns: (
+                <div className="flex bg-slate-900 rounded border border-slate-700 p-0.5 h-9 items-center">
+                    <button onClick={() => setPatternType('morning_star')} className={`px-2 py-1 text-[10px] rounded transition-colors ${patternType === 'morning_star' ? 'bg-red-600 text-white' : 'text-slate-400 hover:text-slate-200'}`}>晨星 (多)</button>
+                    <button onClick={() => setPatternType('evening_star')} className={`px-2 py-1 text-[10px] rounded transition-colors ${patternType === 'evening_star' ? 'bg-green-600 text-white' : 'text-slate-400 hover:text-slate-200'}`}>夜星 (空)</button>
+                </div>
+            )
+        };
+
+        return controlsMap[activeFilter] || null;
+    };
+
     return (
         <div className="h-screen w-screen overflow-hidden flex flex-col pb-10 bg-slate-900 text-slate-300">
             {/* Header - Compact */}
@@ -360,8 +407,8 @@ export const Scan = () => {
             {/* Controls - Compact */}
             <div className="shrink-0 p-2 bg-slate-800/50 border-b border-slate-700">
                 <div className="flex flex-col gap-2">
-                    <div className="flex gap-2 h-8">
-                        <div className="relative flex-1 min-w-0">
+                    <div className="flex gap-2 flex-wrap items-center">
+                        <div className="relative flex-1 min-w-[150px] h-9">
                             <select
                                 value={activeFilter}
                                 onChange={(e) => setActiveFilter(e.target.value)}
@@ -373,41 +420,7 @@ export const Scan = () => {
                         </div>
 
                         {/* Contextual Controls */}
-                        {activeFilter === 'vp' && (
-                            <div className="flex items-center gap-2 bg-slate-800 rounded border border-slate-700 px-2 py-0.5">
-                                <div className="flex items-center gap-1">
-                                    <span className="text-[10px] text-slate-400">容忍度</span>
-                                    <select
-                                        value={tolerance}
-                                        onChange={(e) => setTolerance(parseFloat(e.target.value))}
-                                        className="bg-slate-900 text-white text-[10px] border border-slate-600 rounded px-1 py-0.5 focus:outline-none"
-                                    >
-                                        <option value={0.02}>2%</option>
-                                        <option value={0.05}>5%</option>
-                                        <option value={0.10}>10%</option>
-                                        <option value={0.15}>15%</option>
-                                    </select>
-                                </div>
-                                <div className="w-px h-3 bg-slate-700"></div>
-                                <div className="flex bg-slate-900 rounded p-0.5">
-                                    <button onClick={() => setVpDirection('support')} className={`px-2 py-0.5 text-[10px] rounded transition-colors ${vpDirection === 'support' ? 'bg-blue-600 text-white' : 'text-slate-400 hover:text-slate-200'}`}>支撐</button>
-                                    <button onClick={() => setVpDirection('resistance')} className={`px-2 py-0.5 text-[10px] rounded transition-colors ${vpDirection === 'resistance' ? 'bg-red-600 text-white' : 'text-slate-400 hover:text-slate-200'}`}>壓力</button>
-                                </div>
-                            </div>
-                        )}
-                        {activeFilter === 'ma' && (
-                            <div className="flex bg-slate-900 rounded border border-slate-700 p-0.5">
-                                <button onClick={() => setMaPattern('below_ma200')} className={`px-2 py-0.5 text-[10px] rounded ${maPattern === 'below_ma200' ? 'bg-blue-600 text-white' : 'text-slate-400'}`}>&lt;200</button>
-                                <button onClick={() => setMaPattern('below_ma20')} className={`px-2 py-0.5 text-[10px] rounded ${maPattern === 'below_ma20' ? 'bg-purple-600 text-white' : 'text-slate-400'}`}>&lt;20</button>
-                                <button onClick={() => setMaPattern('bull')} className={`px-2 py-0.5 text-[10px] rounded ${maPattern === 'bull' ? 'bg-red-600 text-white' : 'text-slate-400'}`}>多頭</button>
-                            </div>
-                        )}
-                        {activeFilter === 'patterns' && (
-                            <div className="flex bg-slate-900 rounded border border-slate-700 p-0.5">
-                                <button onClick={() => setPatternType('morning_star')} className={`px-2 py-0.5 text-[10px] rounded ${patternType === 'morning_star' ? 'bg-red-600 text-white' : 'text-slate-400'}`}>晨星</button>
-                                <button onClick={() => setPatternType('evening_star')} className={`px-2 py-0.5 text-[10px] rounded ${patternType === 'evening_star' ? 'bg-green-600 text-white' : 'text-slate-400'}`}>夜星</button>
-                            </div>
-                        )}
+                        {renderControls()}
                     </div>
 
                     <div className="text-[10px] text-slate-400 truncate px-1">

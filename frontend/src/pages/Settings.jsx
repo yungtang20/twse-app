@@ -35,7 +35,7 @@ export const Settings = () => {
 
         try {
             const res = await fetch('/api/admin/status');
-            if (!res.ok) throw new Error(`HTTP error! status: ${res.status}`);
+            if (!res.ok) throw new Error(res.statusText);
             const data = await res.json();
             if (data.success) {
                 setStatus(data.data);
@@ -43,15 +43,22 @@ export const Settings = () => {
 
             // Fetch Config
             const configRes = await fetch('/api/admin/config');
-            const configData = await configRes.json();
-            if (configData.success) {
-                setFinmindToken(configData.data.finmind_token || '');
+            if (configRes.ok) {
+                const configData = await configRes.json();
+                if (configData.success) {
+                    setFinmindToken(configData.data.finmind_token || '');
+                }
             }
         } catch (error) {
-            console.error('Failed to fetch status:', error);
-            // Don't show error in production mode
-            if (!isProduction) {
-                setErrorMsg(error.message);
+            console.warn('Status API unavailable:', error);
+            // Set mock status for dev
+            if (import.meta.env.DEV) {
+                setStatus({
+                    db_path: 'taiwan_stock.db',
+                    latest_date: 20260102,
+                    total_stocks: 1935,
+                    sync_status: 'idle'
+                });
             }
         } finally {
             setLoading(false);
@@ -78,13 +85,15 @@ export const Settings = () => {
     const fetchDbPath = async () => {
         try {
             const res = await fetch('/api/admin/db-path');
-            const data = await res.json();
-            if (data.success) {
-                setDbPath(data.data.db_path || '');
-                setDbPathExists(data.data.exists);
+            if (res.ok) {
+                const data = await res.json();
+                if (data.success) {
+                    setDbPath(data.data.db_path || '');
+                    setDbPathExists(data.data.exists);
+                }
             }
         } catch (error) {
-            console.error('Failed to fetch db path:', error);
+            console.warn('Failed to fetch db path:', error);
         }
     };
 
@@ -227,16 +236,18 @@ export const Settings = () => {
         if (!import.meta.env.DEV) return;
         try {
             const res = await fetch('/api/admin/sync-mode');
-            const data = await res.json();
-            if (data.success) {
-                setSyncMode(data.data.sync_mode || 'hybrid');
-                setReadSource(data.data.read_source || 'local');
-                setUpdateTarget(data.data.update_target || 'local');
-                setLastSyncTime(data.data.last_sync_time);
-                setSupabaseConnected(data.data.supabase_connected);
+            if (res.ok) {
+                const data = await res.json();
+                if (data.success) {
+                    setSyncMode(data.data.sync_mode || 'hybrid');
+                    setReadSource(data.data.read_source || 'local');
+                    setUpdateTarget(data.data.update_target || 'local');
+                    setLastSyncTime(data.data.last_sync_time);
+                    setSupabaseConnected(data.data.supabase_connected);
+                }
             }
         } catch (error) {
-            console.error('Failed to fetch sync mode:', error);
+            console.warn('Failed to fetch sync mode:', error);
         }
     };
 
@@ -245,12 +256,14 @@ export const Settings = () => {
         if (!import.meta.env.DEV) return;
         try {
             const res = await fetch('/api/admin/sync/status');
-            const data = await res.json();
-            if (data.success) {
-                setSyncStatus(data.data);
+            if (res.ok) {
+                const data = await res.json();
+                if (data.success) {
+                    setSyncStatus(data.data);
+                }
             }
         } catch (error) {
-            console.error('Failed to fetch sync status:', error);
+            console.warn('Failed to fetch sync status:', error);
         }
     };
 

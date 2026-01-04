@@ -1,48 +1,22 @@
 
 import os
-import sys
-from pathlib import Path
 from supabase import create_client
 
-# Add project root to path
-sys.path.append(os.path.dirname(os.path.abspath(__file__)))
+# Supabase configuration
+SUPABASE_URL = "https://bshxromrtsetlfjdeggv.supabase.co"
+SUPABASE_KEY = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImJzaHhyb21ydHNldGxmamRlZ2d2Iiwicm9sZSI6InNlcnZpY2Vfcm9sZSIsImlhdCI6MTc2Njk5NzI1NywiZXhwIjoyMDgyNTczMjU3fQ.8i4GD8rOQtpISgEd2ZX-wzR4xq2FCuKC99NyKqjmHi0"
 
-from backend.services.db import db_manager
+supabase = create_client(SUPABASE_URL, SUPABASE_KEY)
 
-def check_0000_data():
-    if not db_manager.supabase:
-        print("Supabase not connected")
-        return
-
-    print("Checking stock_history for 0000...")
-    res_hist = db_manager.supabase.table("stock_history") \
-        .select("date_int, close, foreign_buy, trust_buy, dealer_buy") \
-        .eq("code", "0000") \
-        .order("date_int", desc=True) \
-        .limit(5) \
-        .execute()
+def check_0000():
+    print("Checking stock_history for 0000 (TAIEX)...")
+    res = supabase.table('stock_history').select('count', count='exact').eq('code', '0000').execute()
+    print(f"Total records for 0000: {res.count}")
     
-    if res_hist.data:
-        print("stock_history data (first 5):")
-        for row in res_hist.data:
-            print(row)
+    if res.count == 0:
+        print("No data for 0000. This explains the mock data warning.")
     else:
-        print("No data in stock_history for 0000")
-
-    print("\nChecking institutional_investors for 0000...")
-    res_inst = db_manager.supabase.table("institutional_investors") \
-        .select("*") \
-        .eq("code", "0000") \
-        .order("date_int", desc=True) \
-        .limit(5) \
-        .execute()
-
-    if res_inst.data:
-        print("institutional_investors data (first 5):")
-        for row in res_inst.data:
-            print(row)
-    else:
-        print("No data in institutional_investors for 0000")
+        print("Data exists for 0000.")
 
 if __name__ == "__main__":
-    check_0000_data()
+    check_0000()
