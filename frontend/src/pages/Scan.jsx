@@ -70,7 +70,8 @@ export const Scan = () => {
             // Step 1: Get stock list from stock_snapshot (fetch ALL stocks, filter later)
             const { data: stocks, error: stockError } = await supabase
                 .from('stock_snapshot')
-                .select('code, name, close, volume');
+                .select('code, name, close, volume')
+                .limit(5000);
 
             if (stockError) {
                 console.error('Failed to fetch stocks:', stockError);
