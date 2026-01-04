@@ -241,12 +241,12 @@ export const Rankings = () => {
                                 <thead>
                                     <tr className="bg-slate-900 text-slate-400 border-b border-slate-700">
                                         <th className="p-2 font-bold text-slate-300 sticky left-0 z-20 bg-slate-900 shadow-[2px_0_5px_-2px_rgba(0,0,0,0.5)] min-w-[80px]">股票</th>
-                                        <th className="p-2 font-bold text-right cursor-pointer hover:text-white" onClick={() => handleSort('close')}>現價%<SortIcon column="close" /></th>
-                                        <th className="p-2 font-bold text-right cursor-pointer hover:text-white" onClick={() => handleSort('volume')}>成交量<SortIcon column="volume" /></th>
-                                        <th className="p-2 font-bold text-center border-l border-slate-700">外資連</th>
-                                        <th className="p-2 font-bold text-center">投信連</th>
-                                        <th className="p-2 font-bold text-right text-orange-400 border-l border-slate-700">外資買賣</th>
-                                        <th className="p-2 font-bold text-right text-yellow-400 border-l border-slate-700">投信買賣</th>
+                                        <th className="p-2 font-bold text-right cursor-pointer hover:text-white min-w-[70px]" onClick={() => handleSort('close')}>現價%<SortIcon column="close" /></th>
+                                        <th className="p-2 font-bold text-right cursor-pointer hover:text-white min-w-[70px]" onClick={() => handleSort('volume')}>成交量<SortIcon column="volume" /></th>
+                                        <th className="p-2 font-bold text-center border-l border-slate-700 min-w-[60px]">外資連</th>
+                                        <th className="p-2 font-bold text-center min-w-[60px]">投信連</th>
+                                        <th className="p-2 font-bold text-right text-orange-400 border-l border-slate-700 min-w-[80px]">外資買賣</th>
+                                        <th className="p-2 font-bold text-right text-yellow-400 border-l border-slate-700 min-w-[80px]">投信買賣</th>
                                     </tr>
                                 </thead>
                                 <tbody>

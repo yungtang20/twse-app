@@ -432,19 +432,19 @@ export const Scan = () => {
                             <table className="w-full text-xs border-collapse whitespace-nowrap text-left">
                                 <thead>
                                     <tr className="bg-slate-900 text-slate-400 border-b border-slate-700">
-                                        <th className="p-2 font-bold text-slate-300 sticky left-0 z-20 bg-slate-900 shadow-[2px_0_5px_-2px_rgba(0,0,0,0.5)]">股票</th>
-                                        <th className="p-2 font-bold text-right cursor-pointer hover:text-white" onClick={() => handleSort('close')}>現價<span className="ml-1 text-[10px]">{sortConfig.key === 'close' ? (sortConfig.direction === 'desc' ? '▼' : '▲') : '⇅'}</span></th>
-                                        <th className="p-2 font-bold text-right cursor-pointer hover:text-white" onClick={() => handleSort('volume')}>成交量<span className="ml-1 text-[10px]">{sortConfig.key === 'volume' ? (sortConfig.direction === 'desc' ? '▼' : '▲') : '⇅'}</span></th>
+                                        <th className="p-2 font-bold text-slate-300 sticky left-0 z-20 bg-slate-900 shadow-[2px_0_5px_-2px_rgba(0,0,0,0.5)] min-w-[80px]">股票</th>
+                                        <th className="p-2 font-bold text-right cursor-pointer hover:text-white min-w-[70px]" onClick={() => handleSort('close')}>現價<span className="ml-1 text-[10px]">{sortConfig.key === 'close' ? (sortConfig.direction === 'desc' ? '▼' : '▲') : '⇅'}</span></th>
+                                        <th className="p-2 font-bold text-right cursor-pointer hover:text-white min-w-[70px]" onClick={() => handleSort('volume')}>成交量<span className="ml-1 text-[10px]">{sortConfig.key === 'volume' ? (sortConfig.direction === 'desc' ? '▼' : '▲') : '⇅'}</span></th>
 
                                         {/* Dynamic Columns */}
                                         {activeFilter === 'vp' && (
                                             <>
-                                                <th className="p-2 font-bold text-right">VP{vpDirection === 'support' ? '支撐' : '壓力'}</th>
-                                                <th className="p-2 font-bold text-right cursor-pointer hover:text-white" onClick={() => handleSort('distance')}>距離%<span className="ml-1 text-[10px]">{sortConfig.key === 'distance' ? (sortConfig.direction === 'desc' ? '▼' : '▲') : '⇅'}</span></th>
+                                                <th className="p-2 font-bold text-right min-w-[60px]">VP{vpDirection === 'support' ? '支撐' : '壓力'}</th>
+                                                <th className="p-2 font-bold text-right cursor-pointer hover:text-white min-w-[60px]" onClick={() => handleSort('distance')}>距離%<span className="ml-1 text-[10px]">{sortConfig.key === 'distance' ? (sortConfig.direction === 'desc' ? '▼' : '▲') : '⇅'}</span></th>
                                             </>
                                         )}
-                                        {activeFilter === 'mfi' && <th className="p-2 font-bold text-right cursor-pointer hover:text-white" onClick={() => handleSort('mfi')}>MFI<span className="ml-1 text-[10px]">{sortConfig.key === 'mfi' ? (sortConfig.direction === 'desc' ? '▼' : '▲') : '⇅'}</span></th>}
-                                        {activeFilter === 'ma' && <th className="p-2 font-bold text-right">乖離率</th>}
+                                        {activeFilter === 'mfi' && <th className="p-2 font-bold text-right cursor-pointer hover:text-white min-w-[60px]" onClick={() => handleSort('mfi')}>MFI<span className="ml-1 text-[10px]">{sortConfig.key === 'mfi' ? (sortConfig.direction === 'desc' ? '▼' : '▲') : '⇅'}</span></th>}
+                                        {activeFilter === 'ma' && <th className="p-2 font-bold text-right min-w-[60px]">乖離率</th>}
                                     </tr>
                                 </thead>
                                 <tbody>
