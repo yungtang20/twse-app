@@ -101,9 +101,9 @@ export const Scan = () => {
                             .select('date_int, open, high, low, close, volume')
                             .eq('code', stock.code)
                             .order('date_int', { ascending: false })
-                            .limit(60);
+                            .limit(120);
 
-                        if (histError || !history || history.length < 20) return null;
+                        if (histError || !history || history.length < 65) return null;
 
                         // Sort ascending for calculation
                         history.reverse();
