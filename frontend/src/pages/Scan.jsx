@@ -374,11 +374,24 @@ export const Scan = () => {
 
                         {/* Contextual Controls */}
                         {activeFilter === 'vp' && (
-                            <div className="flex items-center gap-1 bg-slate-800 rounded border border-slate-700 px-1">
-                                <span className="text-[10px] text-slate-400 whitespace-nowrap">{(tolerance * 100).toFixed(0)}%</span>
+                            <div className="flex items-center gap-2 bg-slate-800 rounded border border-slate-700 px-2 py-0.5">
+                                <div className="flex items-center gap-1">
+                                    <span className="text-[10px] text-slate-400">容忍度</span>
+                                    <select
+                                        value={tolerance}
+                                        onChange={(e) => setTolerance(parseFloat(e.target.value))}
+                                        className="bg-slate-900 text-white text-[10px] border border-slate-600 rounded px-1 py-0.5 focus:outline-none"
+                                    >
+                                        <option value={0.02}>2%</option>
+                                        <option value={0.05}>5%</option>
+                                        <option value={0.10}>10%</option>
+                                        <option value={0.15}>15%</option>
+                                    </select>
+                                </div>
+                                <div className="w-px h-3 bg-slate-700"></div>
                                 <div className="flex bg-slate-900 rounded p-0.5">
-                                    <button onClick={() => setVpDirection('support')} className={`px-2 py-0.5 text-[10px] rounded ${vpDirection === 'support' ? 'bg-blue-500 text-white' : 'text-slate-400'}`}>支</button>
-                                    <button onClick={() => setVpDirection('resistance')} className={`px-2 py-0.5 text-[10px] rounded ${vpDirection === 'resistance' ? 'bg-red-500 text-white' : 'text-slate-400'}`}>壓</button>
+                                    <button onClick={() => setVpDirection('support')} className={`px-2 py-0.5 text-[10px] rounded transition-colors ${vpDirection === 'support' ? 'bg-blue-600 text-white' : 'text-slate-400 hover:text-slate-200'}`}>支撐</button>
+                                    <button onClick={() => setVpDirection('resistance')} className={`px-2 py-0.5 text-[10px] rounded transition-colors ${vpDirection === 'resistance' ? 'bg-red-600 text-white' : 'text-slate-400 hover:text-slate-200'}`}>壓力</button>
                                 </div>
                             </div>
                         )}
@@ -403,8 +416,8 @@ export const Scan = () => {
                 </div>
             </div>
 
-            {/* Results List - Scrollable */}
-            <div className="flex-1 overflow-y-auto p-2">
+            {/* Results List - Table View */}
+            <div className="flex-1 overflow-auto p-2">
                 {loading ? (
                     <div className="flex flex-col items-center justify-center h-40 text-slate-500 gap-2">
                         <div className="animate-spin rounded-full h-6 w-6 border-b-2 border-blue-500"></div>
@@ -414,45 +427,82 @@ export const Scan = () => {
                         </div>
                     </div>
                 ) : scanResults.length > 0 ? (
-                    <div className="grid grid-cols-1 gap-2 pb-20">
-                        {currentItems.map((stock) => (
-                            <div key={stock.code} onClick={() => navigate(`/dashboard?code=${stock.code}`)} className="bg-slate-800 p-2 rounded border border-slate-700 flex items-center justify-between active:scale-[0.99] transition-transform">
-                                <div className="flex items-center gap-3">
-                                    <div className="w-10 h-10 rounded bg-slate-700 flex items-center justify-center text-xs font-bold text-white">
-                                        {stock.code}
-                                    </div>
-                                    <div>
-                                        <div className="text-sm font-bold text-white">{stock.name}</div>
-                                        <div className="flex items-center gap-2 text-[10px]">
-                                            <span className={stock.change_pct > 0 ? 'text-red-400' : stock.change_pct < 0 ? 'text-green-400' : 'text-slate-400'}>
-                                                {stock.close} ({stock.change_pct}%)
-                                            </span>
-                                            <span className="text-slate-500">|</span>
-                                            <span className="text-slate-400">{fmtSheets(stock.volume)}張</span>
-                                        </div>
-                                    </div>
-                                </div>
-                                <div className="flex flex-col items-end gap-1">
-                                    {/* Dynamic Indicator Value based on Filter */}
-                                    {activeFilter === 'vp' && (
-                                        <div className="text-xs font-mono">
-                                            <span className="text-slate-500 mr-1">VP:</span>
-                                            <span className="text-yellow-400">{vpDirection === 'support' ? stock.vp_low?.toFixed(1) : stock.vp_high?.toFixed(1)}</span>
-                                        </div>
-                                    )}
-                                    {activeFilter === 'mfi' && (
-                                        <div className="text-xs font-mono">
-                                            <span className="text-slate-500 mr-1">MFI:</span>
-                                            <span className={stock.mfi < 30 ? 'text-green-400' : 'text-red-400'}>{stock.mfi?.toFixed(1)}</span>
-                                        </div>
-                                    )}
-                                    {/* Default Volume Tag */}
-                                    <div className="px-1.5 py-0.5 bg-slate-700 rounded text-[10px] text-slate-300">
-                                        量 {fmtSheets(stock.volume)}
-                                    </div>
-                                </div>
-                            </div>
-                        ))}
+                    <div className="bg-slate-800 rounded border border-slate-700 overflow-hidden">
+                        <div className="overflow-x-auto">
+                            <table className="w-full text-xs border-collapse whitespace-nowrap text-left">
+                                <thead>
+                                    <tr className="bg-slate-900 text-slate-400 border-b border-slate-700">
+                                        <th className="p-2 font-bold text-slate-300 sticky left-0 z-20 bg-slate-900 shadow-[2px_0_5px_-2px_rgba(0,0,0,0.5)]">股票</th>
+                                        <th className="p-2 font-bold text-right cursor-pointer hover:text-white" onClick={() => handleSort('close')}>現價<span className="ml-1 text-[10px]">{sortConfig.key === 'close' ? (sortConfig.direction === 'desc' ? '▼' : '▲') : '⇅'}</span></th>
+                                        <th className="p-2 font-bold text-right cursor-pointer hover:text-white" onClick={() => handleSort('volume')}>成交量<span className="ml-1 text-[10px]">{sortConfig.key === 'volume' ? (sortConfig.direction === 'desc' ? '▼' : '▲') : '⇅'}</span></th>
+
+                                        {/* Dynamic Columns */}
+                                        {activeFilter === 'vp' && (
+                                            <>
+                                                <th className="p-2 font-bold text-right">VP{vpDirection === 'support' ? '支撐' : '壓力'}</th>
+                                                <th className="p-2 font-bold text-right cursor-pointer hover:text-white" onClick={() => handleSort('distance')}>距離%<span className="ml-1 text-[10px]">{sortConfig.key === 'distance' ? (sortConfig.direction === 'desc' ? '▼' : '▲') : '⇅'}</span></th>
+                                            </>
+                                        )}
+                                        {activeFilter === 'mfi' && <th className="p-2 font-bold text-right cursor-pointer hover:text-white" onClick={() => handleSort('mfi')}>MFI<span className="ml-1 text-[10px]">{sortConfig.key === 'mfi' ? (sortConfig.direction === 'desc' ? '▼' : '▲') : '⇅'}</span></th>}
+                                        {activeFilter === 'ma' && <th className="p-2 font-bold text-right">乖離率</th>}
+                                    </tr>
+                                </thead>
+                                <tbody>
+                                    {currentItems.map((stock) => {
+                                        // Calculate dynamic values for display
+                                        let displayValue = null;
+                                        let displayLabel = '';
+                                        let displayClass = '';
+
+                                        if (activeFilter === 'vp') {
+                                            const target = vpDirection === 'support' ? stock.vp_low : stock.vp_high;
+                                            const dist = vpDirection === 'support'
+                                                ? (stock.close - target) / target
+                                                : (target - stock.close) / target;
+                                            displayLabel = target?.toFixed(2);
+                                            displayValue = (dist * 100).toFixed(1) + '%';
+                                            displayClass = 'text-yellow-400';
+                                        } else if (activeFilter === 'mfi') {
+                                            displayValue = stock.mfi?.toFixed(1);
+                                            displayClass = stock.mfi < 30 ? 'text-green-400' : 'text-red-400';
+                                        }
+
+                                        return (
+                                            <tr key={stock.code} onClick={() => navigate(`/dashboard?code=${stock.code}`)} className="border-b border-slate-700/50 hover:bg-slate-700/50 cursor-pointer transition-colors">
+                                                <td className="p-2 sticky left-0 z-10 bg-slate-800 shadow-[2px_0_5px_-2px_rgba(0,0,0,0.5)]">
+                                                    <div className="font-bold text-blue-400">{stock.code}</div>
+                                                    <div className="text-[10px] text-slate-400">{stock.name}</div>
+                                                </td>
+                                                <td className={`p-2 text-right font-mono ${stock.change_pct > 0 ? 'text-red-400' : stock.change_pct < 0 ? 'text-green-400' : 'text-slate-300'}`}>
+                                                    {stock.close}
+                                                </td>
+                                                <td className="p-2 text-right font-mono text-slate-300">
+                                                    {fmtSheets(stock.volume)}
+                                                </td>
+
+                                                {/* Dynamic Cells */}
+                                                {activeFilter === 'vp' && (
+                                                    <>
+                                                        <td className="p-2 text-right font-mono text-slate-400">{displayLabel}</td>
+                                                        <td className={`p-2 text-right font-mono ${displayClass}`}>{displayValue}</td>
+                                                    </>
+                                                )}
+                                                {activeFilter === 'mfi' && (
+                                                    <td className={`p-2 text-right font-mono ${displayClass}`}>{displayValue}</td>
+                                                )}
+                                                {activeFilter === 'ma' && (
+                                                    <td className="p-2 text-right font-mono text-slate-400">-</td>
+                                                )}
+                                                {/* Default empty cells for other filters to maintain structure if needed, or just omit */}
+                                                {!['vp', 'mfi', 'ma'].includes(activeFilter) && (
+                                                    <td className="p-2 text-right text-slate-500 text-[10px]">符合</td>
+                                                )}
+                                            </tr>
+                                        );
+                                    })}
+                                </tbody>
+                            </table>
+                        </div>
                     </div>
                 ) : (
                     <div className="flex flex-col items-center justify-center h-40 text-slate-500 gap-2">
