@@ -180,10 +180,13 @@ export const Scan = () => {
                             const isBullish = chartData[last].close > chartData[last].open;
                             const isUp = last > 0 && chartData[last].close > chartData[last - 1].close;
 
-                            // Vol condition: MA5 > MA60 (Golden Cross state)
-                            const volCond = volMa5[last] > volMa60[last];
+                            // Vol condition: MA5 > MA60 (Golden Cross TRIGGER)
+                            // Must be a crossover: Today > 60, Yesterday <= 60
+                            const volCross = last > 0 &&
+                                volMa5[last] > volMa60[last] &&
+                                volMa5[last - 1] <= volMa60[last - 1];
 
-                            if (stock.close > ma25Val && ma25Slope && volCond && isBullish && isUp && bias >= 0 && bias < 10) return result;
+                            if (stock.close > ma25Val && ma25Slope && volCross && isBullish && isUp && bias >= 0 && bias < 10) return result;
                         } else if (activeFilter === 'five_stage') {
                             // 5-stage: MA bull + NVI > PVI + RSI > 50 + Bullish + MFI > 50
                             const nvi = calculateNVI(chartData);
