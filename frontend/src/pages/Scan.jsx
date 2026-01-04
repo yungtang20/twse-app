@@ -410,15 +410,15 @@ export const Scan = () => {
             )
         };
 
-        return controlsMap[activeFilter] || null;
     };
 
     return (
         <div className="h-screen w-screen overflow-hidden flex flex-col pb-10 bg-slate-900 text-slate-300">
             {/* Header - Compact */}
             <div className="shrink-0 px-3 py-2 border-b border-slate-800 flex justify-between items-center bg-slate-900 z-10">
-                <h1 className="text-lg font-bold text-white flex items-center gap-2">
-                    <span className="text-blue-500">⚡</span> 市場掃描
+                <h1 className="text-2xl font-bold text-white flex items-center gap-2">
+                    <span className="text-yellow-400">⚡</span>
+                    市場掃描 v1.2 (Strict)
                 </h1>
                 {dataDate && <span className="text-xs text-slate-500">{dataDate}</span>}
             </div>
@@ -450,108 +450,111 @@ export const Scan = () => {
 
             {/* Results List - Table View */}
             <div className="flex-1 overflow-auto p-2">
-                {loading ? (
-                    <div className="flex flex-col items-center justify-center h-40 text-slate-500 gap-2">
-                        <div className="animate-spin rounded-full h-6 w-6 border-b-2 border-blue-500"></div>
-                        <div className="text-xs">掃描運算中...</div>
-                        <div className="text-[10px] opacity-70 max-w-[200px] truncate text-center">
-                            {processLog[processLog.length - 1]}
+                {
+                    loading ? (
+                        <div className="flex flex-col items-center justify-center h-40 text-slate-500 gap-2" >
+                            <div className="animate-spin rounded-full h-6 w-6 border-b-2 border-blue-500"></div>
+                            <div className="text-xs">掃描運算中...</div>
+                            <div className="text-[10px] opacity-70 max-w-[200px] truncate text-center">
+                                {processLog[processLog.length - 1]}
+                            </div>
                         </div>
-                    </div>
-                ) : scanResults.length > 0 ? (
-                    <div className="bg-slate-800 rounded border border-slate-700 overflow-hidden">
-                        <div className="overflow-x-auto">
-                            <table className="w-full text-xs border-collapse whitespace-nowrap text-left">
-                                <thead>
-                                    <tr className="bg-slate-900 text-slate-400 border-b border-slate-700">
-                                        <th className="p-2 font-bold text-slate-300 sticky left-0 z-20 bg-slate-900 shadow-[2px_0_5px_-2px_rgba(0,0,0,0.5)] min-w-[80px]">股票</th>
-                                        <th className="p-2 font-bold text-right cursor-pointer hover:text-white min-w-[70px]" onClick={() => handleSort('close')}>現價<span className="ml-1 text-[10px]">{sortConfig.key === 'close' ? (sortConfig.direction === 'desc' ? '▼' : '▲') : '⇅'}</span></th>
-                                        <th className="p-2 font-bold text-right cursor-pointer hover:text-white min-w-[70px]" onClick={() => handleSort('volume')}>成交量<span className="ml-1 text-[10px]">{sortConfig.key === 'volume' ? (sortConfig.direction === 'desc' ? '▼' : '▲') : '⇅'}</span></th>
+                    ) : scanResults.length > 0 ? (
+                        <div className="bg-slate-800 rounded border border-slate-700 overflow-hidden">
+                            <div className="overflow-x-auto">
+                                <table className="w-full text-xs border-collapse whitespace-nowrap text-left">
+                                    <thead>
+                                        <tr className="bg-slate-900 text-slate-400 border-b border-slate-700">
+                                            <th className="p-2 font-bold text-slate-300 sticky left-0 z-20 bg-slate-900 shadow-[2px_0_5px_-2px_rgba(0,0,0,0.5)] min-w-[80px]">股票</th>
+                                            <th className="p-2 font-bold text-right cursor-pointer hover:text-white min-w-[70px]" onClick={() => handleSort('close')}>現價<span className="ml-1 text-[10px]">{sortConfig.key === 'close' ? (sortConfig.direction === 'desc' ? '▼' : '▲') : '⇅'}</span></th>
+                                            <th className="p-2 font-bold text-right cursor-pointer hover:text-white min-w-[70px]" onClick={() => handleSort('volume')}>成交量<span className="ml-1 text-[10px]">{sortConfig.key === 'volume' ? (sortConfig.direction === 'desc' ? '▼' : '▲') : '⇅'}</span></th>
 
-                                        {/* Dynamic Columns */}
-                                        {activeFilter === 'vp' && (
-                                            <>
-                                                <th className="p-2 font-bold text-right min-w-[60px]">VP{vpDirection === 'support' ? '支撐' : '壓力'}</th>
-                                                <th className="p-2 font-bold text-right cursor-pointer hover:text-white min-w-[60px]" onClick={() => handleSort('distance')}>距離%<span className="ml-1 text-[10px]">{sortConfig.key === 'distance' ? (sortConfig.direction === 'desc' ? '▼' : '▲') : '⇅'}</span></th>
-                                            </>
-                                        )}
-                                        {activeFilter === 'mfi' && <th className="p-2 font-bold text-right cursor-pointer hover:text-white min-w-[60px]" onClick={() => handleSort('mfi')}>MFI<span className="ml-1 text-[10px]">{sortConfig.key === 'mfi' ? (sortConfig.direction === 'desc' ? '▼' : '▲') : '⇅'}</span></th>}
-                                        {activeFilter === 'ma' && <th className="p-2 font-bold text-right min-w-[60px]">乖離率</th>}
-                                    </tr>
-                                </thead>
-                                <tbody>
-                                    {currentItems.map((stock) => {
-                                        // Calculate dynamic values for display
-                                        let displayValue = null;
-                                        let displayLabel = '';
-                                        let displayClass = '';
+                                            {/* Dynamic Columns */}
+                                            {activeFilter === 'vp' && (
+                                                <>
+                                                    <th className="p-2 font-bold text-right min-w-[60px]">VP{vpDirection === 'support' ? '支撐' : '壓力'}</th>
+                                                    <th className="p-2 font-bold text-right cursor-pointer hover:text-white min-w-[60px]" onClick={() => handleSort('distance')}>距離%<span className="ml-1 text-[10px]">{sortConfig.key === 'distance' ? (sortConfig.direction === 'desc' ? '▼' : '▲') : '⇅'}</span></th>
+                                                </>
+                                            )}
+                                            {activeFilter === 'mfi' && <th className="p-2 font-bold text-right cursor-pointer hover:text-white min-w-[60px]" onClick={() => handleSort('mfi')}>MFI<span className="ml-1 text-[10px]">{sortConfig.key === 'mfi' ? (sortConfig.direction === 'desc' ? '▼' : '▲') : '⇅'}</span></th>}
+                                            {activeFilter === 'ma' && <th className="p-2 font-bold text-right min-w-[60px]">乖離率</th>}
+                                        </tr>
+                                    </thead>
+                                    <tbody>
+                                        {currentItems.map((stock) => {
+                                            // Calculate dynamic values for display
+                                            let displayValue = null;
+                                            let displayLabel = '';
+                                            let displayClass = '';
 
-                                        if (activeFilter === 'vp') {
-                                            const target = vpDirection === 'support' ? stock.vp_low : stock.vp_high;
-                                            const dist = vpDirection === 'support'
-                                                ? (stock.close - target) / target
-                                                : (target - stock.close) / target;
-                                            displayLabel = target?.toFixed(2);
-                                            displayValue = (dist * 100).toFixed(1) + '%';
-                                            displayClass = 'text-yellow-400';
-                                        } else if (activeFilter === 'mfi') {
-                                            displayValue = stock.mfi?.toFixed(1);
-                                            displayClass = stock.mfi < 30 ? 'text-green-400' : 'text-red-400';
-                                        }
+                                            if (activeFilter === 'vp') {
+                                                const target = vpDirection === 'support' ? stock.vp_low : stock.vp_high;
+                                                const dist = vpDirection === 'support'
+                                                    ? (stock.close - target) / target
+                                                    : (target - stock.close) / target;
+                                                displayLabel = target?.toFixed(2);
+                                                displayValue = (dist * 100).toFixed(1) + '%';
+                                                displayClass = 'text-yellow-400';
+                                            } else if (activeFilter === 'mfi') {
+                                                displayValue = stock.mfi?.toFixed(1);
+                                                displayClass = stock.mfi < 30 ? 'text-green-400' : 'text-red-400';
+                                            }
 
-                                        return (
-                                            <tr key={stock.code} onClick={() => navigate(`/dashboard?code=${stock.code}`)} className="border-b border-slate-700/50 hover:bg-slate-700/50 cursor-pointer transition-colors">
-                                                <td className="p-2 sticky left-0 z-10 bg-slate-800 shadow-[2px_0_5px_-2px_rgba(0,0,0,0.5)]">
-                                                    <div className="font-bold text-blue-400">{stock.code}</div>
-                                                    <div className="text-[10px] text-slate-400">{stock.name}</div>
-                                                </td>
-                                                <td className={`p-2 text-right font-mono ${stock.change_pct > 0 ? 'text-red-400' : stock.change_pct < 0 ? 'text-green-400' : 'text-slate-300'}`}>
-                                                    {stock.close}
-                                                </td>
-                                                <td className="p-2 text-right font-mono text-slate-300">
-                                                    {fmtSheets(stock.volume)}
-                                                </td>
+                                            return (
+                                                <tr key={stock.code} onClick={() => navigate(`/dashboard?code=${stock.code}`)} className="border-b border-slate-700/50 hover:bg-slate-700/50 cursor-pointer transition-colors">
+                                                    <td className="p-2 sticky left-0 z-10 bg-slate-800 shadow-[2px_0_5px_-2px_rgba(0,0,0,0.5)]">
+                                                        <div className="font-bold text-blue-400">{stock.code}</div>
+                                                        <div className="text-[10px] text-slate-400">{stock.name}</div>
+                                                    </td>
+                                                    <td className={`p-2 text-right font-mono ${stock.change_pct > 0 ? 'text-red-400' : stock.change_pct < 0 ? 'text-green-400' : 'text-slate-300'}`}>
+                                                        {stock.close}
+                                                    </td>
+                                                    <td className="p-2 text-right font-mono text-slate-300">
+                                                        {fmtSheets(stock.volume)}
+                                                    </td>
 
-                                                {/* Dynamic Cells */}
-                                                {activeFilter === 'vp' && (
-                                                    <>
-                                                        <td className="p-2 text-right font-mono text-slate-400">{displayLabel}</td>
+                                                    {/* Dynamic Cells */}
+                                                    {activeFilter === 'vp' && (
+                                                        <>
+                                                            <td className="p-2 text-right font-mono text-slate-400">{displayLabel}</td>
+                                                            <td className={`p-2 text-right font-mono ${displayClass}`}>{displayValue}</td>
+                                                        </>
+                                                    )}
+                                                    {activeFilter === 'mfi' && (
                                                         <td className={`p-2 text-right font-mono ${displayClass}`}>{displayValue}</td>
-                                                    </>
-                                                )}
-                                                {activeFilter === 'mfi' && (
-                                                    <td className={`p-2 text-right font-mono ${displayClass}`}>{displayValue}</td>
-                                                )}
-                                                {activeFilter === 'ma' && (
-                                                    <td className="p-2 text-right font-mono text-slate-400">-</td>
-                                                )}
-                                                {/* Default empty cells for other filters to maintain structure if needed, or just omit */}
-                                                {!['vp', 'mfi', 'ma'].includes(activeFilter) && (
-                                                    <td className="p-2 text-right text-slate-500 text-[10px]">符合</td>
-                                                )}
-                                            </tr>
-                                        );
-                                    })}
-                                </tbody>
-                            </table>
+                                                    )}
+                                                    {activeFilter === 'ma' && (
+                                                        <td className="p-2 text-right font-mono text-slate-400">-</td>
+                                                    )}
+                                                    {/* Default empty cells for other filters to maintain structure if needed, or just omit */}
+                                                    {!['vp', 'mfi', 'ma'].includes(activeFilter) && (
+                                                        <td className="p-2 text-right text-slate-500 text-[10px]">符合</td>
+                                                    )}
+                                                </tr>
+                                            );
+                                        })}
+                                    </tbody>
+                                </table>
+                            </div>
                         </div>
-                    </div>
-                ) : (
-                    <div className="flex flex-col items-center justify-center h-40 text-slate-500 gap-2">
-                        <div className="text-2xl">🔍</div>
-                        <div className="text-xs">無符合條件個股</div>
-                    </div>
-                )}
-            </div>
+                    ) : (
+                        <div className="flex flex-col items-center justify-center h-40 text-slate-500 gap-2">
+                            <div className="text-2xl">🔍</div>
+                            <div className="text-xs">無符合條件個股</div>
+                        </div>
+                    )}
+            </div >
 
             {/* Pagination - Compact */}
-            {scanResults.length > 0 && (
-                <div className="shrink-0 p-2 border-t border-slate-800 bg-slate-900 flex justify-between items-center">
-                    <button onClick={() => handlePageChange(currentPage - 1)} disabled={currentPage === 1} className="px-3 py-1 bg-slate-800 rounded text-xs disabled:opacity-30">上一頁</button>
-                    <span className="text-xs text-slate-400">{currentPage} / {totalPages}</span>
-                    <button onClick={() => handlePageChange(currentPage + 1)} disabled={currentPage === totalPages} className="px-3 py-1 bg-slate-800 rounded text-xs disabled:opacity-30">下一頁</button>
-                </div>
-            )}
-        </div>
+            {
+                scanResults.length > 0 && (
+                    <div className="shrink-0 p-2 border-t border-slate-800 bg-slate-900 flex justify-between items-center">
+                        <button onClick={() => handlePageChange(currentPage - 1)} disabled={currentPage === 1} className="px-3 py-1 bg-slate-800 rounded text-xs disabled:opacity-30">上一頁</button>
+                        <span className="text-xs text-slate-400">{currentPage} / {totalPages}</span>
+                        <button onClick={() => handlePageChange(currentPage + 1)} disabled={currentPage === totalPages} className="px-3 py-1 bg-slate-800 rounded text-xs disabled:opacity-30">下一頁</button>
+                    </div>
+                )
+            }
+        </div >
     );
 };
