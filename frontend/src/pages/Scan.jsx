@@ -87,9 +87,9 @@ export const Scan = () => {
 
             // Step 2: For each stock, fetch history and calculate indicators
             const results = [];
-            const batchSize = 10;
+            const batchSize = 20;
 
-            for (let i = 0; i < Math.min(stocks.length, 50); i += batchSize) {
+            for (let i = 0; i < stocks.length; i += batchSize) {
                 const batch = stocks.slice(i, i + batchSize);
                 setProcessLog(prev => [...prev, `計算指標 ${i + 1}-${Math.min(i + batchSize, stocks.length)}...`]);
 
