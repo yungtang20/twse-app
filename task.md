@@ -1,6 +1,6 @@
-# Task: Optimize Startup Performance
+# Task: Debug Institutional Data Upload
 
-- [x] Analyze startup bottlenecks in `最終修正.py`
-- [x] Disable blocking `twstock` auto-update check
-- [x] Re-enable `twstock` auto-update check (User Request)
-- [x] Update `proposal.md`
+- [/] Verify frontend column usage (Rankings.jsx checked)
+- [ ] Verify Supabase column names and data
+- [ ] Fix column mismatches if any
+- [ ] Verify data upload process

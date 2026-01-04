@@ -17,7 +17,7 @@ export const Scan = () => {
     const [vpDirection, setVpDirection] = useState('support'); // 'support' or 'resistance'
     const [maPattern, setMaPattern] = useState('below_ma200'); // 'below_ma200', 'below_ma20', 'bull'
     const [patternType, setPatternType] = useState('morning_star'); // 'morning_star' or 'evening_star'
-    const [tolerance, setTolerance] = useState(0.02); // 2% default
+    const [tolerance, setTolerance] = useState(0.15); // 15% default
     const [sortConfig, setSortConfig] = useState({ key: null, direction: 'desc' });
 
     // Column Visibility State
@@ -325,7 +325,7 @@ export const Scan = () => {
 
     // Filter definitions - aligned with Python menu
     const filters = [
-        { id: 'vp', name: '[1] VP掃描', desc: "尋找股價接近 VP 下緣支撐或上緣壓力的個股 (容忍度 2%)。" },
+        { id: 'vp', name: '[1] VP掃描', desc: "尋找股價接近 VP 下緣支撐或上緣壓力的個股 (容忍度 15%)。" },
         { id: 'mfi', name: '[2] MFI掃描', desc: "偵測 MFI 資金流向，由小→大 (流入開始, <30) 或由大→小 (流出結束, >70)。" },
         { id: 'ma', name: '[3] 均線掃描', desc: "子選項: [1]低於MA200 [2]低於MA20 [3]均線多頭 (四線上揚+乖離0-10%)。" },
         { id: 'kd_month', name: '[4] 月KD交叉', desc: "月KD金叉 (K_prev<=D_prev && K>D && K<80) 且 NVI>PVI 籌碼多頭。" },
