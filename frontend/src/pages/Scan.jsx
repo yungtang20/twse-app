@@ -100,10 +100,13 @@ export const Scan = () => {
                             .from('stock_history')
                             .select('date_int, open, high, low, close, volume')
                             .eq('code', stock.code)
-                            .order('date_int', { ascending: true })
+                            .order('date_int', { ascending: false })
                             .limit(60);
 
                         if (histError || !history || history.length < 20) return null;
+
+                        // Sort ascending for calculation
+                        history.reverse();
 
                         // Convert history format
                         const chartData = history.map(h => ({
