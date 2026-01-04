@@ -111,7 +111,11 @@ export const Scan = () => {
                         // Convert history format
                         const chartData = history.map(h => ({
                             time: `${String(h.date_int).slice(0, 4)}-${String(h.date_int).slice(4, 6)}-${String(h.date_int).slice(6, 8)}`,
-                            open: h.open, high: h.high, low: h.low, close: h.close, value: h.volume
+                            open: Number(h.open),
+                            high: Number(h.high),
+                            low: Number(h.low),
+                            close: Number(h.close),
+                            value: Number(h.volume)
                         }));
 
                         // Calculate indicators
