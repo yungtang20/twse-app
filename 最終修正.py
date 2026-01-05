@@ -8040,8 +8040,8 @@ def step8_sync_supabase(progress_callback=None):
     print_flush("\n[Step 8] 同步資料到 Supabase...")
     
     # Supabase 設定 (從 backend/services/db.py 複製，確保可用)
-    url = "https://gqiyvefcldxslrqpqlri.supabase.co"
-    key = "sb_secret_XSeaHx_76CRxA6j8nZ3qDg_nzgFgTAN"
+    url = "https://awayhkvoawonroactdpg.supabase.co"
+    key = "sb_secret_CorHfc7EGXSgBNO1-Y0RLg_lR_drOSv"
     
     try:
         supabase: Client = create_client(url, key)
@@ -8049,6 +8049,34 @@ def step8_sync_supabase(progress_callback=None):
         with db_manager.get_connection() as conn:
             conn.row_factory = sqlite3.Row
             cur = conn.cursor()
+            
+            # ==========================================
+            # 0. 同步 stock_meta (基礎資料)
+            # ==========================================
+            cur.execute("SELECT COUNT(*) FROM stock_meta")
+            total_meta = cur.fetchone()[0]
+            
+            if total_meta > 0:
+                print_flush(f"正在同步股票清單 ({total_meta} 筆)...")
+                BATCH_SIZE = 1000
+                total_batches = math.ceil(total_meta / BATCH_SIZE)
+                
+                cur.execute("SELECT * FROM stock_meta")
+                
+                success_count = 0
+                for i in range(total_batches):
+                    rows = cur.fetchmany(BATCH_SIZE)
+                    if not rows: break
+                    
+                    data = [dict(row) for row in rows]
+                    try:
+                        supabase.table("stock_meta").upsert(data).execute()
+                        success_count += len(data)
+                        if (i+1) % 5 == 0 or (i+1) == total_batches:
+                            print(f"\r  進度: {i+1}/{total_batches}", end="")
+                    except Exception as e:
+                        print_flush(f"\n⚠ stock_meta 上傳失敗 (Batch {i}): {e}")
+                print_flush(f"\n✓ 股票清單同步完成 ({success_count}/{total_meta})")
             
             # ==========================================
             # 1. 同步 institutional_investors
@@ -11674,161 +11702,180 @@ def _handle_step7_with_cache_clear():
 
 def _run_full_daily_update():
     """
-    一鍵執行每日更新 (客製化顯示版)
+    一鍵執行每日更新 (簡潔版 - 抑制子函數輸出)
     """
     global GLOBAL_INDICATOR_CACHE
     import gc
+    import sys
     from concurrent.futures import ThreadPoolExecutor, as_completed
     from datetime import datetime
     
-    out = StepOutput
     start_time = time.time()
     today_str = datetime.now().strftime("%Y%m%d")
     
+    # 安全的空輸出器
+    class NullWriter:
+        def write(self, *args, **kwargs): pass
+        def flush(self, *args, **kwargs): pass
+    _null = NullWriter()
+    
+    def run_silent(func, *args, **kwargs):
+        """靜默執行函數"""
+        old_stdout, old_stderr = sys.stdout, sys.stderr
+        try:
+            sys.stdout = _null
+            sys.stderr = _null
+            return func(*args, **kwargs)
+        except:
+            return None
+        finally:
+            sys.stdout, sys.stderr = old_stdout, old_stderr
+    
+    def get_db_stats():
+        """查詢統計"""
+        try:
+            with db_manager.get_connection() as conn:
+                cur = conn.cursor()
+                cur.execute("SELECT COUNT(*) FROM stock_meta WHERE market_type = 'TWSE'")
+                twse = cur.fetchone()[0]
+                cur.execute("SELECT COUNT(*) FROM stock_meta WHERE market_type = 'TPEx'")
+                tpex = cur.fetchone()[0]
+                cur.execute("SELECT COUNT(*) FROM stock_meta WHERE delist_date IS NOT NULL")
+                delist = cur.fetchone()[0]
+                return twse, tpex, delist
+        except:
+            return 0, 0, 0
+    
     print_flush(f"\n{'='*60}")
-    print_flush(f"一鍵每日更新 (Optimized) - {today_str}")
+    print_flush(f"一鍵每日更新 - {today_str}")
     print_flush(f"{'='*60}\n")
 
-    # 一、下載休市日
-    print_flush("一、下載休市日(每年的0102更新)")
-    
     # 一、檢查開休市
-    print_flush(f"一、檢查開休市：今日 ({today_str}) ", end="")
-    is_holiday = False
-    try:
-        is_holiday = step1_check_holiday()
-        if is_holiday:
-            print_flush("是休市日。")
-            print_flush("✓ 今日是休市日")
-        else:
-            print_flush("是交易日。")
-            print_flush("✓ 今日是交易日")
-    except Exception as e:
-        print_flush(f"檢查失敗: {e}")
+    print_flush(f"一、檢查開休市：", end="")
+    is_holiday = run_silent(step1_check_holiday)
+    print_flush(f"{'休市日' if is_holiday else '交易日'} ({today_str}) {'⚠' if is_holiday else '✓'}")
 
     if not is_holiday:
         # 二、檢查個股清單
         print_flush(f"二、檢查個股清單：", end="")
-        try:
-            step2_download_lists(silent_header=True)
-            print_flush(f"✓今日 ({today_str})已更新")
-        except Exception as e:
-            print_flush(f"❌ 更新失敗: {e}")
+        run_silent(step2_download_lists, silent_header=True)
+        twse, tpex, _ = get_db_stats()
+        print_flush(f"✓ TWSE {twse}檔 / TPEx {tpex}檔")
 
         # 三、清理下市股票
         print_flush(f"三、清理下市股票：", end="")
-        try:
-            step4_clean_delisted()
-        except Exception as e:
-            print_flush(f"❌ 失敗: {e}")
+        run_silent(step4_clean_delisted, silent_header=True)
+        _, _, delist = get_db_stats()
+        print_flush(f"✓ 標記 {delist} 檔")
 
         # 四、基本資料下載
         print_flush(f"四、基本資料下載：", end="")
-        try:
-            step3_download_basic_info(silent_header=True)
-            print_flush(f"TWSE ({today_str})已更新、TPEx({today_str})已更新、[處置/終止] ({today_str})已檢查")
-        except Exception as e:
-            print_flush(f"❌ 失敗: {e}")
+        run_silent(step3_download_basic_info, silent_header=True)
+        print_flush(f"✓ 已更新")
     else:
-        print_flush("\n(休市日：跳過清單與基本資料更新)\n")
+        print_flush("二~四、跳過 (休市日)")
 
-    # 並行下載準備
-    print_flush("\n(正在並行下載市場資料，請稍候...)\n")
+    # 五~九、下載市場資料
+    print_flush(f"\n五~九、下載市場資料：")
     
-    # 定義所有並行任務
-    all_download_tasks = {
-        'quotes': (step5_download_quotes, "五、下載今日行情(15時更新)"),
-        'inst': (step7_download_institutional, "六、下載三大法人資料(15時更新)"),
-        'margin': (step8_download_margin, "七、下載融資融券(21時更新)"),
-        'valuation': (step6_download_valuation, "八、更新 TPEx 估值資料 (PE/Yield/PB)"),
-        'tdcc': (step9_download_tdcc, "九、下載集保資料(每周星期五更新)")
-    }
+    tasks = [
+        ('quotes', step5_download_quotes, "今日行情", "14時"),
+        ('inst', step7_download_institutional, "三大法人", "15時"),
+        ('margin', step8_download_margin, "融資融券", "21時"),
+        ('valuation', step6_download_valuation, "估值資料", "15時"),
+        ('tdcc', step9_download_tdcc, "集保資料", "週六"),
+    ]
     
-    # 根據是否休市篩選任務
-    # 休市日：只跑集保 (tdcc)
-    # 交易日：跑全部
     if is_holiday:
-        download_tasks = {'tdcc': all_download_tasks['tdcc']}
-        print_flush("⚠ 休市日模式：僅執行集保資料下載")
-    else:
-        download_tasks = all_download_tasks
+        tasks = [t for t in tasks if t[0] == 'tdcc']
+        print_flush("     ⚠ 休市日模式")
     
+    # 輔助函數：取得今日統計
+    def get_daily_stats(key):
+        try:
+            with db_manager.get_connection() as conn:
+                cur = conn.cursor()
+                today_int = int(today_str)
+                
+                if key == 'quotes':
+                    # 今日行情: TWSE/TPEx 筆數 + 大盤狀態
+                    cur.execute(f"SELECT COUNT(*) FROM stock_history WHERE date_int={today_int} AND code IN (SELECT code FROM stock_meta WHERE market_type='TWSE')")
+                    twse = cur.fetchone()[0]
+                    cur.execute(f"SELECT COUNT(*) FROM stock_history WHERE date_int={today_int} AND code IN (SELECT code FROM stock_meta WHERE market_type='TPEx')")
+                    tpex = cur.fetchone()[0]
+                    cur.execute(f"SELECT COUNT(*) FROM stock_history WHERE date_int={today_int} AND code='0000'")
+                    market = "✓大盤" if cur.fetchone()[0] > 0 else "⚠無大盤"
+                    return f"{market}✓ TWSE {twse}檔 / TPEx {tpex}檔"
+                    
+                elif key == 'inst':
+                    # 三大法人
+                    cur.execute(f"SELECT COUNT(*) FROM institutional_investors WHERE date_int={today_int}")
+                    count = cur.fetchone()[0]
+                    return f"合計 {count} 筆"
+                    
+                elif key == 'margin':
+                    # 融資融券
+                    cur.execute(f"SELECT COUNT(*) FROM margin_data WHERE date_int={today_int}")
+                    count = cur.fetchone()[0]
+                    return f"合計 {count} 筆"
+                    
+                elif key == 'valuation':
+                    # 估值 (stock_snapshot 有 PE/PB 的筆數)
+                    cur.execute("SELECT COUNT(*) FROM stock_snapshot WHERE pe IS NOT NULL OR pb IS NOT NULL")
+                    count = cur.fetchone()[0]
+                    return f"合計 {count} 筆"
+                    
+                elif key == 'tdcc':
+                    # 集保 (最新日期)
+                    cur.execute("SELECT MAX(date_int), COUNT(*) FROM stock_shareholding_all")
+                    res = cur.fetchone()
+                    date = res[0]
+                    count = res[1]
+                    return f"最新 {date} (共 {count} 筆)"
+                    
+        except:
+            return ""
+        return ""
+
     results = {}
+    for key, func, name, schedule in tasks:
+        try:
+            run_silent(func, silent_header=True)
+            results[key] = True
+        except:
+            results[key] = False
     
-    if Config.LIGHTWEIGHT_MODE:
-        # 手機模式：順序執行
-        for key, (func, title) in download_tasks.items():
-            try:
-                func(silent_header=True)
-                results[key] = True
-            except Exception as e:
-                results[key] = False
-    else:
-        # 電腦模式：並行執行
-        with ThreadPoolExecutor(max_workers=5) as executor:
-            futures = {executor.submit(func, silent_header=True): key for key, (func, title) in download_tasks.items()}
-            for future in as_completed(futures):
-                key = futures[future]
-                try:
-                    future.result()
-                    results[key] = True
-                except Exception as e:
-                    results[key] = False
-
-    # 顯示結果 (依序)
-    def get_status(key):
-        if key not in download_tasks:
-            return "跳過(休市)"
-        return "已更新" if results.get(key) else "失敗"
-
-    # 五
-    status = get_status('quotes')
-    print_flush(f"五、下載今日行情(15時更新)：TWSE ({today_str}){status}、TPEx({today_str}){status}、大盤({today_str}){status}")
-    
-    # 六
-    status = get_status('inst')
-    print_flush(f"六、下載三大法人資料(15時更新)：TWSE ({today_str}){status}、TPEx({today_str}){status}、大盤({today_str}){status}")
-    
-    # 七
-    status = get_status('margin')
-    print_flush(f"七、下載融資融券(21時更新)：TWSE ({today_str}){status}、TPEx({today_str}){status}、大盤({today_str}){status}")
-    
-    # 八
-    status = get_status('valuation')
-    print_flush(f"八、更新 TPEx 估值資料 (PE/Yield/PB)：TWSE ({today_str}){status}、TPEx({today_str}){status}")
-    
-    # 九
-    status = get_status('tdcc')
-    print_flush(f"九、下載集保資料(每周星期五更新)：TWSE ({today_str}){status}、TPEx({today_str}){status}")
+    for key, _, name, schedule in tasks:
+        status = "✓" if results.get(key) else "❌"
+        stats = get_daily_stats(key)
+        print_flush(f"     [{name}] {status} ({schedule}更新) {stats}")
 
     # 十、檢查數據缺失
-    print_flush("十、檢查數據缺失：檢查以上是否有缺少的")
-    try:
-        step10_check_gaps()
-    except: pass
+    print_flush(f"\n十、檢查數據缺失：", end="")
+    run_silent(step10_check_gaps)
+    print_flush("✓ 完成")
 
-    # 十一、驗證資料完整性與回補
-    print_flush("十一、驗證資料完整性與回補：")
-    try:
-        step11_verify_backfill(auto_mode=True)
-    except: pass
+    # 十一、驗證與回補
+    print_flush(f"十一、驗證與回補：", end="")
+    run_silent(step11_verify_backfill, auto_mode=True)
+    print_flush("✓ 完成")
 
     # 十二、計算技術指標
-    print_flush("十二、計算技術指標：計算所有需要計算的")
-    try:
-        step12_calc_indicators()
-        # 更新快取
-        if GLOBAL_INDICATOR_CACHE is None:
-            GLOBAL_INDICATOR_CACHE = IndicatorCacheManager()
-        data = step4_load_data()
+    print_flush(f"十二、計算技術指標：", end="")
+    run_silent(step12_calc_indicators)
+    if GLOBAL_INDICATOR_CACHE is None:
+        GLOBAL_INDICATOR_CACHE = IndicatorCacheManager()
+    data = run_silent(step4_load_data)
+    if data:
         GLOBAL_INDICATOR_CACHE.set_data(data)
-    except: pass
+    print_flush("✓ 完成")
 
+    # 完成
     elapsed = time.time() - start_time
-    minutes = int(elapsed // 60)
-    seconds = int(elapsed % 60)
-    print_flush(f"\n✓ 每日更新完成！耗時: {minutes}分{seconds}秒")
-    print_flush("="*60 + "\n")
+    minutes, seconds = int(elapsed // 60), int(elapsed % 60)
+    print_flush(f"\n{'='*60}")
+    print_flush(f"✓ 每日更新完成！耗時: {minutes}分{seconds}秒")
+    print_flush(f"{'='*60}\n")
 
 def start_scheduler():
     """啟動每日自動更新排程"""

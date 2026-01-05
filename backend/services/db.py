@@ -30,8 +30,8 @@ def get_configured_db_path() -> Path:
 DB_PATH = get_configured_db_path()
 
 # Supabase 設定 (優先使用環境變數)
-SUPABASE_URL = os.environ.get("SUPABASE_URL", "https://bshxromrtsetlfjdeggv.supabase.co")
-SUPABASE_KEY = os.environ.get("SUPABASE_KEY", "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImJzaHhyb21ydHNldGxmamRlZ2d2Iiwicm9sZSI6InNlcnZpY2Vfcm9sZSIsImlhdCI6MTc2Njk5NzI1NywiZXhwIjoyMDgyNTczMjU3fQ.8i4GD8rOQtpISgEd2ZX-wzR4xq2FCuKC99NyKqjmHi0")
+SUPABASE_URL = os.environ.get("SUPABASE_URL", "https://awayhkvoawonroactdpg.supabase.co")
+SUPABASE_KEY = os.environ.get("SUPABASE_KEY", "sb_secret_CorHfc7EGXSgBNO1-Y0RLg_lR_drOSv")
 
 # 自動偵測雲端模式: 如果 SQLite 檔案不存在，就是雲端模式
 IS_CLOUD_MODE = not DB_PATH.exists()
